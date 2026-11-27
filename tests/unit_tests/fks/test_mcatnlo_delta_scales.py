@@ -147,6 +147,7 @@ class TestMCatNLODeltaMatching(unittest.TestCase):
     def test_backward_dispatch_uses_table_coupling_and_cutoff_fallback(self):
         for mode in ('backward_quark_two', 'backward_gluon_two',
                      'backward_quark_one', 'backward_gluon_one',
+                     'backward_quark_six', 'backward_gluon_six',
                      'backward_quark_cutoff', 'backward_gluon_cutoff'):
             with self.subTest(mode=mode):
                 result = subprocess.run([str(self.executable), mode],

@@ -148,6 +148,19 @@ ANNOUNCEMENT:
        Born-level light jets. It included the real-emission parton, so a
        @0 + @1 sample recorded 2 and the shower interface rejected the
        required njmax = 1.
+   RF: MC@NLO-Delta: new default Sudakov tables (vendor/SudGen/
+       sudakov_py8318.f), generated with an unmodified Pythia 8.318 and the
+       settings of the MC@NLO shower interface, taken from
+       mcatnlo_shower.pythia8_settings: alpha_s(MZ) = 0.118 at first order
+       for both showers, the locked recoil settings and the MC masses. The
+       previous tables used alpha_s(MZ) = 0.1365 (FSR) and 0.130 (ISR,
+       without pT0 regularisation) and other Pythia defaults. New generator
+       vendor/SudGen/sudgen_tables.py: each table row multiplies the
+       trial-shower probabilities of adjacent scale intervals, so the
+       tables are monotone and free of statistical zeros (largest relative
+       error 0.6%); the full set takes about 11 minutes on 120 cores.
+       DeltaBackwardISR now also supports six-flavour running, which the
+       new tables declare (StandardModel:alphaSnfmax = 6).
 
 0.3.0 (XX/XX/XX):
    OM: --hel_recycling (standalone/mg7, CPU/SIMD builds, on by default): the recycled matrix

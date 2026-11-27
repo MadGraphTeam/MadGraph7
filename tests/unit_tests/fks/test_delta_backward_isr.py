@@ -16,9 +16,12 @@ ROUTINES = ('delta_backward_leg', 'delta_line_exponents', 'delta_backward_ratios
             'delta_group_xf', 'delta_quark_xf', 'delta_active_quarks', 'delta_backward_omz',
             'delta_alphas_lambdas', 'delta_shower_alphas', 'delta_alphas_nf',
             'delta_alphas_lambda', 'gl_safe', 'get_parton_id')
-# PYTHIA 8.318 AlphaStrong (CMW off, nfmax 5), including the freezing below
-# 1.33 (second order) or 1.07 (first order) Lambda_3. Second order with 0.118
-# as in the NNPDF4.0 NLO profile; first order with 0.1365, the archived table's.
+# PYTHIA 8.318 AlphaStrong (CMW off), including the freezing below 1.33
+# (second order) or 1.07 (first order) Lambda_3. Keys (alpha_s(MZ), order) use
+# nfmax 5: second order with 0.118 as in the NNPDF4.0 NLO profile, first order
+# with 0.1365, the archived table's. Keys with a third entry give nfmax, as
+# StandardModel:alphaSnfmax: six flavours above the 171 GeV top threshold, the
+# Pythia default of the tables generated with the shower-interface settings.
 PYTHIA_ALPHAS = {
     (.118, 2): ((0.4006386434, 4.352238399), (1.20029065, 0.4354249345),
                 (1.602942725, 0.3475180847), (3.004981386, 0.2559199742),
@@ -27,8 +30,16 @@ PYTHIA_ALPHAS = {
     (.1365, 1): ((0.3, 10.318439941464703), (1.0, 0.62114254126870971),
                  (1.51, 0.45464154807199286), (3.0, 0.32153954080968622),
                  (4.81, 0.26767035945864026), (10.0, 0.21603034203324506),
-                 (91.188, 0.1365), (500.0, 0.10635602188389676))}
-CA, CF, TR, MC, MB = 3., 4. / 3., .5, 1.5, 4.8
+                 (91.188, 0.1365), (500.0, 0.10635602188389676)),
+    (.118, 1, 6): ((1.0, 0.362515154821197), (10.0, 0.17308379656841),
+                   (91.188, 0.118), (170.0, 0.108288382354903),
+                   (172.0, 0.108128522194218), (300.0, 0.101337600160859),
+                   (1000.0, 0.0892113733005954), (5000.0, 0.0769089783262814)),
+    (.118, 2, 6): ((1.0, 0.530405636866669), (10.0, 0.178278503851326),
+                   (91.188, 0.117999999999164), (170.0, 0.107879398072215),
+                   (172.0, 0.107714711553433), (300.0, 0.100780346266997),
+                   (1000.0, 0.088488917015006), (5000.0, 0.0761247572839636))}
+CA, CF, TR, MC, MB, MT = 3., 4. / 3., .5, 1.5, 4.8, 171.
 QUARKS = tuple(q for q in range(-5, 6) if q)
 
 # Toy x*f(x, mu), rising with scale at small x. Flavour 4 starts at 2 GeV, so a
@@ -58,15 +69,15 @@ DRIVER = '''
       use backward_test
       implicit none
       character(1) mode
-      integer n,flav(3),beam,order,k
-      double precision x,alpha,lambda(3:5)
+      integer n,flav(3),beam,order,k,nfmax
+      double precision x,alpha,lambda(3:6)
       type(delta_connections) leg
       leg%sudakov_type=1
       do
          read(*,*,end=10) mode
          if (mode.eq.'c') then
-            read(*,*) alpha,order
-            call delta_alphas_lambdas(alpha,order,lambda)
+            read(*,*) alpha,order,nfmax
+            call delta_alphas_lambdas(alpha,order,nfmax,lambda)
          elseif (mode.eq.'a') then
             read(*,*) x
             write(*,'(es24.16)') delta_shower_alphas(x,lambda,order)
@@ -95,9 +106,14 @@ def toy_xf(pid, x, mu):
     return x**(.1 - .02 * l) * (1. - x)**(3. + .3 * l)
 
 
-def pythia_alphas(scale, alpha_mz=.118, order=2):
+def coupling_line(coupling):
+    """Driver input for (alpha_s(MZ), order[, nfmax]), nfmax 5 by default."""
+    return 'c\n%r %d %d\n' % (coupling[0], coupling[1], coupling[2] if len(coupling) > 2 else 5)
+
+
+def pythia_alphas(scale, alpha_mz=.118, order=2, nfmax=5):
     b = {nf: (33. - 2. * nf, 6. * (153. - 19. * nf) / (33. - 2. * nf)**2 if order == 2 else 0.)
-         for nf in (3, 4, 5)}
+         for nf in (3, 4, 5, 6)}
 
     def value(nf, q, lam):
         l = 2. * math.log(q / lam)
@@ -113,6 +129,8 @@ def pythia_alphas(scale, alpha_mz=.118, order=2):
     lam4 = solve(4, MB, value(5, MB, lam5), lam5)
     lam3 = solve(3, MC, value(4, MC, lam4), lam4)
     q = max(scale, (1.33 if order == 2 else 1.07) * lam3)
+    if nfmax == 6 and q > MT:
+        return value(6, q, solve(6, MT, value(5, MT, lam5), lam5))
     return value(5, q, lam5) if q > MB else value(4, q, lam4) if q > MC else value(3, q, lam3)
 
 
@@ -133,12 +151,12 @@ def integrate(f, edges, panels):
     return total
 
 
-def reference_lines(flavs, x, lines, alpha_mz=.118, order=2):
+def reference_lines(flavs, x, lines, alpha_mz=.118, order=2, nfmax_alphas=5):
     """F*R*exp(C) on fine grids for (stop, start, mass) colour lines, combined as
     eq.3.34 (delta_leg_probability): forward factors from every line's start to
     each stopping line's scale, weighted by the lines' emission exponents."""
     gluon = flavs[0] == 21
-    a = lambda t: pythia_alphas(math.sqrt(t), alpha_mz, order) / (2. * math.pi)
+    a = lambda t: pythia_alphas(math.sqrt(t), alpha_mz, order, nfmax_alphas) / (2. * math.pi)
     nfmax = sum(1 for q in range(1, 6) if toy_xf(q, x, max(l[1] for l in lines)) > 0.)
 
     def nf(t):
@@ -148,7 +166,7 @@ def reference_lines(flavs, x, lines, alpha_mz=.118, order=2):
         return 1. - .5 * t / mass**2 * (math.sqrt(1. + 4. * mass**2 / t) - 1.)
 
     def grid(lo, hi):
-        return [lo] + [2. * math.log(c) for c in (MC, 2., MB) if lo < 2. * math.log(c) < hi] + [hi]
+        return [lo] + [2. * math.log(c) for c in (MC, 2., MB, MT) if lo < 2. * math.log(c) < hi] + [hi]
 
     def forward(lo, hi, mass):
         """Signed exponent of one colour line from lo up to hi."""
@@ -208,9 +226,9 @@ def reference_lines(flavs, x, lines, alpha_mz=.118, order=2):
         forward(q, s2, m2) for _, s2, m2 in lines)) for w, (q, s, m) in zip(weights, lines))
 
 
-def reference_leg(flavs, x, q, start, mass, alpha_mz=.118, order=2):
+def reference_leg(flavs, x, q, start, mass, alpha_mz=.118, order=2, nfmax_alphas=5):
     """One colour line from start down to q."""
-    return reference_lines(flavs, x, [(q, start, mass)], alpha_mz, order)
+    return reference_lines(flavs, x, [(q, start, mass)], alpha_mz, order, nfmax_alphas)
 
 
 @unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
@@ -312,7 +330,7 @@ class TestDeltaBackwardISR(unittest.TestCase):
         """Leg probability for colour lines (stop, start, mass[, partner])."""
         rows = ''.join('%.17g %.17g %.17g %d\n' % (tuple(l[:3]) + (l[3] if len(l) > 3 else 2,))
                        for l in lines)
-        return self.run_lines(['c\n%r %d\n' % coupling,
+        return self.run_lines([coupling_line(coupling),
                                'b\n%d %s %d %.17g %d\n' % (len(flavs), ' '.join(map(str, flavs)), beam,
                                                          x, len(lines)) + rows])[0]
 
@@ -321,7 +339,7 @@ class TestDeltaBackwardISR(unittest.TestCase):
 
     def test_alpha_s_reproduces_pythia(self):
         for coupling, references in PYTHIA_ALPHAS.items():
-            values = self.run_lines(['c\n%r %d\n' % coupling] +
+            values = self.run_lines([coupling_line(coupling)] +
                                     ['a\n%.17g\n' % scale for scale, _ in references])
             for (scale, expected), value in zip(references, values):
                 with self.subTest(coupling=coupling, scale=scale):
@@ -378,6 +396,19 @@ class TestDeltaBackwardISR(unittest.TestCase):
                     if alpha == .1365:
                         # The larger one-loop coupling suppresses no-emission evolution.
                         self.assertLess(value, self.leg(flavs, x, q, start, mass))
+
+    def test_six_flavour_running(self):
+        # StandardModel:alphaSnfmax = 6 changes the coupling above the top
+        # threshold only: more emission there, identical evolution below it.
+        for flavs, x, q, start, mass in (((2,), .01, 50., 2000., 3000.),
+                                         ((21,), .02, 80., 1500., 2500.)):
+            with self.subTest(flavs=flavs):
+                six = self.leg(flavs, x, q, start, mass, coupling=(.118, 2, 6))
+                self.assertAlmostEqual(
+                    six / reference_leg(flavs, x, q, start, mass, .118, 2, 6), 1., delta=2e-4)
+                self.assertLess(six, self.leg(flavs, x, q, start, mass))
+        low = ((2,), .007, 20., 150., 200.)
+        self.assertEqual(self.leg(*low, coupling=(.118, 2, 6)), self.leg(*low))
 
     def test_no_evolution_and_table_fallbacks(self):
         self.assertEqual(self.leg((2,), .01, 30., 30., 91.19), 1.)

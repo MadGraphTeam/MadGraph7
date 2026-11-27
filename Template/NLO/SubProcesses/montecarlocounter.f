@@ -36,8 +36,9 @@ c FKS/native-Born machinery or the external Sudakov tables.
       end type mc_kernel_limits
 
 c     PYTHIA8's default AlphaStrong flavour thresholds (DeltaBackwardISR).
+c     The top threshold enters with StandardModel:alphaSnfmax = 6.
       double precision,parameter :: delta_alphas_mc=1.5d0,
-     $     delta_alphas_mb=4.8d0
+     $     delta_alphas_mb=4.8d0,delta_alphas_mt=171d0
 c     Complete live colour-connection data for one Born leg in Delta.
       type :: delta_connections
          integer :: count=0,partner(2)=0,sudakov_type(2)=0
@@ -1208,7 +1209,7 @@ c     The first Sudakov call initializes these fitted table bounds.
       type(delta_connections) leg_connections(nexternal-1)
       integer i,j
       double precision mcmass(21),deltanum,leg_probability
-      double precision backward_lambda(3:5)
+      double precision backward_lambda(3:6)
       integer backward_order
 
       mcmass=0d0
@@ -1404,7 +1405,7 @@ c     x. The caller restores the outer event's colours and scales first.
       type(delta_connections) line
       integer a,b,c,other,slot,partners,pdg,nflav
       double precision mcmass(21),start,stop,qdip(0:3),mass,deltanum,
-     $     leg_probability,backward_lambda(3:5)
+     $     leg_probability,backward_lambda(3:6)
       integer backward_order
 
       probability=1d0
@@ -1762,9 +1763,9 @@ c     Read the coupling from the selected standalone Sudakov provider.
 c     Never infer it from shower steering or today's grid-generation code.
       use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
       implicit none
-      double precision, intent(out) :: lambda(3:5)
+      double precision, intent(out) :: lambda(3:6)
       integer, intent(out) :: order
-      double precision alpha_mz,thresholds(2),cached_lambda(3:5)
+      double precision alpha_mz,thresholds(2),cached_lambda(3:6)
       integer table_order,nfmax,pdfmode,status,cached_order
       logical cmw,initialized
       save cached_lambda,cached_order,initialized
@@ -1791,7 +1792,7 @@ c     Never infer it from shower steering or today's grid-generation code.
          endif
          if (alpha_mz.le.0d0.or.alpha_mz.ge.1d0.or.
      $       table_order.lt.1.or.table_order.gt.2.or.cmw.or.
-     $       nfmax.ne.5.or.pdfmode.ne.1.or.
+     $       (nfmax.ne.5.and.nfmax.ne.6).or.pdfmode.ne.1.or.
      $       abs(thresholds(1)-delta_alphas_mc).gt.1d-12.or.
      $       abs(thresholds(2)-delta_alphas_mb).gt.1d-12) then
             write(*,*) 'Unsupported Delta Sudakov table ISR parameters',
@@ -1799,7 +1800,8 @@ c     Never infer it from shower steering or today's grid-generation code.
             stop 1
          endif
          cached_order=table_order
-         call delta_alphas_lambdas(alpha_mz,table_order,cached_lambda)
+         call delta_alphas_lambdas(alpha_mz,table_order,nfmax,
+     $        cached_lambda)
          write(*,*) 'DeltaBackwardISR uses table alpha_s(MZ), order: ',
      $        alpha_mz,table_order
          initialized=.true.
@@ -1827,7 +1829,7 @@ c     for a group mixing quarks and gluons or if a PDF vanishes at the
 c     start; the caller then keeps the forward table.
       implicit none
       integer, intent(in) :: pdg,flavours(:),beam_type,order
-      double precision, intent(in) :: bjorken,lambda(3:5)
+      double precision, intent(in) :: bjorken,lambda(3:6)
       type(delta_connections), intent(in) :: connections
       double precision, parameter :: backward_min=1.01d0
       logical gluon,ok,vanishing(2)
@@ -1916,7 +1918,7 @@ c     delta_backward_ratios adds the PDF ratios.
       implicit none
       logical, intent(in) :: gluon
       integer, intent(in) :: nfmax,order
-      double precision, intent(in) :: x,lo,hi,mass,lambda(3:5)
+      double precision, intent(in) :: x,lo,hi,mass,lambda(3:6)
       double precision, intent(out) :: forward,virtual
       double precision, parameter :: CA=3d0,CF=4d0/3d0,TR=0.5d0,
      $     pi=3.14159265358979323846d0
@@ -1926,16 +1928,18 @@ c     delta_backward_ratios adds the PDF ratios.
      $     w4(4)=(/0.3478548451374538d0,0.6521451548625461d0,
      $     0.6521451548625461d0,0.3478548451374538d0/)
       integer i,k,nf
-      double precision a,b,edges(4),t,omz,omzl,z,v,c,weight
+      double precision a,b,edges(5),t,omz,omzl,z,v,c,weight
 
       a=2d0*log(min(lo,hi))
       b=2d0*log(max(lo,hi))
-c     Split at the alpha_s flavour thresholds.
+c     Split at the alpha_s flavour thresholds. The splitting multiplicity
+c     nf counts the PDF quarks, at most five, also above the top threshold.
       edges=(/a,min(max(2d0*log(delta_alphas_mc),a),b),
-     $     min(max(2d0*log(delta_alphas_mb),a),b),b/)
+     $     min(max(2d0*log(delta_alphas_mb),a),b),
+     $     min(max(2d0*log(delta_alphas_mt),a),b),b/)
       forward=0d0
       virtual=0d0
-      do i=1,3
+      do i=1,4
          if (edges(i+1).eq.edges(i)) cycle
          nf=min(i+2,nfmax)
          do k=1,4
@@ -1983,7 +1987,7 @@ c     exp(C) down to 2 GeV. ok is false if a PDF vanishes at a node.
       implicit none
       logical, intent(in) :: gluon
       integer, intent(in) :: flavours(:),ih,lp,order
-      double precision, intent(in) :: x,lo,hi,mass,lambda(3:5)
+      double precision, intent(in) :: x,lo,hi,mass,lambda(3:6)
       logical, intent(out) :: ok
       double precision, parameter :: CA=3d0,CF=4d0/3d0,TR=0.5d0,
      $     pi=3.14159265358979323846d0
@@ -2094,35 +2098,41 @@ c     1-Z for the massless II bound of the PYTHIA8 backward evolution.
       delta_backward_omz=0.5d0*r*(sqrt(1d0+4d0/r)-1d0)
       end function delta_backward_omz
 
-      subroutine delta_alphas_lambdas(alpha_mz,order,lambda)
-c     Lambda_3,4,5 of PYTHIA8's AlphaStrong (CMW off, alphaSnfmax = 5) at
-c     first or second order, continuous at the default flavour thresholds.
-c     First order fixes them directly; second order iterates as PYTHIA8.
+      subroutine delta_alphas_lambdas(alpha_mz,order,nfmax,lambda)
+c     Lambda_3,4,5,6 of PYTHIA8's AlphaStrong (CMW off) at first or second
+c     order, continuous at the default flavour thresholds. First order
+c     fixes them directly; second order iterates as PYTHIA8. Lambda_6 is
+c     zero for StandardModel:alphaSnfmax = 5 (five flavours at all scales).
       implicit none
       double precision, intent(in) :: alpha_mz
-      integer, intent(in) :: order
-      double precision, intent(out) :: lambda(3:5)
+      integer, intent(in) :: order,nfmax
+      double precision, intent(out) :: lambda(3:6)
       double precision, parameter :: mz=91.188d0,
      $     pi=3.14159265358979323846d0
       lambda(5)=mz*exp(-6d0*pi/(23d0*alpha_mz))
       if (order.eq.1) then
+         lambda(6)=lambda(5)*(lambda(5)/delta_alphas_mt)**(2d0/21d0)
          lambda(4)=lambda(5)*(delta_alphas_mb/lambda(5))**(2d0/25d0)
          lambda(3)=lambda(4)*(delta_alphas_mc/lambda(4))**(2d0/27d0)
       else
          lambda(5)=delta_alphas_lambda(5,mz,alpha_mz,lambda(5))
+         lambda(6)=delta_alphas_lambda(6,delta_alphas_mt,
+     $        delta_alphas_nf(5,delta_alphas_mt,lambda(5),2),lambda(5))
          lambda(4)=delta_alphas_lambda(4,delta_alphas_mb,
      $        delta_alphas_nf(5,delta_alphas_mb,lambda(5),2),lambda(5))
          lambda(3)=delta_alphas_lambda(3,delta_alphas_mc,
      $        delta_alphas_nf(4,delta_alphas_mc,lambda(4),2),lambda(4))
       endif
+      if (nfmax.lt.6) lambda(6)=0d0
       end subroutine delta_alphas_lambdas
 
       double precision function delta_shower_alphas(scale,lambda,order)
 c     PYTHIA8's AlphaStrong at this scale for lambda from
 c     delta_alphas_lambdas, frozen below 1.07 (first order) or 1.33
-c     (second order) Lambda_3.
+c     (second order) Lambda_3, with six flavours above the top threshold
+c     when lambda(6) is set.
       implicit none
-      double precision, intent(in) :: scale,lambda(3:5)
+      double precision, intent(in) :: scale,lambda(3:6)
       integer, intent(in) :: order
       double precision q
       integer nf
@@ -2130,6 +2140,7 @@ c     (second order) Lambda_3.
       nf=3
       if (q.gt.delta_alphas_mc) nf=4
       if (q.gt.delta_alphas_mb) nf=5
+      if (lambda(6).gt.0d0.and.q.gt.delta_alphas_mt) nf=6
       delta_shower_alphas=delta_alphas_nf(nf,q,lambda(nf),order)
       end function delta_shower_alphas
 

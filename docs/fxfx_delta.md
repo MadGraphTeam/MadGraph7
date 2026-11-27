@@ -214,10 +214,13 @@ mixing quarks and gluons, a stopping scale at or below the table's
 The running coupling always comes from `pysudakov_isr_parameters` in the
 active standalone `sudakov.f` provider. There are no coupling controls in
 the FKS card, and the shower-card and hard-process couplings do not
-override it. The shipped PDFmode-1 provider
-(`vendor/SudGen/sudakov_pdfmode1.f`) declares its audited effective
-profile: `alpha_s(MZ) = 0.1365`, one-loop running, CMW off, at most five
-flavours, and thresholds of 1.5 and 4.8 GeV. This coupling is used only
+override it. The shipped provider (`vendor/SudGen/sudakov_py8318.f`, see
+"Sudakov tables" below) declares the initialised settings of its
+initial-state tables: `alpha_s(MZ) = 0.118`, one-loop running, CMW off,
+six flavours above Pythia's 171 GeV top threshold, and thresholds of 1.5
+and 4.8 GeV. The previous provider (`sudakov_pdfmode1.f`) declares the
+audited effective profile of its archived grid: `alpha_s(MZ) = 0.1365`,
+one-loop running, CMW off and five flavours. This coupling is used only
 for the no-emission probability. It does not change the hard matrix
 elements, the hard PDFs, the FxFx analytic factors or the Pythia shower.
 
@@ -226,8 +229,34 @@ metadata. Old or custom providers without this API get an explicit
 unknown-status implementation, so they still work while the option is
 off. Enabling the option with unknown metadata stops the run. The
 prototype supports PDFmode 1, one- or two-loop running, CMW off,
-five-flavour running and the thresholds above. Incompatible metadata
-also stops the run rather than silently substituting another coupling.
+five- or six-flavour running and the thresholds above, as Pythia's
+`AlphaStrong`. Incompatible metadata also stops the run rather than
+silently substituting another coupling.
+
+## Sudakov tables
+
+Delta reads its no-emission probabilities from the tables of the active
+`sudakov.f` provider. The shipped tables (`vendor/SudGen/sudakov_py8318.f`)
+were generated with an unmodified Pythia 8.318 and the settings that the
+MC@NLO shower interface uses (`vendor/SudGen/sudgen_tables.py`). The
+settings come from `mcatnlo_shower.pythia8_settings` itself:
+`alpha_s(MZ) = 0.118` at first order without CMW for both showers, the
+recoil settings locked for the PYTHIA8 counterterms
+(`TimeShower:weightGluonToQuark = 1`, `TimeShower:dampenBeamRecoil =
+off`, global recoil, ...), and the MC masses. The initial-state tables
+are PDF-free (`SpaceShower:pdfMode = 1`) and no table includes
+matrix-element corrections, which the shower applies only in resonance
+decays. The previous tables used Pythia's default 0.1365 in final-state
+radiation, 0.130 in initial-state radiation without the `pT0`
+regularisation, `weightGluonToQuark = 4` and beam-recoil damping.
+
+Each row of a table is one pass down the scale nodes that multiplies the
+trial-shower probabilities of adjacent intervals. The tables are therefore
+monotone in the scale and have no statistical zeros. Their largest
+relative error is 0.6%, also where the probability is 10^-6. The previous
+tables were single trial runs per node, set to zero below 10^-3. New
+process directories copy the new provider; existing ones keep their local
+`SubProcesses/sudakov.f`. Details are in `vendor/SudGen/README_grid_clust`.
 
 The switch changes the paired H/S weights before unweighting. A new
 integration, grid setup and event generation are therefore needed.
@@ -326,18 +355,23 @@ CI job:
   standalone Delta events through both Fortran readers and the Python
   parser.
 - `test_delta_backward_isr`, `test_mcatnlo_delta_scales` and
-  `test_sudakov_table` cover the running coupling, the backward identity,
-  the colour-line factors, the fallbacks and the provider metadata.
+  `test_sudakov_table` cover the running coupling with five and six
+  flavours, the backward identity, the colour-line factors, the
+  fallbacks, the provider metadata and the monotonicity of the shipped
+  tables.
 - `TestPythiaDeltaSteering` checks the Pythia8 settings for MC@NLO,
   MC@NLO-Delta, FxFx and FxFx-Delta.
 
-`test_fxfx_delta_hook` needs a real Pythia installation and is not part
-of CI, because skipped tests fail the CI jobs. It checks stable Z bosons
-and pre-decayed `Z -> e+ e-` records, with the daughters before or after
-the production gluon:
+`test_fxfx_delta_hook` and `test_sudgen_fast` need a real Pythia
+installation and are not part of CI, because skipped tests fail the CI
+jobs. `test_fxfx_delta_hook` checks stable Z bosons and pre-decayed
+`Z -> e+ e-` records, with the daughters before or after the production
+gluon. `test_sudgen_fast` checks that the table generator takes the
+shower-interface settings and that its interval products agree with
+single trial runs:
 
 ```
-PYTHIA8=/path/to/pythia8 ./tests/test_manager.py test_fxfx_delta_hook -t0
+PYTHIA8=/path/to/pythia8 ./tests/test_manager.py test_fxfx_delta_hook test_sudgen_fast -t0
 ```
 
 These tests validate the implementation, not merged cross sections or

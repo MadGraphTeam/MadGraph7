@@ -3,10 +3,72 @@
 ==================================================
 
 Shipped MC@NLO-Delta default
---------------------------
-The selected table is sudakov.f -> sudakov_pdfmode1.f. Its numerical grid
-is the archived sudakov_r515_PDFmode1.f.gz grid. The top-level pysudakov
-function converts the raw probabilities to individual colour-line factors:
+----------------------------
+The selected table is sudakov.f -> sudakov_py8318.f. It was generated with
+an unmodified Pythia 8.318 and the settings of the MC@NLO shower interface:
+
+  python3 sudgen_tables.py --pythia8 /path/to/pythia8 --workdir WORK \
+      --output sudakov_py8318.f --jobs 120 --nrep-fsr 50 --nrep-isr 1
+
+This takes about 11 minutes on 120 cores. It needs a Pythia 8.3
+installation (bin/pythia8-config), g++ and the MG5_aMC sources. Rows that
+are already in WORK are reused, so an interrupted run can be restarted.
+Besides the provider it writes sudakov_py8318_grid.dat.gz (every node with
+its relative statistical error) and sudakov_py8318_settings.json (the
+Pythia settings and the initialised couplings). compare_tables.py plots two
+providers against each other.
+
+Settings (sudgen_settings.py). The shower settings are not repeated in
+SudGen: they are produced by madgraph/various/mcatnlo_shower.pythia8_settings
+for a default shower card and a proton-proton run with the internal PDF.
+These are the settings locked for the MC@NLO counterterms (simple shower,
+global recoil, recoil dead cone, TimeShower:weightGluonToQuark = 1,
+TimeShower:dampenBeamRecoil = off, no rapidity ordering or dipole recoil),
+the shower couplings (alpha_s(MZ) = 0.118, first order, CMW off, for both
+showers), PDF:pSet = 13 and the masses of MCmasses_PYTHIA8.inc, with the
+top mass of the MG5_aMC parameter cards (173 GeV). The table definition
+adds only:
+  - SpaceShower:pdfMode = 1: PDF-free initial-state tables. The Delta code
+    applies the PDF ratio of each incoming leg itself.
+  - TimeShower:MEcorrections = off. The shower applies matrix-element
+    corrections only in resonance decays (MEextended = off), never to the
+    production dipoles the tables describe. The dummy q qbar pair of the
+    trial showers hangs off a colour singlet and would otherwise get the
+    singlet-decay correction (up to 0.1 in the quark FF tables).
+  - No QED radiation, MPI, hadronisation or shower variations, and the
+    merging machinery that gives access to Merging::generateSingleSudakov.
+Everything else keeps the Pythia defaults, as the shower does: for example
+SpaceShower:pT0Ref = 2 GeV, TimeShower:pTmin = 0.5 GeV, SpaceShower:pTmin =
+0.2 GeV and StandardModel:alphaSnfmax = 6.
+
+Method (sudgen_fast.cc). An entry is the probability that one dipole of
+mass xm does not radiate between stupp = 7 TeV and the scale st: Pythia's
+noEmissionProbability, called through Merging::generateSingleSudakov with
+s = (7 TeV)^2 and x = 0.1, as before. Its trial showers are Markovian, so a
+row of the table is the product of the probabilities over adjacent nodes,
+accumulated in one pass from stupp down:
+
+  Delta(st_i) = prod_{k>=i} P(st_{k+1} -> st_k).
+
+Compared with one trial run from stupp per node (the previous method), this
+needs far fewer trial steps, is monotone in st by construction, and keeps a
+relative error sqrt(sum_k (1 - P_k)/(P_k N_k)) that stays small deep in the
+Sudakov region, where single runs return statistical zeros. Each interval
+uses N_k = 5x10^5 trials: 50 calls of 10^4 trials for final-state, one call
+of 5x10^5 for initial-state radiators (Pythia's numbers per call). The
+largest relative error of the shipped grid is 0.6%, also where the
+probability is 10^-6. The nodes (100 x 50, logarithmic between 1 GeV and
+7 TeV) and the lookup function, including the colour-line conversions
+below, are those of the previous default.
+
+The dummy dipoles of noEmissionProbability are massless in its event
+record, and the final-state shower takes the radiator mass from there. The
+FF and FI tables are therefore the same for all quark flavours, the top
+included (no dead cone), as they were before. The quark masses enter the
+initial-state c and b thresholds.
+
+The top-level pysudakov function converts the raw probabilities to
+individual colour-line factors:
 
   Radiator       II / IF / FI             FF
   quark          raw                      sqrt(raw)
@@ -19,30 +81,37 @@ separately by the Delta caller.
 The exporter copies this standalone source into new process directories.
 Existing exports retain their local SubProcesses/sudakov.f; regenerate
 the export or replace that file and rebuild to use the new default.
-The previous sudakov_template.f and compressed archives are retained for
-historical comparisons. The investigation and validation are recorded in
-docs/audits/delta_noemission/investigation_report.md.
 
-The selected provider also exports pysudakov_isr_parameters, consumed by
-the optional DeltaBackwardISR source correction. It declares the audited
-archived ISR profile: alpha_s(MZ)=0.1365, order 1, CMW off, nfmax=5,
-thresholds 1.5/4.8 GeV, PDFmode=1. This is the archive's effective-coupling
-fingerprint, not a recovered generation log. There is no independent
-backward-ISR coupling override. New/replacement grids must serialize their
-actual initialized generation settings in this same provider API; do not
-infer an old grid's settings from the current generation interface.
-Exports of providers without metadata get an unknown-status routine:
-they remain usable with backward ISR off, but cannot enable it.
+pysudakov_isr_parameters, consumed by the optional DeltaBackwardISR source
+correction, declares the initialised settings of the initial-state tables:
+alpha_s(MZ) = 0.118, order 1, CMW off, nfmax = 6, thresholds 1.5/4.8 GeV
+(with Pythia's 171 GeV top threshold), PDFmode 1. sudgen_tables.py reads
+them from the Pythia runs and refuses inconsistent rows.
 
-This default selects an existing archive and adjusts its lookup function.
-To generate a replacement with the same prescription, select ISR PDFmode
-1 in the generation interface and preserve these radiator/colour-line
-conversions in the generated lookup function. The raw trial-shower API
-returns full-radiator probabilities; it does not perform that conversion.
+Previous default
+----------------
+sudakov_pdfmode1.f is the previous default: the archived
+sudakov_r515_PDFmode1.f.gz grid with the same lookup function. It declares
+the audited archived ISR profile alpha_s(MZ) = 0.1365, order 1, CMW off,
+nfmax = 5, thresholds 1.5/4.8 GeV, PDFmode 1. This is the archive's
+effective-coupling fingerprint, not a recovered generation log; its
+investigation is recorded in docs/audits/delta_noemission (git history).
+Its final-state coupling was Pythia's default 0.1365, and its grid has the
+statistical zeros of single runs with 10^4 trials, set to zero below 10^-3.
+sudakov_template.f and the compressed archives are kept for historical
+comparisons. Exports of providers without metadata get an unknown-status
+routine: they remain usable with backward ISR off, but cannot enable it.
 
 The selected-table regression requires gfortran, with no shower runtime:
 
   python3 -m unittest tests.unit_tests.fks.test_sudakov_table
+
+The generator tests need a Pythia installation:
+
+  PYTHIA8=/path/to/pythia8 python3 -m unittest tests.unit_tests.fks.test_sudgen_fast
+
+Legacy generator (gridsudgen*.f)
+--------------------------------
 
 0. The MC@NLO-Delta short-distance cross sections feature the non-emission
  probabilities (NEPs) as returned by the PSMC one matches to (in the

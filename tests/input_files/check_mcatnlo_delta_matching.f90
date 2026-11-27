@@ -97,6 +97,7 @@ program check_mcatnlo_delta_matching
     if(index(trim(mode),'_threshold')>0)profile_id=7
     if(index(trim(mode),'_pdfmode')>0)profile_id=8
     if(index(trim(mode),'_nan')>0)profile_id=9
+    if(index(trim(mode),'_six')>0)profile_id=10
     idup(:,1)=[2,-2,25,25]
     if(fixture_kind==2)idup(:,1)=[21,21,25,25]
     icolup=0
@@ -165,8 +166,8 @@ program check_mcatnlo_delta_matching
   print *, 'PASS native Delta matching and starting-scale veto'
 contains
   subroutine check_incoming
-    double precision :: legacy,backward,lambda(3:5),alpha,leg_prob
-    integer :: leg,order,legacy_calls
+    double precision :: legacy,backward,lambda(3:6),alpha,leg_prob
+    integer :: leg,order,legacy_calls,nfmax
     logical :: below_cutoff
     call compute_delta(p,prob)
     below_cutoff=index(trim(mode),'_cutoff')>0
@@ -176,7 +177,9 @@ contains
       alpha=0.1365d0
       order=1
     endif
-    call delta_alphas_lambdas(alpha,order,lambda)
+    nfmax=5
+    if(profile_id==10)nfmax=6
+    call delta_alphas_lambdas(alpha,order,nfmax,lambda)
     legacy=1d0
     backward=1d0
     legacy_calls=table_calls
@@ -537,6 +540,8 @@ subroutine pysudakov_isr_parameters(alpha,order,cmw,nfmax,thresholds,pdfmode,sta
     pdfmode=2
   case(9)
     alpha=ieee_value(alpha,ieee_quiet_nan)
+  case(10)
+    nfmax=6
   end select
 end subroutine pysudakov_isr_parameters
 

@@ -105,8 +105,30 @@ class TestSudakovTableExport(unittest.TestCase):
         self.assertEqual(second.read_bytes(), exported.read_bytes())
 
 
-@unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
-class TestDefaultSudakovTable(unittest.TestCase):
+CONVERSIONS = ('      if(itype.eq.2) pysudakov=sqrt(max(pysudakov,0d0))\n',
+               '      if(id0.eq.21) pysudakov=sqrt(max(pysudakov,0d0))\n')
+
+
+def raw_lookup(provider):
+    """The provider without its colour-line conversions: the raw API values."""
+    text = provider.read_text()
+    for line in CONVERSIONS:
+        if text.count(line) != 1:
+            raise AssertionError('%s: conversion %r not found once' % (provider, line))
+        text = text.replace(line, '')
+    return text
+
+
+class ProviderChecks(object):
+    """Compare a provider's pysudakov with the raw grid it converts."""
+
+    selected_source = None
+    metadata = None
+
+    @classmethod
+    def raw_source(cls, work):
+        raise NotImplementedError
+
     @classmethod
     def setUpClass(cls):
         cls.tempdir = tempfile.TemporaryDirectory(prefix='mg5_sudakov_table_')
@@ -116,10 +138,9 @@ class TestDefaultSudakovTable(unittest.TestCase):
         # Compile that copy, rather than adding SudGen's directory to the
         # include path, so this also checks the exported source contract.
         selected = work / 'selected.f'
-        shutil.copyfile(SUDGEN / 'sudakov.f', selected)
-        archived = work / 'raw_pdfmode1.f'
-        archived.write_bytes(gzip.decompress(
-            (SUDGEN / 'sudakov_r515_PDFmode1.f.gz').read_bytes()))
+        shutil.copyfile(SUDGEN / cls.selected_source, selected)
+        archived = work / 'raw.f'
+        archived.write_text(cls.raw_source(work))
         cls.libraries = []
         for name, source in [('selected', selected), ('archived', archived)]:
             library = work / (name + '.so')
@@ -156,7 +177,7 @@ class TestDefaultSudakovTable(unittest.TestCase):
                                  ((scale, mass, pdg, topology),))
         return result
 
-    def test_default_entries_represent_one_directed_colour_line(self):
+    def test_entries_represent_one_directed_colour_line(self):
         points = [(1., 1.), (3., 20.), (20., 91.1876),
                   (20., 500.), (125., 500.), (7000., 7000.)]
         for topology in [1, 2, 3, 4]:
@@ -179,9 +200,8 @@ class TestDefaultSudakovTable(unittest.TestCase):
                                 self.assertAlmostEqual(actual**ends, max(raw, 0.),
                                                        delta=2.e-15)
 
-    def test_archive_coupling_metadata_is_exposed_by_standalone_copy(self):
-        self.assertEqual(isr_parameters(self.libraries[0]),
-                         (.1365, 1, False, 5, (1.5, 4.8), 1, 0))
+    def test_coupling_metadata_is_exposed_by_standalone_copy(self):
+        self.assertEqual(isr_parameters(self.libraries[0]), self.metadata)
 
     def test_two_gluon_lines_reconstruct_single_raw_radiator(self):
         # II, IF and FI trials contain one active radiator. Its two colour
@@ -218,6 +238,50 @@ class TestDefaultSudakovTable(unittest.TestCase):
                 self.assertAlmostEqual(line_ratio**ends, full_ratio,
                                        delta=2.e-15)
 
+
+@unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
+class TestDefaultSudakovTable(ProviderChecks, unittest.TestCase):
+    """The default provider: tables generated with the settings of the
+    MC@NLO shower interface (vendor/SudGen/sudgen_tables.py)."""
+
+    selected_source = 'sudakov.f'
+    # SpaceShower:alphaSvalue/alphaSorder/alphaSuseCMW of the shower
+    # interface, Pythia's default StandardModel:alphaSnfmax and flavour
+    # thresholds, and PDF-free initial-state tables.
+    metadata = (.118, 1, False, 6, (1.5, 4.8), 1, 0)
+
+    @classmethod
+    def raw_source(cls, work):
+        return raw_lookup(SUDGEN / cls.selected_source)
+
+    def test_no_emission_probability_never_falls_with_the_scale(self):
+        # Products of adjacent-interval probabilities: no statistical zeros
+        # or dips, unlike single trial runs per node.
+        scales = [10 ** (i / 60.) for i in range(0, 231)]
+        for topology in [1, 2, 3, 4]:
+            for pdg in [1, 2, 3, 4, 5, 6, 21]:
+                for mass in [2., 91.1876, 465.6, 3000.]:
+                    with self.subTest(topology=topology, pdg=pdg, mass=mass):
+                        values = [self.value(self.archived, scale, mass, pdg,
+                                             topology) for scale in scales
+                                  if scale <= 7000.]
+                        # Interpolating between unit nodes may round up.
+                        self.assertTrue(all(0. <= v <= 1. + 1e-12 for v in values))
+                        self.assertTrue(all(b >= a - 1e-15 for a, b in
+                                            zip(values[:-1], values[1:])))
+
+
+@unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
+class TestArchivedSudakovTable(ProviderChecks, unittest.TestCase):
+    """The previous default: the archived r515 PDFmode-1 grid."""
+
+    selected_source = 'sudakov_pdfmode1.f'
+    metadata = (.1365, 1, False, 5, (1.5, 4.8), 1, 0)
+
+    @classmethod
+    def raw_source(cls, work):
+        return gzip.decompress(
+            (SUDGEN / 'sudakov_r515_PDFmode1.f.gz').read_bytes()).decode()
 
 if __name__ == '__main__':
     unittest.main()
