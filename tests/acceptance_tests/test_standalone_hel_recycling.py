@@ -880,12 +880,15 @@ class TestCppHelRecyclingCrossing(unittest.TestCase):
         with open(files['mom'], 'wb') as fsock:
             fsock.write(struct.pack('<%dd' % (len(points) * len(points[0]) * 4),
                                     *[x for point in points for p in point for x in p]))
-        subprocess.check_output(
+        # kept for the caller: says whether the run-time check of a recycled
+        # build took the plain code (MADMATRIX_HR_CHECK)
+        self._run_at_output = subprocess.check_output(
             ['./check_sa.exe', 'perf', '--flavors', files['flv'],
              '--rnd-hel', files['rh'], '--rnd-col', files['rc'],
              '--dump-me', files['me'], '--dump-hel', files['hel'],
              '--dump-col', files['col'], '--momenta', files['mom'],
-             '1', str(len(ids)), '1'], cwd=pdir, stderr=subprocess.STDOUT)
+             '1', str(len(ids)), '1'], cwd=pdir,
+            stderr=subprocess.STDOUT).decode(errors='replace')
 
         def read(path, fmt):
             data = open(path, 'rb').read()
@@ -895,30 +898,52 @@ class TestCppHelRecyclingCrossing(unittest.TestCase):
     def test_axial_gauge_near_beam_recycled(self):
         """--axial_gauge: d d~ > g g with a gluon within 1e-6 rad of the beam.
         The diagrams that the reference-vector choice zeroes at a helicity are
-        zero only for exactly lightlike momenta: their rounding residual, grown
-        by the 1/theta of the axial polarisation, is part of the gauge
-        cancellation (dropped, the recycled build was 1.5e-5 off at 1e-6 rad).
-        The warm-up keeps them: recycled == not recycled"""
+        zeros of exactly lightlike momenta; built from the momenta as given
+        (p^2 ~ 1e-16 E^2) they were left at p^2/(2 p.r) of the amplitude, which
+        the gauge cancellation needs, and the recycled build that dropped them
+        was 1.5e-5 off at 1e-6 rad. vxxxxxr now builds the polarisation of the
+        lightlike projection of p, so they are zeros to rounding at any angle:
+        the recycled build drops them, and agrees with the build without
+        recycling event by event.
+        The first page is of generic points, which is what the run-time check
+        of the recycled build looks at: on the near-beam points alone it takes
+        the plain code (a residual of 1e-9 against the largest amplitude of a
+        helicity that weighs 1e-25 of |M|^2 is enough) and the comparison would
+        not test the recycled code. The colour is compared on the generic points
+        only: check_sa samples the channel with a fixed 0.5, and near the beam
+        the s- and u-channel weights are equal to rounding, so the choice
+        between them turns on the residual of the dropped t-channel diagram."""
+        import random
         self._generate('d d~ > g g',
-                       [('plain', '--axial_gauge=True'),
+                       [('plain', '--axial_gauge=True --hel_recycling=False'),
                         ('recycled', '--hel_recycling=True --axial_gauge=True')])
-        points = []
+        (plain,), (recycled,) = self._pdirs('plain'), self._pdirs('recycled')
+        self.assertFalse(os.path.exists(pjoin(plain, 'HelRecyclingCalls.inc')))
+        self.assertTrue(os.path.exists(pjoin(recycled, 'HelRecyclingCalls.inc')))
+        with open(pjoin(recycled, 'HelRecyclingFilter.json')) as fsock:
+            dropped = json.load(fsock)['zero_perhel']
+        self.assertTrue(any(dropped), 'the reference-vector zeros are not dropped')
+        rng = random.Random(3)
+        generic = [self._two_to_two((0., 0., 0., 0.), rng) for _ in range(self.nevt)]
+        near = []
         for theta in (1e-3, 1e-5, 1e-6, math.pi - 1e-6):
             e, phi = 500., 0.3
             v = [e * math.sin(theta) * math.cos(phi),
                  e * math.sin(theta) * math.sin(phi), e * math.cos(theta)]
-            points.append([[e, 0., 0., e], [e, 0., 0., -e], [e] + v,
-                           [e] + [-x for x in v]])
+            near.append([[e, 0., 0., e], [e, 0., 0., -e], [e] + v,
+                         [e] + [-x for x in v]])
+        points = generic + near
         ids = [0] * len(points)
-        (plain,), (recycled,) = self._pdirs('plain'), self._pdirs('recycled')
-        self.assertTrue(os.path.exists(pjoin(recycled, 'HelRecyclingCalls.inc')))
         me0, hel0, col0 = self._run_at(plain, 'plain', ids, points)
         me1, hel1, col1 = self._run_at(recycled, 'recycled', ids, points)
+        self.assertNotIn('WARNING: --hel_recycling', self._run_at_output)
         for i in range(len(points)):
             self.assertGreater(me0[i], 0)
             self.assertLessEqual(abs(me1[i] - me0[i]), self.tolerance * me0[i],
                                  'point %d: %r vs %r' % (i, me1[i], me0[i]))
-            self.assertEqual((hel1[i], col1[i]), (hel0[i], col0[i]))
+            self.assertEqual(hel1[i], hel0[i], 'point %d: helicity' % i)
+            if i < len(generic):
+                self.assertEqual(col1[i], col0[i], 'point %d: colour' % i)
 
     def test_massive_leg_crossing_of_the_default_mode(self):
         """define q = g t t~; generate q q > q q: the default mode records

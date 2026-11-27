@@ -476,16 +476,14 @@ namespace madmatrix
   // getGoodHel samples, so an amplitude is dropped at a base row only if it
   // vanishes for every crossing served; sigmaKin_setGoodHel prints it under
   // MG_DUMP_GOODHEL. Scalar double builds only.
-  // With a massive external leg (hel_massive) only an exact 0 is dropped, as for
-  // the rows (see limhel): the points sit at one sqrt(s), where an amplitude
-  // suppressed by powers of m/E against the others of its row can look like a
-  // residual although near threshold it is not.
-  // Under --axial_gauge (MG_HR_EXACT_ZERO set by the exporter) only an exact 0 is
-  // dropped too. The zeros of the reference-vector choice are exact only for
-  // exactly lightlike momenta: near the beam axis the 1/theta growth of the axial
-  // polarisation turns their rounding residual into a needed part of the gauge
-  // cancellation (dropped, d d~ > g g is 1.5e-5 off at 1e-6 rad), so they
-  // stay, as in the fortran standalone warm-up (AMP.ne.0).
+  // The rule is the same with a massive external leg: the probe points
+  // (choose_good_helicities_for_probe) spread from 1.1 times the threshold up to
+  // 1.5 TeV, so an amplitude suppressed by powers of m/E against the others of its
+  // row at high energy is alive near threshold, where it is not suppressed.
+  // Under --axial_gauge the zeros of the reference-vector choice are dropped with
+  // the relative rule: vxxxxxr (helas.h) builds the polarisation of the lightlike
+  // projection of the momentum, so that they are zeros to rounding at any angle,
+  // also with a gluon close to its reference.
 #ifdef MG_HR_PROBE
 #if !defined MADMATRIX_FPTYPE_DOUBLE
 #error "MG_HR_PROBE needs BACKEND=scalar FPTYPE=d"
@@ -503,7 +501,7 @@ namespace madmatrix
   inline void
   hr_probe_close( const int ihel )
   {
-    static const double zeroamp_tol = hel_massive || getenv( "MG_HR_EXACT_ZERO" ) != nullptr ? 0. : 1e-12;
+    static const double zeroamp_tol = 1e-12;
     if( hrProbeSeen.empty() )
     {
       hrProbeSeen.resize( ncomb );
