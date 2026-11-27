@@ -567,10 +567,11 @@ outgoing, for example ``q g > q g`` with ``g g > q q~``. ``p p > j j j`` then ne
 leading-colour programs instead of 7, ``p p > j j j j`` 4 instead of 10 and six jets 5
 instead of 14, which shortens the leading-colour generation and lowers the memory use of a
 run. The full-colour artifact keeps its side-aware unions, and it sets the total
-generation time of an output. The event generation is also cheaper: the CPU time per
-weighted event is 1-8% lower from four to six jets, with and without MLM merging (per
-point, the leading-colour matrix element takes 6-18% and the full-colour ratio step 8-17%
-less). The matrix elements agree with those of the uncrossed unions to rounding, but
+generation time of an output. The event generation is also no slower: the CPU time per
+weighted event is 5-8% lower at four and six jets and within noise to 4% lower at five,
+with and without MLM merging (per point, the leading-colour matrix element takes 6-18%
+less, and the ratio step, full colour over leading colour with the flavour switch, about
+6-17% less). The matrix elements agree with those of the uncrossed unions to rounding, but
 a crossed flavour samples its helicities and colour flows in another order, so the events
 are statistically equivalent, but not the same, also for an unmerged run with the same
 seed. ``set amplicol_flavor_union_crossing False`` before ``output`` turns it off; without
