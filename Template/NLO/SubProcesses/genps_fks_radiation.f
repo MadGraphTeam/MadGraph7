@@ -1886,6 +1886,17 @@ c local
       integer j,idir
       double precision yijdir,costh_i_fks,cosphi_i_fks,sinphi_i_fks,encmso2,E_i_fks,sinth_i_fks,xpifksred(0:3),xi_i_fks
       double complex resAoR0
+c resonance (see generate_ee_tau_y) and importance sampling of xi
+c towards (1-xi)*shat=M^2
+      double precision isr_bwres_m,isr_bwres_w
+      logical isr_bwres_on
+      common /c_isr_bwres/isr_bwres_m,isr_bwres_w,isr_bwres_on
+      logical bwxi
+      double precision m2r,awr,qlo,qhi,thlo,thhi,q2,gbw,uu
+c fraction of the points for which xi is sampled according to the BW
+c (set to 0 to recover the original sampling of xi)
+      double precision frac_bw_xi
+      parameter (frac_bw_xi=0.5d0)
 c external
 c
 c parameters
@@ -1962,6 +1973,30 @@ C MZ checked for single-top @NLO QCD
       xiimax=1-tau_born_lower_bound/xbjrk_born(1)/xbjrk_born(2)
       xinorm=xiimax
 c
+c If the Born system is an s-channel resonance, the real emission has
+c the resonance at (1-xi)*shat=M^2, i.e. at xi=1-M^2/shat, with a
+c width of order M*Gamma/shat. With probability frac_bw_xi, xi is
+c generated according to the BW in q2=(1-xi)*shat, otherwise as
+c usual (xi_i_hat=x^2). The jacobian is that of the one-sample
+c multi-channel, so it is a function of xi_i_hat only (and of the
+c Born variables), and it is the same for the event and all
+c counterevents. When the resonance cannot be reached, the original
+c sampling is used. Not used with the native (MC) mapping, which
+c relies on the standard xi sampling.
+      bwxi=.false.
+      if (isr_bwres_on .and. (.not.softtest) .and. (.not.colltest)
+     &     .and. (.not.native_mapping)) then
+         m2r=isr_bwres_m**2
+         awr=isr_bwres_m*isr_bwres_w
+         qlo=shat_born*(1d0-xiimax)
+         qhi=shat_born*(1d0-sstiny*xiimax)
+         bwxi= qlo.lt.m2r .and. m2r.lt.qhi
+         if (bwxi) then
+            thlo=atan((qlo-m2r)/awr)
+            thhi=atan((qhi-m2r)/awr)
+         endif
+      endif
+c
 c Define xi_i_fks
 c
       if( (icountevts.eq.-100.or.abs(icountevts).eq.1) .and.
@@ -1969,9 +2004,22 @@ c
      &     (colltest.and.xi_i_fks_fix.eq.-2.d0)) .and.
      &     (.not.softtest)  )then
          if(icountevts.eq.-100)then
+            if (bwxi) then
+               if (x(1).lt.frac_bw_xi) then
+c importance sampling towards the resonance
+                  q2=m2r+awr*tan(thlo+(thhi-thlo)*x(1)/frac_bw_xi)
+                  xi_i_hat=(1d0-q2/shat_born)/xiimax
+                  xi_i_hat=min(max(xi_i_hat,sstiny),1d0)
+               else
+c importance sampling towards soft singularity
+                  uu=(x(1)-frac_bw_xi)/(1d0-frac_bw_xi)
+                  xi_i_hat=sstiny+(1-sstiny)*uu**2
+               endif
+            else
 c importance sampling towards soft singularity
 c insert here further importance sampling towards xi_i_hat->0
-            xi_i_hat=sstiny+(1-sstiny)*x(1)**2
+               xi_i_hat=sstiny+(1-sstiny)*x(1)**2
+            endif
          endif
 c in the case of counter events, xi_i_hat is an input to this function
          xi_i_fks=xi_i_hat*xiimax
@@ -2002,7 +2050,19 @@ c Changed in the context of granny stuff
       endif
 c remove the following if no importance sampling towards soft
 c singularity is performed when integrating over xi_i_hat
-      xjac=xjac*2d0*x(1)
+      if (bwxi) then
+c 1/density of the multi-channel, normalised such that it reduces to
+c 2*x(1) for frac_bw_xi=0. gbw is the density of the BW channel in
+c xi_i_hat (normalised to one in [sstiny,1]), 1/(2*uu*(1-sstiny)) the
+c one of the soft channel
+         uu=sqrt(max(0d0,(xi_i_hat-sstiny)/(1d0-sstiny)))
+         q2=shat_born*(1d0-xi_i_hat*xiimax)
+         gbw=shat_born*xiimax*awr/((q2-m2r)**2+awr**2)/(thhi-thlo)
+         xjac=xjac*2d0*uu/(2d0*uu*(1d0-sstiny)*frac_bw_xi*gbw
+     &        +(1d0-frac_bw_xi))
+      else
+         xjac=xjac*2d0*x(1)
+      endif
 
 c
 c Update the variables here.

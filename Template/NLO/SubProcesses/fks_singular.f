@@ -886,6 +886,9 @@ c value to the list of weights using the add_wgt subroutine
       ! PDF scheme prefactors
       double precision f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
       common/factor_pdfsch/f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
+      ! ISR with resonances (see compute_prefactors_n1body)
+      double precision f_isrbw_kt,f_isrbw_ktl
+      common/factor_isrbw/f_isrbw_kt,f_isrbw_ktl
       double precision pmass(nexternal)
       integer get_orders_tag
       include 'pmass.inc'
@@ -944,6 +947,14 @@ c value to the list of weights using the add_wgt subroutine
      $            amp_split_wgtpsch_p(iamp)*f_pdfsch_p+
      $            amp_split_wgtpsch_l(iamp)*f_pdfsch_l)/g22
           wgt3=-amp_split_wgtdegrem_muF(iamp)*f_dsc(4)/g22
+c ISR with resonances: add back the integral over xi of the
+c difference between the BW-reweighted and the original terms (f_dsc(1)
+c and f_dsc(4) contain the factor r_c). f_isrbw_* are zero otherwise
+          wgt1=wgt1+((amp_split_wgtdegrem_xi(iamp)
+     $         +amp_split_wgtpsch_p(iamp))*f_isrbw_kt
+     $         +(amp_split_wgtdegrem_lxi(iamp)
+     $         +amp_split_wgtpsch_l(iamp))*f_isrbw_ktl)/g22
+          wgt3=wgt3+amp_split_wgtdegrem_muF(iamp)*f_isrbw_kt/g22
         else
           wgt3=0d0
         endif
@@ -1707,6 +1718,8 @@ c partitions of unity at their respective phase-space points.
      $     ,f_sc_MC_S,f_sc_MC_H,f_MC_S,f_MC_H
       double precision f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
       common/factor_pdfsch/f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
+      double precision f_isrbw_kt,f_isrbw_ktl
+      common/factor_isrbw/f_isrbw_kt,f_isrbw_ktl
       integer igranny,iaunt
       logical granny_chain(-nexternal:nexternal),granny_is_res
      &     ,granny_chain_real_final(-nexternal:nexternal)
@@ -1762,8 +1775,19 @@ c Compute the multi-channel enhancement factor 'enhance'.
 
 c All real charts use the same Born projection and coupling scale.
 c This also keeps the partition normalized for mixed Born orders.
+c Without event projection, the real emission is weighted with the
+c factor of the xi=0 Born (p_born, at shat), i.e. with the same factor
+c as all its counterterms (see include_multichannel_enhance(3)), so
+c that the soft and collinear cancellations hold within each
+c integration channel. p_born_norad is not used for this: its incoming
+c momenta are at shat and its outgoing ones at (1-xi)*shat, so the
+c factor computed on it would depend on how the Born propagators are
+c built from the external momenta. p_born_norad is only kept as a
+c fallback if the xi=0 Born is not available.
       enhance_real=1.d0
-      if (imode.eq.2) then
+      if (imode.eq.2 .and. .not.use_evpr .and. p_born(0,1).gt.0d0) then
+         enhance_real=enhance
+      elseif (imode.eq.2) then
          p_born_used(:,:) = p_born_ev(:,:)
          if (.not.use_evpr) p_born_used(:,:) = p_born_norad(:,:) 
          if (p_born_ev(0,1).gt.0d0) then
@@ -1836,6 +1860,8 @@ c Compute the multi-channel enhancement factor 'enhance_real'.
          f_pdfsch_d=  f_pdfsch_d  *enhance
          f_pdfsch_p=  f_pdfsch_p  *enhance
          f_pdfsch_l=  f_pdfsch_l  *enhance
+         f_isrbw_kt=  f_isrbw_kt  *enhance
+         f_isrbw_ktl= f_isrbw_ktl *enhance
       endif
 
       return
@@ -1844,7 +1870,7 @@ c Compute the multi-channel enhancement factor 'enhance_real'.
 
       subroutine compute_prefactors_n1body(vegas_wgt,jac_ev)
       use fks_phase_space_data,only: resonance_momentum,resonance_recoil,p1_cnt,jac_cnt,xi_i_fks_ev,y_ij_fks_ev,p_i_fks_cnt,
-     $     xi_i_fks_cnt,xinorm_ev,xiimax_ev,xiimax_cnt,xinorm_cnt,shat,nocntevents
+     $     xi_i_fks_cnt,xinorm_ev,xiimax_ev,xiimax_cnt,xinorm_cnt,shat,nocntevents,shat_cnt
 c Compute all relevant prefactors for the real emission and counter
 c terms.
       implicit none
@@ -1886,8 +1912,20 @@ c terms.
       common/factor_pdfsch/f_pdfsch_d,f_pdfsch_p,f_pdfsch_l
       logical use_evpr
       common /to_use_evpr/use_evpr
+      ! treatment of s-channel resonances with ISR (see isr_bw_factors)
+      double precision f_isrbw_kt,f_isrbw_ktl
+      common/factor_isrbw/f_isrbw_kt,f_isrbw_ktl
+      logical isrbw,isr_bw_active
+      external isr_bw_active
+      double precision xm_s,r_s,kt_s,ktl_s,xm_c,r_c,kt_c,ktl_c
       double precision pmass(nexternal)
       include 'pmass.inc'
+      f_isrbw_kt=0d0
+      f_isrbw_ktl=0d0
+      r_c=1d0
+      kt_c=0d0
+      ktl_c=0d0
+      xm_c=1d0
 
 c f_* multiplication factors for real-emission, soft counter, ... etc.       
       prefact=xinorm_ev/xi_i_fks_ev/(1-y_ij_fks_ev)
@@ -1927,7 +1965,21 @@ c induced by changing the recoiler of a final-state emitter.
          prefact_cnt_ssc=xinorm_ev/min(xiimax_ev,xiScut_used)*
      $        log(soft_cut/min(xiimax_ev,xiScut_used))/(1
      $        -y_ij_fks_ev)
-         f_s=(prefact+prefact_cnt_ssc)*jac_cnt(0)
+c With ISR and a resonance (mapping without event projection), the
+c local soft counterterm is multiplied by r_s=K((1-xi)s)/K(s) [I1 of
+c the note], and its integral in xi over [0,xm_s] of (r_s-1)/xi is
+c added back, distributed uniformly in xi like the log term [I2]
+         isrbw=isr_bw_active()
+         if (isrbw) then
+            xm_s=min(xiimax_ev,xiScut_used)
+            call isr_bw_factors(shat_cnt(0),xi_i_fks_ev,xm_s,r_s,kt_s
+     $           ,ktl_s)
+            prefact_cnt_ssc=prefact_cnt_ssc-xinorm_ev/xm_s*kt_s/(1
+     $           -y_ij_fks_ev)
+         else
+            r_s=1d0
+         endif
+         f_s=(prefact*r_s+prefact_cnt_ssc)*jac_cnt(0)
      $        *fkssymmetryfactor*vegas_wgt
          f_s_MC_S=prefact*jac_cnt(0)
      $        *fkssymmetryfactor*vegas_wgt
@@ -1955,7 +2007,21 @@ c equal to ione, so no need to define separate factors.
      $           *log(angle_cut/deltaS)/deltaS
             f_dc=jac_cnt(1)*prefact_deg/(shat/(32*pi**2))
      $           *fkssymmetryfactorDeg*vegas_wgt
-            f_sc=(prefact_c+prefact_coll+prefact_cnt_ssc_c
+c Same as for the soft counterterm: all the terms evaluated at xi=0
+c (soft-collinear and the soft parts of the degenerate collinear
+c remnants, f_sc and f_dsc) are multiplied by r_c, and the integral of
+c the difference is added back. The collinear counterterms at finite
+c xi (f_c, f_dc) already have the resonance at (1-xi)*s.
+            if (isrbw) then
+               xm_c=min(xiimax_cnt(1),xiScut_used)
+               call isr_bw_factors(shat_cnt(2),xi_i_fks_cnt(1),xm_c,r_c
+     $              ,kt_c,ktl_c)
+               prefact_cnt_ssc_c=prefact_cnt_ssc_c-xinorm_cnt(1)/xm_c
+     $              *kt_c/(1-y_ij_fks_ev)
+               prefact_coll_c=prefact_coll_c-xinorm_cnt(1)/xm_c*kt_c
+     $              *log(delta_used/deltaS)/deltaS
+            endif
+            f_sc=((prefact_c+prefact_coll)*r_c+prefact_cnt_ssc_c
      &           +prefact_coll_c)*jac_cnt(2)
      &           *fkssymmetryfactorDeg*vegas_wgt
             f_sc_MC_S=prefact_c*jac_cnt(2)
@@ -1970,15 +2036,24 @@ c equal to ione, so no need to define separate factors.
      &           ,xiScut_used)*( log(xicut_used)**2
      &           -log(min(xiimax_cnt(1),xiScut_used))**2 )*1/(2.d0
      &           *deltaS)
-            f_dsc(1)=prefact_deg*jac_cnt(2)/(shat/(32*pi**2))
+            f_dsc(1)=prefact_deg*r_c*jac_cnt(2)/(shat/(32*pi**2))
      &           *fkssymmetryfactorDeg*vegas_wgt
             f_dsc(2)=prefact_deg_sxi*jac_cnt(2)/(shat/(32*pi**2))
      &           *fkssymmetryfactorDeg*vegas_wgt
             f_dsc(3)=prefact_deg_slxi*jac_cnt(2)/(shat/(32*pi**2))
      &           *fkssymmetryfactorDeg*vegas_wgt
-            f_dsc(4)=( prefact_deg+prefact_deg_sxi )*jac_cnt(2)/(shat
-     &           /(32*pi**2))*fkssymmetryfactorDeg
+            f_dsc(4)=( prefact_deg*r_c+prefact_deg_sxi )*jac_cnt(2)
+     &           /(shat/(32*pi**2))*fkssymmetryfactorDeg
      &           *vegas_wgt
+c Integrals of (r_c-1)/xi and of (r_c-1)*log(xi)/xi, to be added back
+c for the [1/xi] and [log(xi)/xi] distributions of the degenerate
+c terms (see compute_soft_collinear_counter_term)
+            if (isrbw) then
+               f_isrbw_kt=xinorm_cnt(1)/xm_c*kt_c/deltaS*jac_cnt(2)
+     &              /(shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+               f_isrbw_ktl=xinorm_cnt(1)/xm_c*ktl_c/deltaS*jac_cnt(2)
+     &              /(shat/(32*pi**2))*fkssymmetryfactorDeg*vegas_wgt
+            endif
             ! prefactor for the PDF scheme: delta(xi) spread over the
             ! range of the soft-collinear counterterm, and the log of
             ! its end, which turn [1/xi] and [log(xi)/xi] into the plus
@@ -8411,4 +8486,155 @@ c Shared code is also linked by MC@NLO, where there are no hard jobs.
       integer real_channel_type
       common /c_real_channel_type/ real_channel_type
       data real_channel_type /0/
+      end
+
+
+c=======================================================================
+c Treatment of s-channel resonances with initial-state radiation in
+c lepton collisions, for the mapping without event projection
+c (use_evpr=.false.: Bjorken x's are the same for the real emission and
+c for all counterterms, and the reduced Born has s_red=(1-xi)*shat).
+c
+c Notation: s=shat, xi=xi_i_fks, K(z)=1/((z-M^2)^2+M^2*Gamma^2) is the
+c Breit-Wigner of the resonance, whose virtuality is z=(1-xi)*s in the
+c real emission and in the collinear counterterm, but z=s in all the
+c counterterms evaluated at xi=0 (soft, soft-collinear, and the soft
+c parts of the degenerate collinear remnants). This mismatch spoils the
+c local cancellation when s or (1-xi)*s are close to M^2.
+c
+c Each xi=0 counterterm, which reads locally -C(xi)/xi*theta(xi<xiScut)
+c (C=Born-like times possibly log(xi)), is rewritten exactly as
+c      -C(xi)/xi * r(xi)       *theta(xi<xiScut)              [I1]
+c      +int_0^m dxi' C(xi')/xi' * (r(xi')-1)   (Born kinematics) [I2]
+c with r(xi)=K((1-xi)*s)/K(s), r(0)=1, and m=min(xiimax,xiScut). The
+c terms with log(xicut/m) that are already present (prefact_cnt_ssc,
+c etc.) are left unchanged (they are the J2 term of the note). I2 is
+c integrated analytically in xi (C(xi')=C(0) or C(0)*log(xi')), and is
+c distributed uniformly in xi over [0,m], with density 1/m, on the same
+c counterevent, in exactly the same way as the log(xicut/m) terms.
+c The rewriting is exact for any r with r(0)=1: no factorisation of the
+c Born into resonant times non-resonant parts is assumed. With r given
+c by the ratio of Breit-Wigners, the term I1 and the real emission have
+c the resonance at the same virtuality.
+c=======================================================================
+
+      logical function isr_bw_active()
+c True if the BW reweighting of the xi=0 counterterms must be applied
+c for the current FKS configuration and phase-space point
+      implicit none
+      include 'nexternal.inc'
+      double precision isr_bwres_m,isr_bwres_w
+      logical isr_bwres_on
+      common /c_isr_bwres/isr_bwres_m,isr_bwres_w,isr_bwres_on
+      logical use_evpr
+      common /to_use_evpr/use_evpr
+      integer i_fks,j_fks
+      common/fks_indices/i_fks,j_fks
+c Set to .false. to switch off the BW reweighting of the counterterms
+c (the result does not depend on it, only the variance does)
+      logical isr_bw_rewgt
+      parameter (isr_bw_rewgt=.true.)
+      isr_bw_active = isr_bw_rewgt .and. isr_bwres_on .and.
+     &     (.not.use_evpr) .and. j_fks.le.nincoming
+      return
+      end
+
+
+      subroutine isr_bw_factors(s,xi,xm,r,kt,ktl)
+c Given s=shat, xi and the upper limit xm of the counterterm range,
+c returns
+c   r   = K((1-xi)*s)/K(s)
+c   kt  = int_0^xm dx/x        (K((1-x)*s)-K(s)) / K(s)
+c   ktl = int_0^xm dx log(x)/x (K((1-x)*s)-K(s)) / K(s)
+c with K(z)=1/((z-M^2)^2+(M*Gamma)^2). Use
+c   K(z) = Im[1/(z-c)]/a, c=M^2+i*a, a=M*Gamma
+c and
+c   int_0^m dx/x [1/(s(1-x)-c)-1/(s-c)] = -log(1-m/b)/(s-c)
+c   int_0^m dx log(x)/x [...] = -(log(m)*log(1-m/b)+Li2(m/b))/(s-c)
+c with b=(s-c)/s, 1-m/b=(s(1-m)-c)/(s-c).
+      implicit none
+      double precision s,xi,xm,r,kt,ktl
+      double precision isr_bwres_m,isr_bwres_w
+      logical isr_bwres_on
+      common /c_isr_bwres/isr_bwres_m,isr_bwres_w,isr_bwres_on
+      double precision m2,a,ks_inv,z
+      double complex c,smc,lg,zz
+      double complex isr_cdilog
+      external isr_cdilog
+      m2=isr_bwres_m**2
+      a=isr_bwres_m*isr_bwres_w
+      ks_inv=(s-m2)**2+a**2
+      z=(1d0-xi)*s
+      r=ks_inv/((z-m2)**2+a**2)
+      kt=0d0
+      ktl=0d0
+      if (xm.le.0d0) return
+      c=dcmplx(m2,a)
+      smc=s-c
+c log(1-m/b), computed as a difference of logs: both arguments have
+c imaginary part -a<0, hence the principal branches are consistent
+      lg=log(s*(1d0-xm)-c)-log(smc)
+      kt=dimag(-lg/smc)/a*ks_inv
+      zz=xm*s/smc
+      ktl=dimag(-(log(xm)*lg+isr_cdilog(zz))/smc)/a*ks_inv
+      return
+      end
+
+
+      double complex function isr_cdilog(z)
+c Complex dilogarithm Li2(z), principal branch (cut on [1,inf)).
+c Maps z into |w|<=1, Re(w)<=1/2 and uses the Bernoulli series in
+c u=-log(1-w).
+      implicit none
+      double complex z,w,u,u2,sum,term,res,lz
+      double precision pi2o6,b(0:18)
+      integer k,isgn
+      logical inv
+      parameter (pi2o6=1.6449340668482264365d0)
+c Bernoulli numbers B_{2k}/(2k+1)! (k=1..), with B_1 handled apart
+      data b/1d0,
+     &  2.7777777777777777778d-2, -2.7777777777777777778d-4,
+     &  4.7241118669690098262d-6, -9.1857730746619635510d-8,
+     &  1.8978869988971000733d-9, -4.0647616451442255268d-11,
+     &  8.9216910204564525552d-13,-1.9939295860721075687d-14,
+     &  4.5189800296199181917d-16,-1.0356517612181247014d-17,
+     &  2.3952186210261867457d-19,-5.5817858743250093363d-21,
+     &  1.3091507554183212858d-22,-3.0874198024267402932d-24,
+     &  7.3159756527022034203d-26,-1.7408456572340007410d-27,
+     &  4.1576356446138997196d-29,-9.9621484882846221031d-31/
+      if (z.eq.(0d0,0d0)) then
+         isr_cdilog=(0d0,0d0)
+         return
+      endif
+      if (z.eq.(1d0,0d0)) then
+         isr_cdilog=dcmplx(pi2o6,0d0)
+         return
+      endif
+      res=(0d0,0d0)
+      isgn=1
+      w=z
+c |z|>1: Li2(z) = -Li2(1/z) - pi^2/6 - 1/2 log^2(-z)
+      inv=abs(w).gt.1d0
+      if (inv) then
+         res=-pi2o6-0.5d0*log(-w)**2
+         isgn=-1
+         w=1d0/w
+      endif
+c Re(w)>1/2: Li2(w) = -Li2(1-w) + pi^2/6 - log(w)*log(1-w)
+      if (dble(w).gt.0.5d0) then
+         lz=log(w)*log(1d0-w)
+         res=res+isgn*(pi2o6-lz)
+         isgn=-isgn
+         w=1d0-w
+      endif
+      u=-log(1d0-w)
+      u2=u*u
+      sum=u-0.25d0*u2
+      term=u
+      do k=1,18
+         term=term*u2
+         sum=sum+b(k)*term
+      enddo
+      isr_cdilog=res+isgn*sum
+      return
       end

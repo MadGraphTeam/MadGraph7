@@ -931,8 +931,13 @@ c Conflicting BW stuff
       logical softtest,colltest
       common/sctests/softtest,colltest
 
+      double precision isr_bwres_m,isr_bwres_w
+      logical isr_bwres_on
+      common /c_isr_bwres/isr_bwres_m,isr_bwres_w,isr_bwres_on
 
       ndim_dummy=-1 ! this is actually not used anymore
+      ! will be set to true in generate_ee_tau_y if needed
+      isr_bwres_on=.false.
 
       if (abs(lpp(1)).ne.abs(lpp(2))) then
           write(*,*) 'Different beams not implemented', lpp
@@ -1235,6 +1240,12 @@ C dressed lepton stuff
       common /to_random_numbers/r1,r2, x1bk, x2bk
       logical use_evpr
       common /to_use_evpr/use_evpr
+      ! information on the s-channel resonance which coincides with the
+      ! whole Born system, used for the treatment of the xi=0
+      ! counterterms in fks_singular.f (see isr_bw_factors)
+      double precision isr_bwres_m,isr_bwres_w
+      logical isr_bwres_on
+      common /c_isr_bwres/isr_bwres_m,isr_bwres_w,isr_bwres_on
 
       ! copy the random numbers, as they may be rescaled
       ! (avoids side effects)
@@ -1274,9 +1285,23 @@ C dressed lepton stuff
         stop 1
       endif
 
-      ! if tau is generated accodring to a BW, then force the momentum
-      ! mapping with event projection
-      use_evpr = generate_with_bw
+      ! The mapping without event projection is used in both channels
+      ! (tau generated flat or according to the BW). Note that the two
+      ! channels must use the same real-emission mapping: the
+      ! multi-channel weights depend on the Born tau, and the real
+      ! emission points are associated with different Born tau's in
+      ! the two mappings (x1*x2 vs. x1*x2*(1-xi)), so that mixing them
+      ! would not sum to one over the real-emission phase space, and
+      ! would bias the NLO result.
+      ! use_evpr is reset to .true. for final-state j_fks in
+      ! prepare_fks_beam_point (genps_fks.f)
+      use_evpr = .false.
+      ! store the resonance information for the treatment of the
+      ! xi=0 counterterms (fks_singular.f) and for the importance
+      ! sampling of xi (generate_momenta_initial_noevpr)
+      isr_bwres_on = bw_exists
+      isr_bwres_m = qmass
+      isr_bwres_w = qwidth
 
       if(generate_with_bw) then
         ! here we treat the case of resonances

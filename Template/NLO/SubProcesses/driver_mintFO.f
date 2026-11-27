@@ -438,14 +438,21 @@ c The n+1-body contributions (including counter terms)
          call set_cms_stuff(mohdr)
          if (ickkw.eq.3) call set_FxFx_scale(3,p)
          passcuts_n1body=passcuts(p,rwgt)
-         if (passcuts_nbody .and. abrv.ne.'real') then
+         if ((passcuts_nbody.or.passcuts_coll) .and. abrv.ne.'real') then
             pass_cuts_check=.true.
             call set_cms_stuff(izero)
 c Clustering the real event above overwrites the active FxFx scales.
 c Counterevents keep the scales of their underlying Born state.
             if (ickkw.eq.3) call set_FxFx_scale(-2,p1_cnt(0,1,0))
             call set_alphaS(p1_cnt(0,1,0))
+c The multi-channel enhancement factor multiplies the prefactors of all
+c the counterterms (soft, collinear, soft-collinear, PDF-scheme and
+c ISR-resonance terms). Without event projection the collinear
+c counterevent can pass the cuts when the soft one does not (e.g. with
+c rapidity cuts), so it must be included also in that case.
             call include_multichannel_enhance(3)
+         endif
+         if (passcuts_nbody .and. abrv.ne.'real') then
             call compute_soft_counter_term(0d0)
             call set_cms_stuff(itwo)
             call compute_soft_collinear_counter_term(0d0)
