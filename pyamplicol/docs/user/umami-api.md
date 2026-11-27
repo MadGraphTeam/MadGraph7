@@ -268,6 +268,36 @@ same computation; they are not automatically extra integrable contributions.
 The copies of a contribution must be weighted as above, since their naive sum
 would count it once per partner.
 
+### Per-event provider data
+
+One call may mix events of every channel and flavour index. For an event with
+channel index `c` and flavour index `f` the provider evaluates the one
+contribution `channels[c].processes[f].runtime`, so the colour flow and the
+union member are functions of `(c, f)`, not inputs of their own. It returns
+`factor` times that runtime's value; internally it batches the events of one
+runtime process, and the assignments of one flavour-union template in one
+call.
+
+| `runtime` field | Meaning |
+| --- | --- |
+| `process_index`, `process_id` | The `runtime_processes` row and stored process that run: the template for a union entry, possibly a structurally equal representative otherwise. |
+| `color_id` | The LC flow of that process that runs, `null` for contracted colour. For a union entry always a template flow (the replay representative); the member's own flow id is `members[].color_id`. |
+| `color_axis` | Union entries: the index of `color_id` on the runtime's colour axis, the per-point flow selector. |
+| `color_index` | Index into `color_flows`: the physical contribution's LHE colour tags, returned as `UMAMI_OUT_COLOR_INDEX`. |
+| `permutation` | Runtime leg `j` reads input leg `permutation[j]`; it composes the channel's relabelling, the member relation and any kept replay. |
+| `momentum_signs` | Crossed union members only: runtime leg `j` takes `momentum_signs[j]` times that momentum. |
+| `factor` | `1.0` on union entries (the runtime applies the member factor to the assignment), the group factor of a flavour-blind member, otherwise `1.0`. |
+| `assignment`, `assignment_key` | Union entries: the assignment id on the template runtime and its process id (the member's, or the template's own). |
+| `helicity_export` | Runtime helicity index to exported helicity (`helicities`, input leg order, signed by `rho` for a crossed member), through `helicity_exports` in schema 6. |
+
+A union member's pattern signs and pattern selection, its factor and its
+charge conjugation are not in the metadata: read them from
+`process-groups.json` or from the member entries of a
+[recurrence export](../reference/recurrence-export.md#reached-through-umami),
+which keys them by `assignment_key`. The flavour weights in
+`matrix_elements[].factor` (in MadGraph7 the flavour factor of a subprocess)
+are applied by the integrator, MadSpace, not by the provider.
+
 ## Automatic symmetry grouping
 
 UMAMI always applies proven computation reuse and integration grouping, including

@@ -292,6 +292,9 @@ See the [export format](../reference/recurrence-export.md) for its schema and
 arithmetic conventions. Rust consumers can call
 `NativeRuntime::export_recurrence(colours)` directly, or
 `export_recurrence_json(colours)` for JSON; `None` selects all provider flows.
+A crossed flavour-union member cannot be loaded; export it from its loaded
+template with `export_recurrence(crossed_member=member_id)`
+([crossed members](../reference/recurrence-export.md#crossed-flavour-union-members)).
 
 To include numerical checks for an external runner, pass
 `reference_momenta=points` to `export_recurrence`. Each program then includes

@@ -37,7 +37,14 @@ colour, loop, and non-recurrence execution modes are outside this format.
 
 Consumers must check `schema_version` (`2`, or `3` when the export contains
 a pattern-resolved flavour-union program, see below) and
-`execution_semantics` before interpreting instructions. `rusticol_version`
+`execution_semantics` before interpreting instructions.
+`execution_semantics` is `rusticol-batched-f64-v1` unless some Weyl source,
+at physical caller momenta (every energy positive) taken through the program's
+`crossing` and momentum form, sees an energy sign that disagrees with its
+stored helicity. Only a crossed flavour-union member (see
+[Crossed flavour-union members](#crossed-flavour-union-members)) does that, and
+its export is `rusticol-batched-f64-v2`. v2 reproduces v1 bit for bit on every
+state v1 evaluates, so a CLI file takes the newest version of its processes. `rusticol_version`
 identifies the producer. `artifact_id` is the original artifact identity.
 `parameters` records the model values used to resolve the programs. Complex
 numbers are objects with `re` and `im` f64 values. A reader must preserve f64
@@ -71,7 +78,9 @@ These replace the representative's corresponding fields. Referenced
 representatives are included even when `--process` selects only a member.
 The Python and Rust per-runtime APIs return a full selected-process program.
 A flavour-union member's entry also keeps its own `pattern_signs`, which
-replace the template's when the referenced program runs.
+replace the template's when the referenced program runs. A crossed
+flavour-union member is always such a reference: it cannot be loaded as a
+runtime of its own.
 
 `crossing`, when present, maps every `program_leg` to a `caller_leg` and a
 momentum `sign`. Apply it before constructing momentum forms. The forms
@@ -142,9 +151,11 @@ remain in this axis even when they require no instructions.
 
 Source families are `scalar`, `weyl`, `dirac`, `vector`, and `spin2`.
 Orientations are `particle`, `antiparticle`, and `self_conjugate`. Source
-helicity and chirality have already been crossed. `weyl` derives helicity =
-chirality·sgn(E); the stored helicity is informational (since
-`rusticol-batched-f64-v2`; v1 returned zero when they disagreed). Source formulas use
+helicity and chirality have already been crossed. Under
+`rusticol-batched-f64-v2`, `weyl` derives helicity = chirality·sgn(E) of the
+energy its momentum form yields, and the stored helicity is informational; v1
+returned zero where they disagreed, which only a crossed member's slots reach.
+Source formulas use
 `mass.re`; `mass.im` records the parameter's imaginary component but is not
 used by these wavefunctions. A nonempty `embedding` scatters the source
 formula's components into the arena; a null
@@ -231,15 +242,91 @@ member) sums its patterns' amplitudes with signs before squaring. Such a
 program has `pattern_signs`, one integer per template pattern: `+1`, `-1`, or
 `0` for a pattern the member does not use. The template itself has every sign
 `+1`. Each of its reductions has `pattern_terms`, an ordered list of
-`{amplitude, pattern}` entries; `amplitude` repeats the first term's amplitude.
-For such a reduction, skip terms whose sign is `0`. Apply the replay amplitude
-scale to each remaining amplitude as above. For the first remaining term
-compute `sign*real` and `sign*imaginary`; add each later term as
-`fma(sign, real, sum)` and `fma(sign, imaginary, sum)`. If no term remains,
-the reduction adds nothing. Otherwise square the sum as above, multiply by the
-weight and add it to the helicity output. Exports without such programs keep
-schema `2` and these fields are absent; the CLI file takes the highest
-schema of its processes.
+`{amplitude, pattern}` entries. Each `pattern` is already mapped through the
+flow's replay (pattern numbering is the template's, per artifact), so index
+`pattern_signs` with it directly.
+
+**Zero signs are skipped.** For such a reduction:
+
+1. Drop the terms whose sign is `0`. The first term is the first term with a
+   nonzero sign, which need not be the first listed.
+2. If no term remains, the reduction adds nothing.
+3. Apply the replay amplitude scale to each remaining amplitude as above.
+   For the first remaining term compute `sign*real` and `sign*imaginary`; add
+   each later term as `fma(sign, real, sum)` and `fma(sign, imaginary, sum)`.
+4. Square the sum as above, multiply by the weight and add it to the helicity
+   output.
+
+Never square `amplitude` alone for a reduction with `pattern_terms`: it only
+repeats the first listed term's amplitude, whose sign may be `0`. Exports
+without such programs keep schema `2` and these fields are absent; the CLI
+file takes the highest schema of its processes.
+
+### Crossed flavour-union members
+
+With `process.flavor_union_crossing`, a union member may sit on other sides of
+the `>` than its template (a crossed member, with crossing signs in
+`process-groups.json` schema 2). It is the template's program evaluated at
+`q[r] = sigma_r * p[pi_r]`, where `pi` maps template slot `r` to member leg
+`pi_r` and `sigma_r = -1` where the two lie on different sides. The CLI
+exports it as a member reference to the template program of the same flow:
+
+- `crossing` lists every template slot as `{program_leg: r, caller_leg: pi_r,
+  sign: sigma_r}`; apply it as for any member. Crossed slots then have negative
+  energies, which is why the file is `rusticol-batched-f64-v2`.
+- `caller_legs` are the member's legs with their own roles.
+- `helicity_outputs[k]` is template helicity `k` with values
+  `h_member[pi_r] = rho_r * h_template[r]` (`rho_r = -1` on a crossed slot that
+  flips its helicity label); ids are the member's own labels.
+- `colour_id` is the member's flow id, the template flow's word mapped
+  through `pi`; `representative_colour_id` and `program_reference` name the
+  template flow that runs.
+- `pattern_signs` are the member's signs in the template's pattern
+  numbering; `group_factor` is the member's factor.
+
+The schema stays `3`: these are the existing member-reference fields. In
+Python, `Runtime.load(artifact, process=template).export_recurrence(
+crossed_member=member_id)` returns the member's full programs (the reference
+values then come from the template's `evaluate_assignments`); in Rust,
+`NativeRuntime::export_recurrence_crossed_member(member, colours)`, with the
+member's flow ids as `colours`.
+
+### Reached through UMAMI
+
+The generated UMAMI provider evaluates the same programs. Its metadata
+(`API/umami/metadata.json`, see
+[UMAMI and MadSpace](../user/umami-api.md#per-event-provider-data)) links to an
+export through shared ids:
+
+- `(runtime.process_id, runtime.color_id)` is the `(process_key, colour_id)`
+  of the full program that runs: for a union entry the template's own
+  program, never a member reference.
+- `runtime.assignment_key` is the `process_key` of the member entry whose
+  `pattern_signs` and `group_factor` apply (the template itself for key equal
+  to `runtime.process_id`). Signs and factor do not vary over a member's
+  flows.
+- `runtime.color_id` is always one of the template's flow ids (the replay
+  representative the provider runs). The member's own flow id is
+  `members[].color_id` in the metadata and `colour_id` on the member entry;
+  they coincide only for an unpermuted, unconjugated member whose flow the
+  metadata does not replay.
+
+From a member entry, `program_reference`, `pattern_signs` and `group_factor`
+apply through UMAMI. `crossing`, `caller_legs` and the helicity id strings do
+not: `runtime.permutation` (and `runtime.momentum_signs` for a crossed member)
+already contains the member relation, the channel's relabelling and any kept
+replay, so applying `crossing` as well would relabel twice. Helicity index `k`
+is shared: the runtime's helicity `k` is the program's output `k`, and
+`runtime.helicity_export[k]` gives its label in the channel's leg order.
+
+The metadata keeps a replay for a union member only when it exchanges slots of
+equal member flavour and side. Such a permutation maps the member's selected
+patterns, and their signs, onto themselves, so the signs apply as stored; the
+metadata writer refuses a kept replay that does not. A flavour-blind
+(non-union) member has no `assignment_key`: its `runtime.factor` already
+includes its group factor, and its runtime may be a structurally equal
+representative, so take the program from `(runtime.process_id,
+runtime.color_id)` and do not apply the member entry's `group_factor` again.
 
 This export describes batched execution. The one-point path may use different
 native interaction rewrites. Use batched `evaluate_resolved_f64` as the
@@ -250,7 +337,8 @@ its body.
 ## Golden vectors
 
 `execution_semantics` is a bit-exact contract, and committed golden vectors
-enforce it. `rust/crates/rusticol-core/tests/fixtures/recurrence_export_golden.json`
+enforce it. They pin `rusticol-batched-f64-v2`; a v1 file never reaches the
+eight Weyl source cases in which the two versions differ. `rust/crates/rusticol-core/tests/fixtures/recurrence_export_golden.json`
 records, for the current `execution_semantics`, the inputs and the expected
 output bits of every exported instruction kind that carries arithmetic: each
 vertex and propagator template, every source family and orientation (massless
@@ -324,9 +412,11 @@ comparing every colour and helicity bit for bit. Set
 `RUSTICOL_RECURRENCE_PROCESSES` to a JSON array of process IDs to restrict that
 traversal. Without an artifact the test reports that it skipped. CI runs it
 against the artifacts that the export integration tests generate: `d d~ > z g`
-in the topology-replay and all-flow-union layouts, and a grouped
-`q q~ > t t~ g` set with an explicit alias, flavour-blind process-group members
-(including crossed initial states), and massive top sources.
+in the topology-replay and all-flow-union layouts and with packed payloads, the
+`u u~ > j j` flavour-union artifact, and a crossing-on `p p > j j` union
+artifact. For every flavour-union member it also compares the member's
+interpreted program bit for bit with its template's `evaluate_assignments`,
+the path that evaluates crossed members, which cannot be loaded.
 
 ```console
 RUSTICOL_RECURRENCE_ARTIFACT=/path/to/artifact \

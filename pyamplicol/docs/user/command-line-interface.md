@@ -1460,7 +1460,8 @@ pyamplicol export-recurrence artifacts/gg_ggg -o recurrence.json \
 ```
 
 By default the export includes every stored process, alias and process-group
-member, and every provider colour flow. Repeat `--process` or `--color-flow`
+member (crossed flavour-union members through their template), and every
+provider colour flow. Repeat `--process` or `--color-flow`
 to select several. Colour-flow IDs are per process and `--color-flow` applies
 to every selected process, so combine it with `--process` on a multi-process
 artifact; an ID a selected process lacks is refused with that process's flow
