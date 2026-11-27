@@ -8,15 +8,17 @@ ANNOUNCEMENT:
    TH: [amplicol] flavour unions are on by default (MG option amplicol_flavor_unions):
        the flavours that differ only in massless quark flavours are evaluated by one
        template program. The events are statistically equivalent to those of one program
-       per flavour class; for unmerged VEGAS runs with the same seed (and without
-       amplicol_flavor_union_crossing) they are the same up to rounding.
+       per flavour class; for unmerged VEGAS runs with the same seed (with
+       amplicol_flavor_union_crossing turned off) they are the same up to rounding.
        'set amplicol_flavor_unions False' before 'output' turns them off.
-   TH: [amplicol] 'set amplicol_flavor_union_crossing True' (off by default) also joins
-       the crossings of a flavour union in the leading-colour artifact (q g > q g with
-       g g > q q~): fewer leading-colour programs to generate, e.g. 4 instead of 10 for
-       p p > j j j j, which shortens the leading-colour generation only (the full-colour
-       artifact is unchanged and sets the total). The events are statistically
-       equivalent to those without it; event generation is still 10-20% slower at 4j.
+   TH: [amplicol] the leading-colour artifact also joins the crossings of a flavour union
+       (q g > q g with g g > q q~; MG option amplicol_flavor_union_crossing, on by
+       default): fewer leading-colour programs, e.g. 4 instead of 10 for p p > j j j j
+       and 5 instead of 14 for 6j, so a shorter leading-colour generation and a lower
+       run memory. The full-colour artifact is unchanged. Event generation is 1-8%
+       cheaper per weighted event at 4j-6j (with and without MLM merging). The events
+       are statistically equivalent to those without it.
+       'set amplicol_flavor_union_crossing False' before 'output' turns it off.
    TH: [amplicol] 'set amplicol_selector_only_full_colour True' (off by default) generates
        the full-colour artifact with only the programs that evaluate one helicity per
        point, all that the full-colour pass needs: a shorter full-colour generation, with

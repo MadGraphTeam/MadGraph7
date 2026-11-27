@@ -80,12 +80,11 @@ class TestGenerationInProcess(unittest.TestCase):
         self.assertTrue(configs[1]['generation']['selector_only_full_colour'])
         self.assertEqual(configs[1]['generation']['relation_discovery'], {'mode': 'off'})
 
-    def test_flavor_union_crossing_requires_unions(self):
+    def test_flavor_union_crossing_needs_unions(self):
         jobs = []
-        with self.assertRaisesRegex(madgraph.InvalidCmd, 'requires amplicol_flavor_unions'):
-            self.run_export(lambda job: jobs.append(job) or [], flavor_unions=False,
-                            flavor_union_crossing=True)
-        self.assertEqual(jobs, [])
+        self.run_export(lambda job: jobs.append(job) or [], flavor_unions=False,
+                        flavor_union_crossing=True)
+        self.assertEqual(jobs, [{'model': {}, 'processes': [], 'flavor_unions': False}])
 
     def test_flavor_union_crossing_sets_the_process_option(self):
         from madgraph.iolibs import amplicol_generation
@@ -310,13 +309,14 @@ class TestExporterOptions(unittest.TestCase):
             exporter.export_amplicol()
         return calls[0]
 
-    def test_crossing_is_off_by_default(self):
+    def test_crossing_is_on_by_default(self):
         import madgraph.interface.madgraph_interface as interface
         defaults = dict(interface.MadGraphCmd.options_madgraph)
+        self.assertIs(defaults['amplicol_flavor_union_crossing'], True)
         for options in ({}, defaults):
             kwargs = self.exported(options)
             self.assertTrue(kwargs['flavor_unions'])
-            self.assertFalse(kwargs['flavor_union_crossing'])
+            self.assertTrue(kwargs['flavor_union_crossing'])
 
     def test_selector_only_is_off_by_default(self):
         import madgraph.interface.madgraph_interface as interface
@@ -328,11 +328,11 @@ class TestExporterOptions(unittest.TestCase):
     def test_selector_only_follows_the_option(self):
         kwargs = self.exported({'amplicol_selector_only_full_colour': True})
         self.assertTrue(kwargs['selector_only_full_colour'])
-        self.assertFalse(kwargs['flavor_union_crossing'])
+        self.assertTrue(kwargs['flavor_union_crossing'])
 
     def test_crossing_follows_the_option(self):
-        kwargs = self.exported({'amplicol_flavor_union_crossing': True})
-        self.assertTrue(kwargs['flavor_union_crossing'])
+        kwargs = self.exported({'amplicol_flavor_union_crossing': False})
+        self.assertFalse(kwargs['flavor_union_crossing'])
 
 
 class TestCheckPyamplicol(unittest.TestCase):

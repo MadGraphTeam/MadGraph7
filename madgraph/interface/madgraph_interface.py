@@ -4344,7 +4344,7 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                           'merge_same_topologies': True,
                           'merge_quartic_vertices': False,
                           'amplicol_flavor_unions': True,
-                          'amplicol_flavor_union_crossing': False,
+                          'amplicol_flavor_union_crossing': True,
                           'amplicol_selector_only_full_colour': False
                         }
 
@@ -13820,7 +13820,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         also join flavours that agree once all legs are outgoing, e.g. q g > q g with
         g g > q q~ (pyamplicol process.flavor_union_crossing). This gives fewer
         leading-colour programs; the full-colour artifact keeps its side-aware unions.
-        It requires amplicol_flavor_unions. Default: False.
+        Without amplicol_flavor_unions it has no effect. Default: True.
         """
         args = ['amplicol_flavor_union_crossing'] + args
         self.check_set(args)

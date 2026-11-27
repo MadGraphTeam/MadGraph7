@@ -557,20 +557,24 @@ quark flavours through one flavour-union template (the MG option
 ``amplicol_flavor_unions``, on by default). ``set amplicol_flavor_unions False`` before
 ``output`` generates one program per flavour class instead. The matrix elements of the
 two agree to about 1e-13. For an unmerged run with VEGAS and the same seed (with
-``amplicol_flavor_union_crossing`` off, the default), both give the same events up to
+``amplicol_flavor_union_crossing`` turned off), both give the same events up to
 rounding. With MLM merging or MadNIS, these rounding differences change the sequence of
 events, so the events are only statistically equivalent.
 
-``set amplicol_flavor_union_crossing True`` (off by default; it requires
-``amplicol_flavor_unions``) also joins, in the leading-colour artifact, the flavours whose
-legs agree once all of them are outgoing, for example ``q g > q g`` with ``g g > q q~``.
-``p p > j j j`` then needs 3 leading-colour programs instead of 7, and ``p p > j j j j`` 4
-instead of 10, which shortens the leading-colour generation. The full-colour artifact
-keeps its unions, and it sets the total generation time of an output. The matrix elements
-agree with those of the uncrossed unions to rounding, but a crossed flavour samples its
-helicities and colour flows in another order, so the events are only statistically
-equivalent, also for an unmerged run with the same seed. The event generation is
-currently slower with it (about 10-20% CPU time at ``p p > j j j j``).
+With the unions, the MG option ``amplicol_flavor_union_crossing`` (on by default) also
+joins, in the leading-colour artifact, the flavours whose legs agree once all of them are
+outgoing, for example ``q g > q g`` with ``g g > q q~``. ``p p > j j j`` then needs 3
+leading-colour programs instead of 7, ``p p > j j j j`` 4 instead of 10 and six jets 5
+instead of 14, which shortens the leading-colour generation and lowers the memory use of a
+run. The full-colour artifact keeps its side-aware unions, and it sets the total
+generation time of an output. The event generation is also cheaper: the CPU time per
+weighted event is 1-8% lower from four to six jets, with and without MLM merging (per
+point, the leading-colour matrix element takes 6-18% and the full-colour ratio step 8-17%
+less). The matrix elements agree with those of the uncrossed unions to rounding, but
+a crossed flavour samples its helicities and colour flows in another order, so the events
+are statistically equivalent, but not the same, also for an unmerged run with the same
+seed. ``set amplicol_flavor_union_crossing False`` before ``output`` turns it off; without
+``amplicol_flavor_unions`` it has no effect.
 
 ``set amplicol_selector_only_full_colour True`` (off by default) generates the
 full-colour artifact without its helicity-summed programs (pyamplicol

@@ -3316,9 +3316,9 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # flavour-union templates (default on)
         self.amplicol_flavor_unions = bool(
             getattr(cmd, 'options', {}).get('amplicol_flavor_unions', True))
-        # crossed unions in the leading-colour artifact (default off)
+        # crossed unions in the leading-colour artifact (default on)
         self.amplicol_flavor_union_crossing = bool(
-            getattr(cmd, 'options', {}).get('amplicol_flavor_union_crossing', False))
+            getattr(cmd, 'options', {}).get('amplicol_flavor_union_crossing', True))
         # full-colour artifact without the helicity-summed programs (default off)
         self.amplicol_selector_only_full_colour = bool(
             getattr(cmd, 'options', {}).get('amplicol_selector_only_full_colour', False))
@@ -3346,7 +3346,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
                 self.amplicol_multiparticles,
                 flavor_unions=getattr(self, 'amplicol_flavor_unions', True),
                 flavor_union_crossing=getattr(
-                    self, 'amplicol_flavor_union_crossing', False),
+                    self, 'amplicol_flavor_union_crossing', True),
                 selector_only_full_colour=getattr(
                     self, 'amplicol_selector_only_full_colour', False),
                 **getattr(self, 'amplicol_install', {})):
