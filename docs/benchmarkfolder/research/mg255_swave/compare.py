@@ -86,7 +86,8 @@ def main(case, mu):
     pf = os.path.join(SP, 'swj', 'pts_%s.json' % case)
     json.dump([r for _, r in pts], open(pf, 'w'))
     mf = os.path.join(SP, 'swj', 'ml_%s.json' % case)
-    subprocess.run([sys.executable, os.path.join(SP, 'swj', 'tools', 'ml_side.py'), case, pf, str(mu), mf],
+    subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ml_side.py'),
+                    case, pf, str(mu), mf],
                    check=True, capture_output=True)
     ml = json.load(open(mf))
     rows = []

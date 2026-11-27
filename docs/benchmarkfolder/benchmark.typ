@@ -183,12 +183,15 @@ $alpha_s\/2pi$; literature values in units of $alpha_s\/pi$ doubled (sources in
   *Two bound states.* With the pinned TIRust every $e^+ e^- -> J\/psi thin eta_c$
   point meets refused lanes (a threshold bubble pinch, and pentagons holding the
   Coulomb relations of both onia) and is reported exceptional. The second row
-  uses TIRust 08cca00, which serves them. That revision is in
-  huashengshao/TIRust\#58, stacked on \#56, which holds the earlier 370b632; it
-  is not yet pinned.
+  uses TIRust 08cca00, which serves them, and the third TIRust da7902b with the
+  bridge patch v16 (TIRust PR \#71, the candidate of @twopw16). The fix is in
+  huashengshao/TIRust\#56 and \#58 (08cca00 is \#58 stacked on \#56, which holds
+  the earlier 370b632), both merged into TIRust's main branch on 2026-11-24;
+  da7902b is built on that main branch. Neither revision is pinned yet.
   - *Double precision.* Every point is stable (code 213). The poles are zero to
     $1.7 dot 10^(-13)$, and the finite part is within $5.3 dot 10^(-8)$ of Gong
-    and Wang, whose value has seven digits.
+    and Wang, whose value has seven digits. The two revisions agree to
+    $3 dot 10^(-16)$ at every point.
   - *Quadruple precision* gives 24.53642097 at every point (@sp).
   - *The earlier run* kept $b$ and $t$ in the loops, at 10 and 100 TeV, with
     370b632. Its poles were zero only to $1.3 dot 10^(-7)$ and its finite part
@@ -231,9 +234,14 @@ compared with the `V0` virtuals of the MG5 2.5.5 onia outputs of
   $log(mu^2\/m_Q^2)$ terms of the scheme are tested.
 - *Scheme.* The 2.5.5 code passes `V0` to MadFKS unchanged (`BinothLHA.f`,
   no DR to CDR conversion), and its `renormalisation_scheme = 1` decouples
-  the heavy quark as MadLoop does. Charmonium uses `loop_sm_onia-c_mass`
-  with $m_b = m_t = 10^4$ GeV; bottomonium uses `loop_sm_onia-no_tau_mass`
-  with massless charm and $m_t = 10^4$ GeV.
+  the heavy quark as MadLoop does. MadLoop excludes the quarks the
+  reference decouples from its loops, the exact $m -> infinity$ limit:
+  charmonium uses `loop_sm_onia-c_mass` with `/ t t~ b b~`, bottomonium
+  `loop_sm_onia-no_tau_mass` (massless charm) with `/ t t~`. Until
+  2026-11-27 they were decoupled with masses of $10^4$ GeV instead; their
+  counterterm rounding is $M^2$-enhanced at soft jets (below), and the
+  largest difference from the reference was then $2.3 dot 10^(-6)$
+  (@v16all has both setups).
 - *Normalisation.* Both results are in units of the Born times
   $alpha_s\/2pi$; the 2.5.5 Born is its double pole divided by
   $-sum_i C_i$.
@@ -245,8 +253,8 @@ compared with the `V0` virtuals of the MG5 2.5.5 onia outputs of
   package splits the virtual into transverse and longitudinal $J\/psi$; their
   sum is compared.
 
-#let mg-target(c) = if c.reference == "direct" { 1e-5 } else { 1e-3 }
-#block(breakable: false)[#figure(caption: [MadLoop against the 2.5.5 virtuals at the points MadLoop reports stable (return codes `1xx` to `3xx`): the largest relative difference of $c_0$ and the largest absolute differences of $c_1$, $c_2$, green within $10^(-5)$. "grid" is the 2.5.5 grid against its own direct evaluation; "unstable" counts the points with a soft or low-$p_T$ jet that TIRust refuses (largest $sqrt(s)$ among them).])[
+#let mg-target(c) = if c.reference == "direct" { 1e-8 } else { 1e-3 }
+#block(breakable: false)[#figure(caption: [MadLoop against the 2.5.5 virtuals at the points MadLoop reports stable (return codes `1xx` to `3xx`): the largest relative difference of $c_0$ and the largest absolute differences of $c_1$, $c_2$, green within $10^(-8)$ (pinned TIRust; $b$, $t$ excluded from the loops). "grid" is the 2.5.5 grid against its own direct evaluation; "unstable" counts the points with a soft or low-$p_T$ jet that TIRust refuses (largest $sqrt(s)$ among them).])[
   #tstyle(table(columns: (auto, auto, auto, auto, auto, auto, auto, auto, auto),
     stroke: tstroke, fill: thead-fill, align: (left, right, left, right, right, right, right, right, right),
     [Process], [$m_Q$, $n_l$], [ref.], [stable ($sqrt(s)$, GeV)], [$c_0$ dev.], [$c_1$ dev.], [$c_2$ dev.], [grid], [unstable],
@@ -278,6 +286,9 @@ compared with the `V0` virtuals of the MG5 2.5.5 onia outputs of
     $g g -> eta_b\/Upsilon thin g$, which are stable from 1.05 GeV. All of them
     are in the $g g$ and $u overline(u)$ channels; the $q g$ channels are
     stable down to $p_T = 6$ MeV.
+  - *The earlier setup.* The next items were found with the $b$ and $t$
+    quarks at $10^4$ GeV, before the switch to their exclusion; they
+    explain why it was made.
   - *What TIRust refuses there.* In both precisions it refuses the Coulomb
     triangle, and the Coulomb boxes and pentagons with the jet attached.
     MadLoop returns code `4x0` with accuracy 1, and its $c_1$ misses $-2 C_F$
@@ -903,15 +914,130 @@ The numbers:
   constituents, are exempt. Separately, IREGI drops the loop of the
   leptonium process at its scale ($M = 2 m_e$; also at $M = 20$ MeV, while it is
   right at 2 GeV) and reports it stable: a limitation of IREGI at small
-  scales, outside the default chain. Open TIRust items (reproducers in
-  `research/tirust_qp_repro/`):
-  (1) the binary128 path refuses the degenerate lanes even with exact inputs,
-  so there is no QP rescue for bound states yet;
+  scales, outside the default chain. The TIRust column is the pinned revision.
+  Three of its limits are fixed in TIRust's main branch (PRs \#47, \#55, \#56
+  and \#58, merged on 2026-11-24) and in TIRust da7902b (PR \#71, built on that
+  branch) with the bridge patch v16, none of them pinned yet:
+  (1) its binary128 path refuses the degenerate lanes even with exact inputs,
+  so it has no QP rescue for bound states (reproducers in
+  `research/tirust_qp_repro/`); on da7902b the soft points of @mg255 are
+  rescued in quadruple precision (code `3xx`);
   (2) processes with two bound states ($e^+ e^- -> J\/psi eta_c$) meet refused
   lanes (a threshold bubble pinch; two Coulomb relations in one pentagon),
-  served by TIRust 370b632 and 08cca00 (PRs \#56 and \#58, not yet pinned; @analytic);
-  (3) P-wave states need the doubled-propagator integrals at threshold:
-  TIRust 48958d1 has them for the $2 -> 1$ processes (@pwave), not yet pinned.
+  served by 08cca00 and da7902b (@analytic);
+  (3) P-wave states need the doubled-propagator integrals at threshold, which
+  the pinned installation does not have (@pwave, @twopw16).
+]
+
+= The examples on TIRust da7902b <v16all>
+
+#let va = json("data/v16all.json").rows
+#let vrow(k) = va.find(r => r.key == k)
+#let vmg = vrow("mg255")
+#let vx = vrow("mg255x")
+Every example of the sections above was rerun on 2026-11-27 with TIRust
+da7902b and the bridge patch v16, the candidate of @twopw16 (TIRust PR \#71,
+built on TIRust's main branch, which has PRs \#47, \#55, \#56 and \#58). The
+outputs were generated from `86b1b68571`, and the points and settings are
+those of the records. @tab:v16all compares each group with its record. The
+processes of @twopw16 were first run on da7902b. The stability profiles
+and the 80-bit switch on da7902b are in @stability-v16 and @ep.
+
+#let v16-groups = (
+  analytic: ([Analytic results, $2 -> 2$ poles (@analytic, @twotwo, TIRust column of @tab:reducers)], [pinned], [$c_0$ (rel.) or poles]),
+  mg255: ([Onium + jet against 2.5.5, $b$, $t$ at $10^4$ GeV (the setup of @tab:mg255 until 2026-11-27)], [pinned], [2.5.5 $c_0$ (rel.)]),
+  mg255x: ([Onium + jet against 2.5.5 (@tab:mg255), $b$, $t$ excluded from the loops], [pinned], [2.5.5 $c_0$ (rel.)]),
+  pol: ([$g g -> J\/psi thin g$ per polarisation (@tab:jpsipol)], [pinned], [direct $c_0$ (rel.)]),
+  pwave: ([One P-wave state (@tab:pwave, @tab:pwave22)], [48958d1, 370b632], [predicted $c_1$ (abs.)]),
+  sp: ([$e^+ e^- -> J\/psi thin chi_(c J)$, double precision (@tab:sp, @tab:sphel)], [08cca00], [Wang–Ma–Chao $chevron.l c_0 chevron.r$ (rel.)]),
+  qpfloor: ([Heavy-quark floor, QP sum (@tab:qpfloor)], [08cca00], [reference $chevron.l c_0 chevron.r$ (rel.)]),
+  ee2p: ([$e^+ e^- -> chi_(c 0) thin h_c$ (@tab:ee2p, @tab:appb-ee)], [4f1b06c + v9], [predicted $c_1$ (abs.)]),
+  bc: ([Unequal masses, $B_c$ P waves (@tab:appb-bc)], [record], [predicted $c_1$ (rel.)]),
+)
+#block(breakable: false)[#figure(caption: [The examples on TIRust da7902b with the bridge patch v16 against their records (the TIRust of the record in the second column): the points; the stable ones (codes `1xx` to `3xx`) in the record and now; the largest deviation from the group's reference in the record and now, at the stable points; and "moved", the largest relative change of the finite part (of $c_1$, absolute, for the $B_c$ and table-2 rows) at the points stable in both. The $e^+ e^-$ rows include points in quadruple precision.])[
+  #tstyle(table(columns: (1fr, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, left, right, right, right, left, right),
+    [Examples], [Record], [Points], [Stable], [Deviation], [Against], [Moved],
+    ..va.map(r => {
+      let g = v16-groups.at(r.key)
+      (g.at(0), g.at(1), str(r.points),
+       if r.at("stable_before", default: none) == none [—] else [#r.stable_before → #r.stable_now],
+       [#sci(r.dev_before) → #sci(r.dev_now)], g.at(2),
+       if r.at("moved", default: none) == none [—] else [#sci(r.moved)])
+    }).flatten()))
+] <tab:v16all>]
+
+#box-note[
+  *What da7902b changes.* Every point the pinned TIRust refused is served and
+  stable:
+  - the $e^+ e^- -> J\/psi thin eta_c$ points (@analytic);
+  - the #vmg.soft.len() soft-jet points of the 2.5.5 comparison (@mg255). The
+    $J\/psi$ and $Upsilon$ ones are rescued in quadruple precision (code 323)
+    and agree with the reference to
+    #sci(calc.max(..vmg.soft.filter(s => s.case in ("gg_jpsig", "gg_upsg")).map(s => s.qp_vs_ref)))#[;]
+    of the $eta_c$ and $eta_b$ ones, one is rescued (below) and the others
+    pass in double precision (code 213), within
+    #sci(calc.max(..vmg.soft.filter(s => s.code < 300).map(s => s.dp_vs_qp))) of forced
+    quadruple precision.
+
+  *The heavy quarks of the 2.5.5 setup.* @mg255 decoupled the $b$ and $t$
+  quarks with masses of $10^4$ GeV until 2026-11-27, and the rounding of their counterterms
+  ($M^2$-enhanced, @mg255) is what is left at the soft points. With them,
+  double precision is within #sci(vmg.dp_vs_qp) of forced quadruple precision
+  at all #vmg.points points, the largest at the softest $g g -> eta_c thin g$
+  point ($sqrt(s) = 3.1015$ GeV, estimate $7.7 dot 10^(-6)$). At
+  $g g -> eta_b thin g$, `PS.input` ($sqrt(s) = 11.1552$ GeV, a 1.5 GeV gluon
+  with $p_T = 0.9$ MeV), even quadruple precision is
+  #sci(vx.etab_point.mt1e4_vs_ref) from the reference, in both loop
+  directions#if vx.etab_point.directions == 0 [ (bit-identical)] else [ (#sci(vx.etab_point.directions) apart)],
+  and $m_t = 10^5$ GeV moves it to #sci(vx.etab_point.mt1e5_vs_ref). With the
+  top excluded from the loops it agrees to #sci(vx.etab_point.qp_vs_ref): the
+  2.5.5 reference is right there.
+
+  *With the heavy quarks excluded from the loops* instead (`/ t t~ b b~`, for
+  bottomonium `/ t t~`), the setup of the $e^+ e^-$ references (@analytic),
+  every point is stable (#vx.rescued rescued), quadruple precision agrees with
+  the reference to #sci(vx.qp_vs_ref) ($c_1$ to #sci(vx.qp_vs_ref_c1)) and
+  double precision to #sci(vx.dev_now), the soft points included
+  (#sci(vx.soft_dp_vs_qp) from quadruple precision). @tab:mg255 now uses this
+  setup too (with the pinned TIRust).
+
+  *MadLoop's estimate against forced quadruple precision.* It is below the
+  double-precision error at #vmg.estimate_below.count of the #vmg.points points
+  with the $10^4$ GeV quarks (errors up to #sci(vmg.estimate_below.max_error))
+  and at #vx.estimate_below.count with the quarks excluded (errors up to
+  #sci(vx.estimate_below.max_error)), all far inside `MLStabThres`. The largest
+  ratio is at the softest $u overline(u) -> eta_c thin g$ point
+  ($sqrt(s) = #fixed(vx.estimate_below.worst.sqrts, 4)$ GeV): an error of
+  #sci(vx.estimate_below.worst.error) against an estimate of
+  #sci(vx.estimate_below.worst.accuracy), in both setups. Traced
+  (`research/estimate_gap`): the error sits in two pentagons, those of
+  $u$, $overline(u)$, the 1.5 MeV gluon and both constituents. TIRust's tensor
+  integrals there are right (to $1.7 dot 10^(-12)$ of the largest, against
+  quadruple precision) but large, up to $2.5 dot 10^8$, since the pentagon is
+  nearly degenerate. Their contraction with MadLoop's loop coefficients
+  cancels by $5 dot 10^4$. MadLoop builds those coefficients in double
+  precision, with errors of $5 dot 10^(-14)$ of the largest. That gives
+  $3 dot 10^(-9)$ per pentagon. Quadruple-precision coefficients rounded to
+  double give $5 dot 10^(-13)$. Both loop directions contract the same
+  coefficients (with a tensor-integral library only the integrals are
+  recomputed), so MadLoop's test cannot see it; one rotation of the point
+  (`NRotations_DP = 1`) does (estimate $5.1 dot 10^(-9)$). Bound-state
+  outputs now add a contraction-rounding term to the estimate,
+  $K epsilon sum_j |c_j I_j|$ over the loops relative to the finite part,
+  with $K = 300$ calibrated at 550 points of 18 processes
+  (`research/estimate_gap`, @stability-v16). It gives $2.8 dot 10^(-9)$ at this
+  point. The counts above are of the estimate before the term. The $""^3 S_1^((8))$
+  channels have a second gap the term does not cover: at 203 GeV the charm
+  bubble on the gluon that carries the octet sits at its threshold,
+  $p^2 = 4 m_c^2$, which double precision misses by $2 dot 10^(-13)$ after
+  the boost. That costs $4 dot 10^(-8)$, the same in both loop directions
+  (open items).
+
+  *Everything else* reproduces its record, as @tab:v16all shows: the P-wave
+  poles are closer to the prediction than on 48958d1 and 370b632, and the
+  $e^+ e^-$ two-onium results are bit-identical. The tables of the sections
+  above stay on the revisions of their records.
 ]
 
 = Stability profiles <stability>
@@ -925,7 +1051,9 @@ estimate over random phase-space points.
   reversed loop direction, a pass in which TIRust also moves each invariant
   by one unit in its last place, and one Lorentz rotation of the point
   (`NRotations_DP = 1`). For bound states it is at least the counterterm
-  rounding estimate (@mg255).
+  rounding estimate (@mg255), and, since 2026-11-27, the contraction-rounding
+  estimate (@v16all; not in the profiles below but in
+  @stability-v16).
 - *No rescue.* The quadruple-precision rescue is switched off
   (`MLStabThres` $= 10^(99)$), so what is recorded is the double-precision
   estimate. A refused integral sets it to 1.
@@ -962,7 +1090,7 @@ estimate over random phase-space points.
   #image("figures/stability_octets.svg", width: 100%)
 ] <fig:stability-octets>
 
-#figure(caption: [The profiles in numbers (the table view of @fig:stability and @fig:stability-octets): the reducer, the number of points, the fractions of points with an estimate of at least $10^(-3)$ and $10^(-6)$, the median estimate and the median time per point with the three double-precision evaluations of the test.])[
+#figure(caption: [The profiles in numbers (the table view of @fig:stability, @fig:stability-octets and, for TIRust da7902b, @fig:stability-v16 and @fig:stability-v16-octets): the reducer, the number of points, the fractions of points with an estimate of at least $10^(-3)$ and $10^(-6)$, the median estimate and the median time per point with the three double-precision evaluations of the test.])[
   #tstyle(table(columns: (auto, auto, 1fr, auto, auto, auto, auto, auto),
     stroke: tstroke, fill: thead-fill, align: (left, center, left, right, right, right, right, right),
     table.header([Process], [setup], [reducer], [points], [$>= 10^(-3)$], [$>= 10^(-6)$], [median], [ms/pt]),
@@ -1094,6 +1222,57 @@ estimate over random phase-space points.
     class.
 ]
 
+== The profiles on TIRust da7902b <stability-v16>
+
+Every S- and P-wave profile was run again on 2026-11-27 with TIRust da7902b
+and the bridge patch v16, the candidate of @twopw16 and @v16all (case suffix
+`16`), and every P wave also with the 80-bit switch on that build (suffix
+`16ep`; v16 has the extended inputs). @fig:stability-v16 and
+@fig:stability-v16-octets show them against the builds of the records, and
+@tab:stability lists them after the others.
+
+#figure(caption: [As @fig:stability, on TIRust da7902b with the bridge patch v16 (dotted) and with the 80-bit switch on that build (dash-dotted, P waves), against the builds of the records (solid: the pinned TIRust for the S waves, 48958d1 and 370b632 for the P waves). Dashed: the reference.])[
+  #image("figures/stability_v16.svg", width: 100%)
+] <fig:stability-v16>
+
+#figure(caption: [As @fig:stability-octets, on TIRust da7902b with the bridge patch v16 (dotted) and with the 80-bit switch (dash-dotted), against 48958d1 (solid).])[
+  #image("figures/stability_v16_octets.svg", width: 100%)
+] <fig:stability-v16-octets>
+
+#box-note[
+  - *No point at or above $10^(-3)$* in any of the 60 profiles. The
+    refusals of the pinned TIRust (the S-wave plateaus of 3% at 1 TeV) are
+    gone, and no S-wave point is at or above $10^(-6)$, in either setup.
+  - *The same estimates as the candidates before.* Without the 80-bit
+    switch the estimates equal those of 5025e12 with the gate and relation
+    tiers (to the three digits stored) at 98% of the 296000 points; the
+    others are at 20 GeV, where they move by at most a factor 6 either way,
+    with the same largest values. With the switch they equal those of
+    d17085a with the bridge patch v2 at all 176000 points. The conclusions
+    above for those builds hold for da7902b: at 1 TeV the median P-wave
+    estimate is $3.9 dot 10^(-5)$ ($u overline(u) -> chi_(c 0) thin g$),
+    $8.1 dot 10^(-6)$ ($g g -> chi_(c 0) thin g$), $3.1 dot 10^(-7)$
+    ($u overline(u) -> chi_(b 0) thin g$) and $8.0 dot 10^(-8)$
+    ($g g -> chi_(b 0) thin g$), the largest $2.3 dot 10^(-4)$, and the 80-bit
+    switch lowers them by about $2000$.
+  - *With the contraction-rounding term* of the estimate (@v16all), all 36
+    profiles without the switch were run again
+    (`research/estimate_gap/data/profiles_term_summary.json`). Still no point
+    is at or above $10^(-3)$. The S-wave and 20 GeV medians rise by up to a
+    factor 93, mostly from $10^(-13)$ to $10^(-11)$ ($g g -> eta_b thin g$ at
+    1 TeV: $9 dot 10^(-11)$ to $8 dot 10^(-9)$). At 1 TeV 0.08% of the
+    $g g -> J\/psi thin g$ points and 0.01% of the $g g -> Upsilon thin g$
+    points are at or above $10^(-6)$ (largest $5 dot 10^(-6)$), where none
+    was. The P waves at 1 TeV are unchanged; their estimate comes from the
+    raised-power integrals. The figures and @tab:stability show the profiles
+    before the term.
+  - *Time.* The median time per point is 0.84 to 1.38 times that of
+    5025e12, and 1.01 to 1.14 times that of d17085a with the switch. These
+    runs are unpaired, on a shared host under a load of 250 to 320 of its
+    384 threads, so this does not measure TIRust; the paired cost of the
+    switch is in @tab:ep-cost.
+]
+
 == The 80-bit switch <ep>
 
 `#PWaveExtendedPrecision .TRUE.` in `MadLoopParams.dat` (off by default)
@@ -1111,7 +1290,8 @@ invariants) as binary64 hi + lo words and returns the result as hi + lo.
 - *TIRust.* The code is written only for an installation whose metadata
   has `raised_power_extended_inputs`. Here that is TIRust d17085a (PR \#56)
   with the bridge patch v2 (gate, relation tiers, low words, extended
-  inputs). The bridge is not in MadGraph yet.
+  inputs), and TIRust da7902b with the bridge patch v16, which has them
+  too. The bridge is not in MadGraph yet.
 - *Check pass.* In its check pass (the reversed loop of MadLoop's
   stability test) TIRust moves the invariants by $2^(-52)$, one binary64
   unit. With extended inputs the bridge v2 moves them by
@@ -1120,7 +1300,7 @@ invariants) as binary64 hi + lo words and returns the result as hi + lo.
   gained only about one digit: 18 times ($u overline(u)$) and 24 times
   ($g g$) in the worst point.
 
-#figure(caption: [The 80-bit switch at the 24 points of `research/pwave_stability` ($sqrt(s) = 1$ TeV), against quadruple precision: the largest and the median error of the finite part and the time per point, with `CTModeRun -1` (MadLoop's stability test, no rescue) or `CTModeRun 1` (one pass).])[
+#figure(caption: [The 80-bit switch at the 24 points of `research/pwave_stability` ($sqrt(s) = 1$ TeV), against quadruple precision: the largest and the median error of the finite part and the time per point, with `CTModeRun -1` (MadLoop's stability test, no rescue) or `CTModeRun 1` (one pass), TIRust d17085a with the bridge patch v2. On TIRust da7902b with the bridge patch v16 (2026-11-27) every error of the first three rows is the same to within $10^(-4)$ of its size and MadLoop's estimates are identical; its times are 1.02 to 1.33 times these (unpaired, on a loaded host).])[
   #tstyle(table(columns: (1fr, auto, auto, auto, auto),
     stroke: tstroke, fill: thead-fill, align: (left, right, right, right, right),
     table.header([Mode], [$u overline(u) -> chi_(c 0) thin g$], [s/pt], [$g g -> chi_(c 0) thin g$], [s/pt]),
@@ -1130,14 +1310,18 @@ invariants) as binary64 hi + lo words and returns the result as hi + lo.
     [80-bit, `CTModeRun -1`, check pass $2^(-52)$], [$1.6 dot 10^(-6)$ / $9.8 dot 10^(-8)$], [0.54], [$1.7 dot 10^(-7)$ / $4.1 dot 10^(-8)$], [5.45]))
 ] <tab:ep-accuracy>
 
-#figure(caption: [Cost of the 80-bit switch: paired alternating runs of two copies of one output (TIRust d17085a with the bridge patch v2), off and on, in MadLoop's default settings (`CTModeRun -1`, rescue at $10^(-3)$, no rotation); median of the batch medians of the time per point, four pairs.])[
-  #tstyle(table(columns: (1fr, auto, auto, auto, auto, auto),
-    stroke: tstroke, fill: thead-fill, align: (left, center, right, right, right, right),
-    table.header([Process], [$sqrt(s)$], [points], [off, ms], [on, ms], [ratio]),
-    [$u overline(u) -> chi_(c 0) thin g$], [1 TeV], [200], [94.6], [548], [5.8],
-    [$u overline(u) -> chi_(c 0) thin g$], [20 GeV], [200], [94.3], [544], [5.8],
-    [$g g -> chi_(c 0) thin g$], [1 TeV], [48], [1029], [5519], [5.4],
-    [$g g -> chi_(c 0) thin g$], [20 GeV], [48], [1036], [5508], [5.3]))
+#figure(caption: [Cost of the 80-bit switch: paired alternating runs of two copies of one output, off and on, in MadLoop's default settings (`CTModeRun -1`, rescue at $10^(-3)$, no rotation); median of the batch medians of the time per point, four pairs. TIRust d17085a with the bridge patch v2, and da7902b with the bridge patch v16 (2026-11-27, outputs generated at `86b1b68571`). No point was rescued in quadruple precision.])[
+  #tstyle(table(columns: (1fr, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, left, center, right, right, right, right),
+    table.header([Process], [TIRust], [$sqrt(s)$], [points], [off, ms], [on, ms], [ratio]),
+    [$u overline(u) -> chi_(c 0) thin g$], [d17085a + v2], [1 TeV], [200], [94.6], [548], [5.8],
+    [$u overline(u) -> chi_(c 0) thin g$], [d17085a + v2], [20 GeV], [200], [94.3], [544], [5.8],
+    [$g g -> chi_(c 0) thin g$], [d17085a + v2], [1 TeV], [48], [1029], [5519], [5.4],
+    [$g g -> chi_(c 0) thin g$], [d17085a + v2], [20 GeV], [48], [1036], [5508], [5.3],
+    [$u overline(u) -> chi_(c 0) thin g$], [da7902b + v16], [1 TeV], [200], [103.5], [580], [5.6],
+    [$u overline(u) -> chi_(c 0) thin g$], [da7902b + v16], [20 GeV], [200], [97.3], [566], [5.8],
+    [$g g -> chi_(c 0) thin g$], [da7902b + v16], [1 TeV], [48], [1116], [5640], [5.1],
+    [$g g -> chi_(c 0) thin g$], [da7902b + v16], [20 GeV], [48], [1093], [5696], [5.2]))
 ] <tab:ep-cost>
 
 #box-note[
@@ -1150,7 +1334,8 @@ invariants) as binary64 hi + lo words and returns the result as hi + lo.
     ($g g$). In double precision that happens at 3 and 1 points, by up to
     3 and 10.
   - *Cost* (@tab:ep-cost). 5.3 to 5.8 times double precision, at both
-    energies, with no point rescued in quadruple precision. The quadruple
+    energies, with no point rescued in quadruple precision (5.1 to 5.8 on
+    da7902b with the bridge patch v16). The quadruple
     precision rescue of the whole point costs about 40 times.
   - *Profiles* (dash-dotted in @fig:stability and @fig:stability-octets, all
     P waves, both setups): no P-wave point has an estimate at or above $10^(-7)$; the largest is
@@ -1220,11 +1405,15 @@ contracted in the basis of the colour flows (`54a0c4cac1`).
 - Validation and reducers (one campaign, `data/raw/validate.json`):
   `tools/onia_loop_validate.py --work DIR --libs 9 3 8 6 7 1 --npoints 10 --timeout 120 --json validate.json`
   (cases and references in the tool and `research/literature.md`).
-  The two $e^+ e^-$ cases with $b$, $t$ excluded from the loops were rerun on 2026-11-24 at `344dfcaa9a` (`--cases ee_etac_a ee_psi_etac`, the same libraries) and replace the earlier entries. The second $e^+ e^- -> J\/psi thin eta_c$ row: the same with `--cases ee_psi_etac --libs 9 --tirust LIB --tirust-label '08cca00 (PR #58 on #56, candidate)' --json data/raw/validate_tirust08cca00.json`, `LIB` the TIRust 08cca00 installation of @sp.
+  The two $e^+ e^-$ cases with $b$, $t$ excluded from the loops were rerun on 2026-11-24 at `344dfcaa9a` (`--cases ee_etac_a ee_psi_etac`, the same libraries) and replace the earlier entries. The second $e^+ e^- -> J\/psi thin eta_c$ row: the same with `--cases ee_psi_etac --libs 9 --tirust LIB --tirust-label '08cca00 (PR #58 on #56, candidate)' --json data/raw/validate_tirust08cca00.json`, `LIB` the TIRust 08cca00 installation of @sp. The third row (2026-11-27, at `86b1b68571`): `--tirust-label 'da7902b + v16 (PR #71, candidate)' --json data/raw/validate_tirustda7902b.json`, `LIB` the TIRust da7902b installation with the bridge patch v16 of @twopw16.
 - Timing (`data/raw/timing/`): `tools/onia_loop_timing.py --root base=... --root cand=... --process ... --pairs 9`, settings as in @perf.
 - One process: `tools/onia_loop_check.py --model loop_sm_onia-c_mass --process "g g > etac(1|1S01) [virt=QCD]" --out DIR --libs 9`.
 - S-wave onium + jet against MG5 2.5.5 (`research/mg255_swave/data`): `build_ref.sh`,
-  `gen.py`, `compare.py <case>` of `research/mg255_swave` (README there).
+  `gen.py`, `compare.py <case>` of `research/mg255_swave` (README there), with `REGEN=1` and the
+  pinned TIRust; the cases (`ml_side.py`'s `CASES`) exclude $b$, $t$ from the loops since
+  2026-11-27 (rerun at `25a823e463`); the earlier records, with them at $10^4$ GeV (`CASES_1E4`), are
+  `data/raw/v16all/pinned1e4_cmp_<case>.json`. @tab:jpsipol (`pol_gg_jpsig.json`, `pol_jpsi.py`)
+  keeps the $10^4$ GeV setup.
 - P-wave (`data/raw/pwave/`): `research/pwave_fd/pw_check.py <case>` with
   `TIRUST_LIB` a TIRust 48958d1 installation (`build.sh`), `ENERGY=10` for the
   $e^+ e^-$ cases and 20 for the quark ones, and `research/pwave_fd/ps_term.py`
@@ -1233,9 +1422,10 @@ contracted in the basis of the colour flows (`54a0c4cac1`).
   `psi_chic_exact_<J>.json`): `research/pwave_fd/psi_chic.py --work DIR --json OUT --J <J> --tirust LIB --tirust-label 08cca00`, and the same with `--exact --modes=-1,4,5 --tirust-label 08cca00` in the same `DIR` (without `--tirust`, which would regenerate the outputs). `LIB` is TIRust 08cca00 built by `research/pwave_fd/build.sh` with the bridge patch v8 of the two-P-wave work (`research/two_pwave/FIXTURES.md`). The reference is `research/pwave_fd/psi_chic_ref.py`. The heavy-quark floor (`data/raw/pwave/qp_floor_<case>.json`): `research/pwave_fd/qp_floor.py OUTDIR OUT 2` on `e+ e- > Jpsi(1|3S11) chic2(1|3P21) / z QED=2 [virt=QCD]` (the $b$ and $t$ in the loops), and `... etac` on `e+ e- > Jpsi(1|3S11) etac(1|1S01) / z QED=2 [virt=QCD]`, both generated with the same TIRust.
 - Two P-wave states (`data/raw/two_pwave/`): `hkw_phase0.json` collects the outputs of `research/two_pwave/kernel_check.py` and `sigma3_check.py` (the derivation) and its $e^+ e^- -> chi_(c 0) thin h_c$ reference; `ee_dp.json`, `ee_qp.json`, `gg_dp_*.json` are `research/two_pwave/qp_check.py OUTDIR OUT ...` ($e^+ e^-$: `7:1 10.58:2 30:1 --modes 1,2` and `10.58:1 --modes 4`; $g g$: `8:2 12:2`, `20:4`, `50:2 200:2` with `--modes 1,2,-1 --thres 1.0d-3`), and `gg_qp_*.json` are `research/two_pwave/qp_point.py OUTDIR OUT E 1 4`, on outputs generated with TIRust 4f1b06c and the bridge patch v9 (`research/pwave_fd/build.sh`).
 - Two P-wave states on TIRust da7902b with the bridge patch v16 (@twopw16; `data/raw/two_pwave/v16_*.json`, described in `research/two_pwave/FIXTURES.md`): `v16_gg_chic0_chic0.json` is the rerun of the $g g -> chi_(c 0) thin chi_(c 0)$ points with `qp_check.py` and `qp_point.py`, with its comparison against the records above; `v16_ggg_3p28_3p18_ct1.json`, `_ct2.json` (one loop direction each), `v16_uu_chic0_3p08.json` (with a `CTModeRun` 4 point and `appendix_b.py terms`) and `v16_gg_chic1_chib0.json` (with the Born at the tree output's check point) are `qp_check.py` records.
-- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56`, `TIRUST_LIBEP` for the scratch TIRust builds; the last, for the 80-bit cases `...ep`, is TIRust d17085a built by `research/pwave_fd/build.sh` with the vendor part of `madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v2.patch` and the metadata key `raised_power_extended_inputs` of its installer; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
-- The 80-bit switch (@ep): `research/pwave_stability/ep_switch.py OUTDIR ESTIM.json NWORKERS MODE ...` at the 24 points (data in `research/pwave_stability/data/ep_switch_*`), and `research/pwave_stability/cost.py CASE SETUP OFF_OUTDIR ON_OUTDIR NPOINTS 4 production+ep 8` for the cost.
-- This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust08cca00.json --two-pwave data/raw/two_pwave --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
+- The examples on TIRust da7902b (@v16all; `data/raw/v16all/`, 2026-11-27, outputs generated at `86b1b68571` with `set tirust LIB`, `LIB` the installation of @twopw16): the same commands as above with `LIB` in place of the earlier builds: `tools/onia_loop_validate.py --libs 9 --tirust LIB` (`validate.json`); the 2.5.5 points with `research/mg255_swave/ml_side.py`'s `CASES_1E4` and its settings, then again in `CTModeRun` 4 (`mg255_<case>.json`: `dp`, `qp` and the reference `ref`), and the same with its `CASES`, $b$, $t$ excluded (`mg255excl_<case>.json`); `research/mg255_swave/pol_jpsi.py OUTDIR LIB -1,4` (`pol.json`); `research/pwave_fd/pw_check.py` with `TIRUST_LIB=LIB` (`ENERGY` 10 for the $e^+ e^-$ cases, 20 for $g g -> chi_(c 0) g$ and the quark ones); `psi_chic.py --tirust LIB` and `--exact --modes=-1,4,5`; `qp_floor.py`; `research/two_pwave/qp_check.py` and `appendix_b.py table2` with the specifications of the records; `research/pwave_fd/unequal_mass.py OUTDIR OUT 20:2 30:2 --modes 1,2`.
+- Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56`, `TIRUST_LIBEP`, `TIRUST_LIB16` for the scratch TIRust builds, the last the da7902b installation of @twopw16 for the cases `...16` and `...16ep`, run on 2026-11-27 with `NWORKERS=24`; the last, for the 80-bit cases `...ep`, is TIRust d17085a built by `research/pwave_fd/build.sh` with the vendor part of `madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v2.patch` and the metadata key `raised_power_extended_inputs` of its installer; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`, `figures/stability_v16.svg` and `figures/stability_v16_octets.svg`.
+- The 80-bit switch (@ep): `research/pwave_stability/ep_switch.py OUTDIR ESTIM.json NWORKERS MODE ...` at the 24 points (data in `research/pwave_stability/data/ep_switch_*`), and `research/pwave_stability/cost.py CASE SETUP OFF_OUTDIR ON_OUTDIR NPOINTS 4 production+ep 8` for the cost; on TIRust da7902b with the bridge patch v16 the same, with outputs generated at `86b1b68571` (`ep_switch_*_da7902b_v16.json`, `cost_*_production_ep_v16.json`).
+- This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust08cca00.json data/raw/validate_tirustda7902b.json --two-pwave data/raw/two_pwave --v16all data/raw/v16all --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
 - References: Petrelli, Cacciari, Greco, Maltoni, Mangano, hep-ph/9707223;
   Hagiwara, Sumino, Yokoya, 0804.1014; Sang, Chen, 0910.4071; Gong, Wang,
   0712.4220; Catani, Dittmaier, Trócsányi, hep-ph/0011222; quarkonium in

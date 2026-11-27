@@ -85,6 +85,13 @@ def onia_loop_info(matrix_element):
       nothers                   number of such signatures
       jz                        the J_z of each bound state, one tuple per
                                 polarisation configuration of all bound states
+      phys_helc                 the physical helicity configurations (a bound
+                                state with its J_z), in the order of the
+                                helicity matrix of the physical process
+      phys_leg[i]               constituent leg of physical leg i+1, or minus
+                                the index of its bound state
+      phys_others[c]            the signature (as in others) of the helicities
+                                of the other legs in physical configuration c
       norm                      the colour normalisation (1/3 per singlet, 2
                                 per octet), as a Fraction
     """
@@ -165,6 +172,36 @@ def onia_loop_info(matrix_element):
 
     jz = list(itertools.product(*[range(-o['J'], o['J'] + 1) for o in onia]))
 
+    # the physical helicity configurations, in the order of MadGraph's helicity
+    # matrix of the physical process (HelasMatrixElement.get_helicity_matrix with
+    # onia_physical, as the tree-level output and the FKS Born): a bound state
+    # takes its J_z = -J..J at the position of its first constituent, every
+    # other leg its helicity states; the last leg varies fastest.
+    # phys_leg[i]: the constituent leg (1-based) of physical leg i+1, or minus
+    # the index (1-based) of its bound state
+    model = matrix_element.get('processes')[0].get('model')
+    first = dict((o['first'], k + 1) for k, o in enumerate(onia))
+    phys_states, phys_leg = [], []
+    for wf in ext:
+        n = wf.get('number_external')
+        if n in second:
+            continue
+        if n in first:
+            o = onia[first[n] - 1]
+            phys_states.append(list(range(-o['J'], o['J'] + 1)))
+            phys_leg.append(-first[n])
+        else:
+            phys_states.append(wf.get('polarization') if wf.get('polarization') else
+                               model.get('particle_dict')[wf.get('pdg_code')]
+                               .get_helicity_states(True))
+            phys_leg.append(n)
+    phys_helc = [tuple(h) for h in itertools.product(*phys_states)]
+    # the signature (index in others) of the helicities of the other legs of
+    # each physical configuration: the physical legs that are not bound states
+    # are the other legs, in the same order
+    elementary = [i for i, leg in enumerate(phys_leg) if leg > 0]
+    phys_others = [signatures[tuple(h[i] for i in elementary)] for h in phys_helc]
+
     norm = fractions.Fraction(1)
     for o in onia:
         norm *= fractions.Fraction(1, 3) if o['C'] == 1 else fractions.Fraction(2)
@@ -177,6 +214,7 @@ def onia_loop_info(matrix_element):
 
     return dict(nexternal=nexternal, ninitial=ninitial, nexternal_phys=nexternal_phys,
                 mapping=mapping, onia=onia, helc=helc, others=others,
+                phys_helc=phys_helc, phys_leg=phys_leg, phys_others=phys_others,
                 nothers=len(signatures), jz=jz, norm=norm, ipwave=ipwave,
                 ipwaves=ipwaves, npwave=len(ipwaves))
 

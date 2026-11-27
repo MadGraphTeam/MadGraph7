@@ -9,7 +9,7 @@ onium + jet virtuals against the MG5 2.5.5 onia outputs.
 |---|---|
 | `benchmark.typ`, `style.typ` | the report (Typst 0.15), in the style of the pyAmpliCol one-loop report |
 | `data/*.json` | the tables of the report, written by `scripts/collect.py` |
-| `data/raw/` | the campaign records behind them (`validate.json`; `validate_before_guard.json`, the first three cases before the bound-state reducer guard; `timing/*.json`: changes A to E; `timing_A_B_B2/`: the first three alone; `pwave/`: `pw_check.py` and `ps_term.py` of the P-wave cases, and the J/psi chi_cJ runs; `two_pwave/`: the two-P-wave comparison and runs, and `appb_*` of `research/two_pwave/appendix_b.py` and `research/pwave_fd/unequal_mass.py` against app. B of the two-P-wave manuscript), scratch paths replaced by `WORK` |
+| `data/raw/` | the campaign records behind them (`validate.json`; `validate_before_guard.json`, the first three cases before the bound-state reducer guard; `timing/*.json`: changes A to E; `timing_A_B_B2/`: the first three alone; `pwave/`: `pw_check.py` and `ps_term.py` of the P-wave cases, and the J/psi chi_cJ runs; `two_pwave/`: the two-P-wave comparison and runs, and `appb_*` of `research/two_pwave/appendix_b.py` and `research/pwave_fd/unequal_mass.py` against app. B of the two-P-wave manuscript; `validate_tirust*.json`: the J/psi eta_c case on unpinned TIRust builds; `v16all/`: every example rerun on TIRust da7902b + bridge v16, with the 2.5.5 points also in quadruple precision and with the heavy quarks excluded from the loops), scratch paths replaced by `WORK` |
 | `scripts/collect.py` | campaign results to `data/*.json` |
 | `research/literature.md` | analytic references and their conventions |
 | `research/perf_audit.md`, `research/perf_audit_results/` | the MadLoop Fortran performance audit |
@@ -17,7 +17,8 @@ onium + jet virtuals against the MG5 2.5.5 onia outputs.
 | `research/mg255_swave/` | the S-wave onium + jet comparison with MG5 2.5.5 (`data/cmp_*.json`) |
 | `research/pwave_fd/` | the P-wave checks: finite differences, literature values, poles |
 | `research/stability/` | the stability profiles (after appendix C of arXiv:1604.01363): `stability.py` |
-| `scripts/stability_plot.py`, `figures/stability.svg`, `figures/stability_octets.svg` | their figures (the P-wave colour octets in the second) and `data/stability.json` |
+| `research/estimate_gap/` | the trace of MadLoop's estimate gap at the softest u u~ > eta_c g point (double-precision loop coefficients of two nearly degenerate pentagons, amplified by the contraction) |
+| `scripts/stability_plot.py`, `figures/stability.svg`, `figures/stability_octets.svg`, `figures/stability_v16.svg`, `figures/stability_v16_octets.svg` | their figures (the P-wave colour octets in the second; the last two: TIRust da7902b + bridge v16 against the builds of the records) and `data/stability.json` |
 
 ## Reproduction
 

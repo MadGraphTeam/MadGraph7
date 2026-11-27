@@ -38,6 +38,24 @@ C     the index of the helicities of their other legs
       DATA ONIA_OTHERS/1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2
      $ ,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4
      $ ,4,4,4,4,4,4,4,4,4/
+C     the physical helicity configurations (SLOOPMATRIXHEL): the
+C     helicity matrix of the physical process, a bound state with its
+C     J_z = -J..J, the last leg fastest (as the tree-level output and
+C     the FKS Born); per physical leg its constituent leg, or minus
+C     the index of its bound state; per configuration the signature
+C     (ONIA_OTHERS) of the helicities of the other legs
+C     A selected configuration is not averaged over the initial
+C     helicities (ONIA_HELAVG of them), as in MadLoop and the tree
+C      level
+      INTEGER ONIA_NPHYS, ONIA_PHYS_NCOMB, ONIA_HELAVG
+      PARAMETER (ONIA_NPHYS=4, ONIA_PHYS_NCOMB=12, ONIA_HELAVG=4)
+      INTEGER ONIA_PHYS_HEL(4,12), ONIA_PHYS_LEG(4)
+      INTEGER ONIA_PHYS_OTHERS(12)
+      DATA ONIA_PHYS_HEL/-1,1,0,-1,-1,1,0,0,-1,1,0,1,-1,-1,0,-1,-1,-1
+     $ ,0,0,-1,-1,0,1,1,1,0,-1,1,1,0,0,1,1,0,1,1,-1,0,-1,1,-1,0,0,1,-1
+     $ ,0,1/
+      DATA ONIA_PHYS_LEG/1,2,-1,-2/
+      DATA ONIA_PHYS_OTHERS/1,1,1,2,2,2,3,3,3,4,4,4/
 C     the colour flows of the projected Born amplitudes (ONIA_BF, one
 C     basis: ONIA_BORN_FLOWS) and the colour matrix between them
       INTEGER ONIA_NFLOW

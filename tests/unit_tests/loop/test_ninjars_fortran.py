@@ -331,8 +331,8 @@ C Fill a real coefficient cache with a valid reduction before switching IDs.
                             'AmplitudeReduction': amplitude, 'TIRCaching': caching,
                             'collier_available': True, 'golem_available': False,
                             'iregi_available': False, 'pjfry_available': False,
-                            'tirust_available': False, 'OniaPwave': False,
-                            'OniaPwaveEP': False})
+                            'tirust_available': False, 'Onia': False,
+                            'OniaPwave': False, 'OniaPwaveEP': False})
                     (self.work / 'dispatch.f').write_text(
                         driver % {'factor': 1 if amplitude else 2})
                     self.run_command('gfortran', '-ffixed-line-length-132',

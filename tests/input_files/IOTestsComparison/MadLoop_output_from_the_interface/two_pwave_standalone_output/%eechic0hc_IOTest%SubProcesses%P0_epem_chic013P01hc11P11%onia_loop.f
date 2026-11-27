@@ -32,6 +32,18 @@ C     Process: e+ e- > chic0(1|3P01) hc(1|1P11) [ virt = QCD ]
       SUBROUTINE ML5_0_SLOOPMATRIX(P_PHYS,ANS)
 C     The loop matrix element for the physical momenta P_PHYS (a bound
 C     state with mass m1+m2), computed from its constituent legs.
+C     After SLOOPMATRIXHEL(P_PHYS,HEL,ANS) (USERHEL=HEL) it is that of
+C      the
+C     physical helicity configuration HEL (1 to ONIA_PHYS_NCOMB): the
+C     helicity of each elementary leg and the J_z of each bound state,
+C      in
+C     the order of the helicity matrix of the physical process (as the
+C     tree-level output and the FKS Born). The constituent helicities
+C      are
+C     summed over; as in MadLoop, a configuration is not averaged over
+C      the
+C     initial helicities, so the configurations add up to ONIA_HELAVG
+C     times the unselected result.
       IMPLICIT NONE
       INTEGER NEXTERNAL, NEXTERNAL_PHYS
       PARAMETER (NEXTERNAL=6, NEXTERNAL_PHYS=4)
@@ -62,12 +74,29 @@ C     state with mass m1+m2), computed from its constituent legs.
       DATA PW_WARNED/.FALSE./
       SAVE PW_WARNED
       INCLUDE 'onia_loop_data.inc'
-      IF (USERHEL.NE.-1) THEN
-        WRITE(*,*) 'ERROR:: MadLoop sums over the polarisations of'
-     $   //' the',
-     &   ' bound states: the selection of a helicity configuration',
-     &   ' (SLOOPMATRIXHEL) is not supported for this process.'
-        STOP 1
+C     A physical helicity configuration (SLOOPMATRIXHEL): the J_z of
+C      each
+C     bound state (ONIA_SELECT_JZ) and the helicities of the other legs
+C     (ONIA_OTHERS_SEL); a J_z selection of the user is kept aside
+      INTEGER HEL_PHYS, IL, JZSEL(1), JZMASK_USER(ONIA_NONIA), NDIM_HEL
+      HEL_PHYS=USERHEL
+      IF (HEL_PHYS.NE.-1) THEN
+        IF (HEL_PHYS.LT.1.OR.HEL_PHYS.GT.ONIA_PHYS_NCOMB) THEN
+          WRITE(*,*) 'ERROR:: SLOOPMATRIXHEL: helicity configuration',
+     &     HEL_PHYS,' out of range (1 to',ONIA_PHYS_NCOMB,')'
+          STOP 1
+        ENDIF
+        CALL ML5_0_ONIA_JZ_MASK(.FALSE.,JZMASK_USER)
+        DO IL=1,ONIA_NPHYS
+          IF (ONIA_PHYS_LEG(IL).LT.0) THEN
+            JZSEL(1)=ONIA_PHYS_HEL(IL,HEL_PHYS)
+            CALL ML5_0_ONIA_SELECT_JZ(-ONIA_PHYS_LEG(IL),1,JZSEL)
+          ENDIF
+        ENDDO
+        CALL ML5_0_ONIA_OTHERS_SEL(.TRUE.,
+     &   ONIA_PHYS_OTHERS(HEL_PHYS))
+C       MadLoop sums over the selected constituent configurations
+        USERHEL=-1
       ENDIF
       CALL ML5_0_ONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
       PW_REFUSED=.FALSE.
@@ -137,6 +166,22 @@ C     precision).
       DO I=0,NSQUAREDSO
         ACCURACY(I)=1D0
       ENDDO
+      ENDIF
+      IF (HEL_PHYS.NE.-1) THEN
+C       As MadLoop's SLOOPMATRIXHEL and the tree-level SMATRIXHEL: one
+C       configuration is not averaged over the initial helicities (the
+C       configurations add up to ONIA_HELAVG times the unselected
+C        result)
+        CALL ML5_0_GET_ANSWER_DIMENSION(NDIM_HEL)
+        DO I=0,NDIM_HEL
+          DO IL=0,3
+            ANS(IL,I)=ANS(IL,I)*ONIA_HELAVG
+          ENDDO
+        ENDDO
+        CALL ML5_0_ONIA_JZ_MASK(.TRUE.,JZMASK_USER)
+        CALL ML5_0_ONIA_OTHERS_SEL(.TRUE.,0)
+C       as MadLoop's SLOOPMATRIXHEL, which leaves USERHEL set
+        USERHEL=HEL_PHYS
       ENDIF
       END
 
@@ -932,6 +977,7 @@ C     momenta)
       REAL*8 P(0:3,NEXTERNAL)
       INCLUDE 'onia_loop_data.inc'
       LOGICAL TSEL(ONIA_NJZT), ALLJZ
+      INTEGER IOSEL, IOTH
       COMPLEX*16 WEFF(NBORNAMPS,NCOMB)
       REAL*8 BORN2
       COMMON/ML5_0_ONIA_EFFECTIVE/WEFF,BORN2
@@ -1070,6 +1116,15 @@ C     The J_z selected with ONIA_SELECT_JZ (all by default)
         DO T=1,ONIA_NJZT
           IF (TSEL(T)) CYCLE
           BPROJ(1:NBORNAMPS,1:ONIA_NOTHERS,T)=(0D0,0D0)
+        ENDDO
+      ENDIF
+C     The helicities of the other legs selected by SLOOPMATRIXHEL, as
+C     their signature ONIA_OTHERS (all by default)
+      CALL ML5_0_ONIA_OTHERS_SEL(.FALSE.,IOSEL)
+      IF (IOSEL.NE.0) THEN
+        DO IOTH=1,ONIA_NOTHERS
+          IF (IOTH.EQ.IOSEL) CYCLE
+          BPROJ(1:NBORNAMPS,IOTH,1:ONIA_NJZT)=(0D0,0D0)
         ENDDO
       ENDIF
 C     The amplitudes of the soft current (ONIA_PW_SOFT_POLE): pair 1 in
@@ -2403,6 +2458,7 @@ C     direction sums in quadruple precision (as ONIA_PREPARE)
       REAL*16 P(0:3,NEXTERNAL)
       INCLUDE 'onia_loop_data.inc'
       LOGICAL TSEL(ONIA_NJZT), ALLJZ
+      INTEGER IOSEL, IOTH
       COMPLEX*32 WEFF(NBORNAMPS,NCOMB)
       COMMON/ML5_0_MP_ONIA_EFFECTIVE/WEFF
       COMPLEX*32 W1(NBORNAMPS,NCOMB,3), W2(NBORNAMPS,NCOMB,3)
@@ -2532,6 +2588,15 @@ C     The J_z selected with ONIA_SELECT_JZ (all by default)
         DO T=1,ONIA_NJZT
           IF (TSEL(T)) CYCLE
           BPROJ(1:NBORNAMPS,1:ONIA_NOTHERS,T)=CZERO
+        ENDDO
+      ENDIF
+C     The helicities of the other legs selected by SLOOPMATRIXHEL, as
+C     their signature ONIA_OTHERS (all by default)
+      CALL ML5_0_ONIA_OTHERS_SEL(.FALSE.,IOSEL)
+      IF (IOSEL.NE.0) THEN
+        DO IOTH=1,ONIA_NOTHERS
+          IF (IOTH.EQ.IOSEL) CYCLE
+          BPROJ(1:NBORNAMPS,IOTH,1:ONIA_NJZT)=CZERO
         ENDDO
       ENDIF
 C     The weights of each constituent helicity configuration and their
@@ -3041,6 +3106,23 @@ C     stored (SET) or returned
         SAVED(1:ONIA_NONIA)=MASK(1:ONIA_NONIA)
       ELSE
         MASK(1:ONIA_NONIA)=SAVED(1:ONIA_NONIA)
+      ENDIF
+      END
+
+      SUBROUTINE ML5_0_ONIA_OTHERS_SEL(SET,OSEL)
+C     The signature (ONIA_OTHERS) of the helicities of the legs other
+C     than the constituents that SLOOPMATRIXHEL selects (0: all),
+C      stored
+C     (SET) or returned
+      IMPLICIT NONE
+      LOGICAL SET
+      INTEGER OSEL, SAVED
+      DATA SAVED/0/
+      SAVE SAVED
+      IF (SET) THEN
+        SAVED=OSEL
+      ELSE
+        OSEL=SAVED
       ENDIF
       END
 

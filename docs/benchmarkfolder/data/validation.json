@@ -168,6 +168,35 @@
   "tirust": "08cca00 (PR #58 on #56, candidate)"
  },
  {
+  "name": "ee_psi_etac",
+  "label": "e^+ e^- -> J\\/psi thin eta_c",
+  "process": "e+ e- > Jpsi(1|3S11) etac(1|1S01) / z t t~ b b~ QED=2 [virt=QCD]",
+  "source": "Gong & Wang 0712.4220 K1, n_l = 3 decoupling scheme, mu = 2 m_c (literature.md C.4), b and t excluded from the loops",
+  "reference": [
+   24.53642,
+   0.0,
+   0.0
+  ],
+  "ref_short": "Gong, Wang (C.4), \u03bc = 2m_c; TIRust da7902b + v16 (PR #71, candidate)",
+  "energy": 10.58,
+  "mu": 3.0,
+  "lib": "9",
+  "npoints": 10,
+  "status": "ok",
+  "finite": 24.536421098040233,
+  "single": -1.6297799560328953e-15,
+  "double": 0.0,
+  "max_deviation": 5.252961793767625e-08,
+  "max_pole_deviation": 1.6638631372057734e-13,
+  "stable": 10,
+  "time_ms": 7.745312,
+  "accuracy": 3.7252e-08,
+  "return_codes": [
+   213
+  ],
+  "tirust": "da7902b + v16 (PR #71, candidate)"
+ },
+ {
   "name": "gg_etac1",
   "label": "g g -> eta_c thin [\"\"^1 S_0^((1))]",
   "process": "g g > etac(1|1S01) [virt=QCD]",

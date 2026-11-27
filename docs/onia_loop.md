@@ -38,6 +38,30 @@ frame. The Born, the virtual and the predicted poles are those of the
 selected J_z. `tools/onia_loop_check.py` exposes it as `jz=(K, [J_z, ...])` of
 `run_points` (driver option `--jz`).
 
+**One helicity configuration.** `SLOOPMATRIXHEL(P, HEL, ANS)` and
+`SLOOPMATRIXHEL_THRES(P, HEL, ANS, PREC_ASKED, PREC_FOUND, RET_CODE)` give
+the result of one physical helicity configuration HEL, on the physical momenta.
+This is what the MC over helicities of MadFKS uses.
+- **Numbering.** A configuration is the helicity of each elementary leg and
+  the J_z of each bound state. They are numbered as in MadGraph's helicity
+  matrix of the physical process: a bound state takes J_z = -J..J, and the
+  last leg varies fastest. This is the table of the tree-level output and of
+  the FKS Born (`ONIA_PHYS_HEL` in `onia_loop_data.inc`).
+- **What is computed.** The constituent helicities are summed over.
+- **Normalisation.** As in MadLoop and the tree-level `SMATRIXHEL`, a
+  configuration is not averaged over the initial helicities. ANS(0) is its
+  Born and ANS(1:3) its virtual, and the configurations add up to
+  `ONIA_HELAVG` (4 for two incoming partons) times the summed result.
+- **Selections.** As in MadLoop, `SLOOPMATRIXHEL` leaves the configuration
+  selected for later calls (`USERHEL` of the `USERCHOICE` common; -1 restores
+  the sum). A J_z selection of the user is put back after each call.
+- **Helicity filter.** `MadLoop5_resources/<prefix>HelFilter.dat` lists every
+  physical configuration with multiplicity 1, for MadFKS (`BinothLHA.f`).
+  Which J_z of a massive bound state vanish depends on the frame, so none is
+  filtered. MadLoop's own helicity filter, which would read that file in the
+  constituent numbering, stays off for bound states.
+- **Tool.** `tools/onia_loop_check.py` drives it with `run_points_hel`.
+
 Supported: `[virt=QCD]` with S-wave bound states in the final state, and at
 most one P-wave bound state. A P-wave output needs a TIRust installation with
 raised propagator powers (`raised_powers` in its metadata; `install tirust
@@ -238,8 +262,42 @@ quadruple precision, and every point and J/psi polarisation is right. With
 physical masses only the 1.5 MeV point is rescued, and the other accuracies
 stay near 1e-9.
 
-MadLoop's rotation of the point (`NRotations_DP = 1`, a permutation of the
-axes) catches the worst point, but not the transverse J/psi alone
+**Contraction rounding.** With a tensor-integral library the reversed loop
+direction recomputes only the integrals: both passes contract the same
+double-precision loop coefficients. Where that contraction cancels strongly,
+the rounding of the coefficients is amplified unseen. An example is a pentagon
+with both constituents at P/2 and a soft gluon, nearly degenerate. Its tensor
+integrals reach 2.5e8 and the contraction cancels by 5e4. In
+`u u~ > etac(1|1S01) g` with a 1.5 MeV gluon the result is then 2.2e-9 off,
+against an estimate of 4.3e-12. Bound-state outputs therefore also bound the
+accuracy from below by `ONIA_TIRK epsilon max_pass sum_j |c_j I_j| / |c0|`:
+- the sum runs over the loops of the finite part (`ONIA_TIRABS`, accumulated
+  in `TIR_interface.f`);
+- it is taken relative to the finite part of the same pass, before the
+  bound-state normalisation (`ONIA_TIRREL`);
+- `ONIA_TIRK = 300`;
+- it is zero in an extended-precision pass.
+
+The constant was calibrated against quadruple precision
+(`docs/benchmarkfolder/research/estimate_gap`). At 550 points of 18 processes
+the largest K any point needs is 236. The estimates of the S-wave processes
+rise by a median factor 1 to 130, to 2e-8 at most, so no point is rescued
+because of the term.
+
+**What it does not catch:**
+- the raised-power integrals of P waves;
+- a loop invariant at a two-particle threshold that double precision cannot
+  hit. In `g g > Jpsi(1|3S18) g` the gluon carrying the octet's momentum P
+  has a charm loop at p^2 = M^2 = 4 m_c^2. At sqrt(s) = 203 GeV, P^2
+  computed from the boosted momenta is 2e-13 below the threshold, and the
+  square-root behaviour of the bubble there costs 4e-8 of the result, the
+  same in both directions and in a rotation.
+
+**Rotations.** MadLoop's rotation of the point (`NRotations_DP = 1`, a
+permutation of the axes) catches the contraction rounding and most of the
+P-wave misses, at 1.4 to 2 times the time per point; it does not catch the
+threshold bubble. It catches the worst soft point too, but not the transverse
+J/psi alone
 (`ONIA_SELECT_JZ`) there, which stays 33% off. It also costs one more
 double-precision evaluation per point, about +50%. Bound-state outputs leave
 it at MadLoop's default, 0.
