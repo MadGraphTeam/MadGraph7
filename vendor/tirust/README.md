@@ -115,6 +115,19 @@ both directions repeat it. With the method choice, Zggg tensors were up to
 while MadLoop reported 1e-15. On MadLoop's Zggg traces the tiers cost about
 5% (check profile) to 22% (default card) more TIRust time per point.
 
+The binary64 pass accepts a lane only if its conditioning, raised to the
+recursion depth, is at least 1e-10 (`DP_GATE`, TIRust's
+`EmbedderOptions::gate`). TIRust's default, 1e-12, admits rounding amplified
+by up to about 1e12. The Gram systems are built from the supplied invariants,
+which every frame and both loop directions share, so MadLoop's checks repeat a
+binary64 error there rather than measure it. With 1e-12, a triangle of
+g g > Upsilon g with a 10 MeV gluon (legs nearly back to back, conditioning
+4.9e-12 at depth 2) was 6e-5 off, and tensors of Zggg's check-profile trace
+were up to 6e-3 off, all returned as successful. With 1e-10 those lanes go to
+the double-double tier, and the largest binary64 error left on the Zggg
+traces is 6e-8. The tighter gate costs about 23% (check profile) to 35%
+(default card) more TIRust time per point; 1e-8 would cost 48% to 64%.
+
 MadLoop's binary64 check pass reads its invariants multiplied by 1 +- 2^-52,
 which moves each by one or two units in its last place. The sign is a fixed
 function of each value's bits, so equal invariants of different integrals stay
