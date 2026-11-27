@@ -180,8 +180,8 @@ sets `[run] seed`, and so does editing the run card directly.
 **Coming from a LO run card?** The "Coming from MadEvent" page of the
 documentation maps the old names onto the new sections.
 
-**Gridpacks** work here too, via the `[gridpack]` section. The "Gridpacks"
-page of the documentation describes them, including `bin/event_stream.py`, a
+**Gridpacks** and cluster runs work here too. `tutorial gridpack` covers
+both. The "Gridpacks" page of the documentation adds `bin/event_stream.py`, a
 Python API that streams events in memory.
 
 %(see_also)s
