@@ -13,9 +13,10 @@ These scripts compare MadLoop's one-loop virtuals for S-wave quarkonium plus a j
 
 The 2.5.5 code passes the V0 result to MadFKS unchanged (`BinothLHA.f`: no DR-to-CDR conversion, "already in the CDR scheme format" as MadLoop's). Its poles are checked against MadFKS's `getpoles`. MadLoop's conventions therefore apply directly. The settings are:
 - **Reference.** `renormalisation_scheme=1`: the heavy quark is decoupled (zero-momentum subtraction) and α_s has n_lq flavours, as in MadLoop.
-- **MadLoop.**
-  - Charmonium uses `loop_sm_onia-c_mass`, with m_b = m_t = 10⁴ GeV so that only n_lq = 3 light flavours and the charm remain, as in the reference.
-  - Bottomonium uses `loop_sm_onia-no_tau_mass` (massless charm, n_lq = 4), with m_b = 4.75 and m_t = 10⁴ GeV.
+- **MadLoop.** The heavy quarks the reference decouples are excluded from the loops (`ml_side.CASES`), the exact m → ∞ limit:
+  - Charmonium uses `loop_sm_onia-c_mass` with `/ t t~ b b~`, so that only n_lq = 3 light flavours and the charm remain, as in the reference.
+  - Bottomonium uses `loop_sm_onia-no_tau_mass` (massless charm, n_lq = 4), with m_b = 4.75 GeV and `/ t t~`.
+  - Until 2026-11-27 they were decoupled with masses of 10⁴ GeV instead (`ml_side.CASES_1E4`, still used by `pol_jpsi.py`). Their R2 counterterms carry M² and leave rounding at soft jets (below), up to 2.3e-6 in the stable points of the earlier results.
   - The reduction library is TIRust, with MadLoop's stability checks (`CTModeRun=-1`).
 - **Normalisation.** Both results are given in units of Born·α_s/2π. The reference Born is its double pole divided by −Σ C_i (9 for gg → onium g, 17/3 for the quark channels).
 - **Scale.** μ_R = 11 GeV, so the log(μ²/m_Q²) terms of the scheme are tested.
@@ -40,16 +41,18 @@ The paths are those of the scratch workspace in which the scripts ran.
 
 | Case | Stable points (√s, GeV) | Finite | 1/ε | 1/ε² | Points reported unstable |
 |---|---|---|---|---|---|
-| g g > etac g | 12 (5–203) | 2.3e-6 | 8.7e-8 | 3e-11 | 4 (√s ≤ 3.15) |
-| g u > etac u | 13 (3.15–203) | 1.0e-6 | 1.9e-6 | 2e-9 | 3 (√s ≤ 3.12) |
-| u g > etac u | 13 (3.15–203) | 3.4e-7 | 3.5e-7 | 7e-9 | 3 (√s ≤ 3.12) |
-| u u~ > etac g | 12 (5–203) | 3.3e-7 | 2.8e-9 | 5e-10 | 4 (√s ≤ 3.15) |
-| g g > Jpsi g | 12 (5–203) | 1.3e-8 | 1.3e-10 | 6e-12 | 4 (√s ≤ 3.15) |
-| g g > etab g | 9 (11–200) | 6.5e-8 | 1.1e-8 | 8e-11 | 8 (√s ≤ 11.2) |
-| g u > etab u | 16 (9.506–200) | 6.5e-7 | 2.4e-7 | 6e-12 | 0 |
-| u g > etab u | 16 (9.506–200) | 3.8e-7 | 3.4e-6 | 1e-10 | 0 |
-| u u~ > etab g | 11 (11–200) | 2.8e-7 | 6.8e-10 | 7e-10 | 5 (√s ≤ 9.55) |
-| g g > Upsilon g | 9 (11–200) | 2.8e-9 | 4.2e-9 | 9e-11 | 7 (√s ≤ 11) |
+| g g > etac g | 12 (5–203) | 1.2e-10 | 3.1e-11 | 3e-11 | 4 (√s ≤ 3.15) |
+| g u > etac u | 13 (3.15–203) | 3.7e-9 | 2.2e-8 | 2e-9 | 3 (√s ≤ 3.12) |
+| u g > etac u | 13 (3.15–203) | 2.5e-9 | 2.3e-8 | 7e-9 | 3 (√s ≤ 3.12) |
+| u u~ > etac g | 12 (5–203) | 2.5e-11 | 2.1e-9 | 5e-10 | 4 (√s ≤ 3.15) |
+| g g > Jpsi g | 12 (5–203) | 2.3e-11 | 1.2e-10 | 6e-12 | 4 (√s ≤ 3.15) |
+| g g > etab g | 9 (11–200) | 6.5e-10 | 3.2e-10 | 8e-11 | 8 (√s ≤ 11.2) |
+| g u > etab u | 16 (9.506–200) | 1.6e-12 | 2.2e-11 | 6e-12 | 0 |
+| u g > etab u | 16 (9.506–200) | 2.6e-11 | 6.4e-10 | 1e-10 | 0 |
+| u u~ > etab g | 11 (11–200) | 9.3e-11 | 6.8e-10 | 7e-10 | 5 (√s ≤ 9.55) |
+| g g > Upsilon g | 9 (11–200) | 8.2e-10 | 4.2e-9 | 9e-11 | 7 (√s ≤ 11) |
+
+With b, t excluded (2026-11-27, pinned TIRust). With them at 10⁴ GeV the finite parts were within 2.3e-6 (g g > etac g), 1.0e-6, 3.4e-7, 3.3e-7, 1.3e-8, 6.5e-8, 6.5e-7, 3.8e-7, 2.8e-7 and 2.8e-9, in the order of the table (`docs/benchmarkfolder/data/raw/v16all/pinned1e4_cmp_<case>.json`); the polarisation items below keep that setup.
 
 - **Borns.** The Borns agree up to the LDMEs of the model: 0.3867 against 1.16/3 for η_c (ratio 1.000086), 3.093 against 9.28/3 for η_b (ratio 0.999892), and 1.16 for J/ψ and Υ (ratio 1).
 - **J/ψ.** `Jpsi_double_cs_NEW` evaluates the virtual directly, and MadLoop agrees with it to 1.3e-8. Its grid differs from that evaluation by up to 6.8e-4, and the earlier comparison with the grid of `2.5.5_Onia` gave 1.3e-4. The other grids (`calcoption=1`) agree with their direct evaluation to 1e-8, except for Υ, where they differ by up to 1.1e-4.

@@ -17,7 +17,8 @@ import ml_side
 
 
 def main(outdir, tirust, modes, out_file):
-    model, process, masses = ml_side.CASES['gg_jpsig']
+    # the setup of the record (Table 5): b and t at 1e4 GeV
+    model, process, masses = ml_side.CASES_1E4['gg_jpsig']
     extra = ['set tirust %s --no_save' % tirust] if tirust != '-' else []
     out = olc.output_process(model, process, outdir, extra=extra, regenerate=True)
     pdir = olc.subprocess_dir(out)

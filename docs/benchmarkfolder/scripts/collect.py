@@ -75,8 +75,9 @@ STATUS_LINES = [
     'finite part reproduces the closed form of Wang, Ma and Chao to $10^(-7)$ in double '
     'precision and $10^(-15)$ in quadruple precision ($b$, $t$ excluded from the loops; as heavy '
     'quarks at 10–100 TeV they left a floor of $10^(-7)$, @tab:qpfloor).',
-    '*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $3 dot 10^(-6)$ '
-    '($J\\/psi$: $10^(-8)$) at the points MadLoop reports stable.',
+    '*S-wave onium + jet against MG5 2.5.5* (@mg255): finite parts within $4 dot 10^(-9)$ at the '
+    'points MadLoop reports stable, with $b$, $t$ excluded from the loops (with them at $10^4$ GeV, '
+    'the earlier setup, within $2.3 dot 10^(-6)$: their counterterm rounding).',
     '*Stability profiles* (@stability, after appendix C of arXiv:1604.01363), charmonium and '
     'bottomonium: S waves steep, apart from points the pinned TIRust refuses (3% at 1 TeV) '
     'and a tail of true double-precision errors in 1–2% of the $J\\/psi$, $Upsilon$ points; the '
@@ -107,7 +108,7 @@ STATUS_LINES = [
     'counterterm of arXiv:2402.19221, off by up to 90% for a $B_c$ octet).',
     '*Every example on TIRust da7902b* with the bridge patch v16 (@v16all): every point the '
     'pinned TIRust refuses is served and stable, and the other results reproduce their records. '
-    'With $b$ and $t$ excluded from the loops instead of at $10^4$ GeV, the 2.5.5 comparison '
+    'With $b$ and $t$ excluded from the loops (now the setup of @tab:mg255), the 2.5.5 comparison '
     'agrees at every point, to $4 dot 10^(-10)$ in quadruple and $1.4 dot 10^(-8)$ in double '
     'precision; with the $10^4$ GeV quarks their counterterm rounding leaves up to '
     '$1.5 dot 10^(-5)$ at a 0.9 MeV jet, even in quadruple precision. The stability profiles on '
@@ -690,11 +691,12 @@ def summarize_v16all(folder):
                      moved=max(rel(x['finite'], y['finite']) for n, o in a
                                for x, y in zip(n['points'], o['points'])
                                if ok(x['ret_code']) and ok(y['ret_code']))))
-    # Tables 3 and 4: the 2.5.5 comparison
+    # the 2.5.5 comparison with b, t at 1e4 GeV (the setup of Tables 3 and 4 until 2026-11-27),
+    # against the pinned records of that setup (pinned1e4_cmp_<case>.json)
     pts, worst = [], None
     for path in sorted(glob.glob(os.path.join(folder, 'mg255_*.json'))):
         case = os.path.basename(path)[6:-5]
-        for r, o in zip(J(path), J(mgdata, 'cmp_%s.json' % case)):
+        for r, o in zip(J(path), J(folder, 'pinned1e4_cmp_%s.json' % case)):
             r['case'], r['pinned'] = case, o['ml']
             pts.append(r)
     for r in pts:
@@ -717,7 +719,8 @@ def summarize_v16all(folder):
                            for r in pts if not ok(r['pinned']['code'])],
                      worst_qp=dict(case=worst['case'], tag=worst['tag'], sqrts=worst['sqrts'],
                                    qp_vs_ref=worst['qp_vs_ref'], code=worst['dp']['code'])))
-    # the same points with the heavy quarks excluded from the loops (mg255excl_<case>.json)
+    # the same points with the heavy quarks excluded from the loops (mg255excl_<case>.json), the
+    # setup of Tables 3 and 4 now, against their pinned records (research/mg255_swave/data)
     xp = []
     for path in sorted(glob.glob(os.path.join(folder, 'mg255excl_*.json'))):
         case = os.path.basename(path)[10:-5]
@@ -735,6 +738,8 @@ def summarize_v16all(folder):
                      rescued=sum(r['dp']['code'] // 100 == 3 for r in xp),
                      dev_before=max(rel(r['pinned']['fin'], r['ref']['fin']) for r in xp if ok(r['pinned']['code'])),
                      dev_now=max(rel(r['dp']['fin'], r['ref']['fin']) for r in xp if ok(r['dp']['code'])),
+                     moved=max(rel(r['dp']['fin'], r['pinned']['fin']) for r in xp
+                               if ok(r['dp']['code']) and ok(r['pinned']['code'])),
                      dp_vs_qp=max(rel(r['dp']['fin'], r['qp']['fin']) for r in xp),
                      qp_vs_ref=max(rel(r['qp']['fin'], r['ref']['fin']) for r in xp),
                      qp_vs_ref_c1=max(abs(r['qp']['c1'] - r['ref']['c1']) for r in xp),
