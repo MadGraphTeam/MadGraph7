@@ -36,7 +36,8 @@ Hrun = Propagator('Hrun', '(1 + running_real + running_complex)',
 Zrun = Propagator('Zrun',
     '(-Metric(1,2) + P(1,id)*P(2,id)/Mass(id)**2)*(1 + running_complex + aS + G/(2*cmath.pi))',
     'P(-1,id)**2 - Mass(id)**2*(1 + running_real) + complex(0,1)*Mass(id)*Width(id)')
-''' % width)
+Zsq = Propagator('Zsq', '-Metric(1,2)', '(P(-1,id)**2 - Mass(id)**2 %s)**2')
+''' % (width, width))
     with open(os.path.join(path, '__init__.py'), 'a') as stream:
         stream.write('\nfrom . import propagators\n'
                      'particles.H.propagator = propagators.Hrun\n'

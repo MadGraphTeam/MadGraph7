@@ -78,6 +78,28 @@ class TestRunningHelasParameters(unittest.TestCase):
         self.assertEqual(MadMatrixALOHAWriter.dependent_params, ())
         self.assertEqual(MadMatrixALOHAWriter.propagator_parameters, {})
 
+    def test_squared_pole_custom_denominator(self):
+        """A width-corrected propagator (SMEFTsim T1, W1, Z1) has the squared
+        pole (P^2 - M^2 + i M W)^2, an FCT, as denominator. It is expanded at
+        denominator precision and cast down: the coupling and the division stay
+        at vertex precision, as in madmatrix::denom."""
+        from aloha.create_aloha import AbstractALOHAModel
+        from madmatrix.model_handling import MadMatrixALOHAWriter
+        aloha_model = AbstractALOHAModel.from_model(self.model, explicit_combine=True)
+        aloha_model.compute_subset([(('FFV2',), ['PZsq'], 3)])
+        text = '\n'.join(routine.write(output_dir=None, mode='no_include',
+                        language=MadMatrixALOHAWriter)[1]
+                         for routine in aloha_model.values())
+        found = re.search(
+            r'const cxtype_amp_sv denom = static_cast<fptype_amp>\( Ccoeff \) \* COUP'
+            r' / static_cast<cxtype_amp_sv>\( \( (.*) \) \);', text)
+        self.assertTrue(found)
+        denominator = found.group(1)
+        self.assertIn('cxpow(', denominator)
+        self.assertIn('dP3[0] * dP3[0]', denominator)
+        self.assertIn('static_cast<fptype_denom>(W3)', denominator)
+        self.assertIsNone(re.search(r'\b(?:FCT\d+|TMP\d+|cI)\b', denominator))
+
     def test_fixed_vertex_coupling_with_running_propagator(self):
         import copy
         from madgraph.core import base_objects, diagram_generation, helas_objects
@@ -537,18 +559,17 @@ class TestPropagatorDenominators(unittest.TestCase):
 
     def test_axial_gauge_custom_denominator(self):
         """In axial gauge a massless vector has the custom denominator
-        (P.PBar) P^2: it does not go through madmatrix::denom, and it is
-        divided in denominator precision, on TMPs built from the double
-        momenta."""
+        (P.PBar) P^2: it does not go through madmatrix::denom. It is built
+        from TMPs of the double momenta and cast down, the coupling and the
+        division stay at vertex precision."""
         routines = self.routines([(('VVV1',), ['P0'], 1), (('FFV1',), ['P0'], 3)],
                                  gauge=2)
         for name in ('VVV1P0_1', 'FFV1P0_3'):
             body = routines[name]
             self.assertNotIn('madmatrix::denom', body, name)
             found = re.search(
-                r'const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>\( '
-                r'static_cast<fptype_denom>\(Ccoeff\) \* static_cast<cxtype_denom_sv>\(COUP\)'
-                r' / \( (dTMP\d+) \* (dTMP\d+) \) \);', body)
+                r'const cxtype_amp_sv denom = static_cast<fptype_amp>\( Ccoeff \) \* COUP'
+                r' / fpamp_of_mom\( \( (dTMP\d+) \* (dTMP\d+) \) \);', body)
             self.assertTrue(found, name)
             for tmp in found.groups():
                 self.assertIn('const fptype_denom_sv %s = ' % tmp, body, name)
@@ -559,8 +580,8 @@ class TestPropagatorDenominators(unittest.TestCase):
         carry a custom denominator with the pole q^2 - M^2 + i M Gamma. It is
         written by write_obj like every other expression (cI, one), not by
         str(), which printed the Python literal '(-0+1j)' and did not
-        compile; with the mass and the width in it, it is not moved to
-        denominator precision."""
+        compile. It is expanded at denominator precision, from the double
+        momenta, mass and width, and cast down before the division."""
         routines = self.routines([(('FFV2',), ['P1L'], 3),
                                   (('FFV2',), ['P1T'], 3),
                                   (('FFV2',), ['P1A'], 3)])
@@ -569,14 +590,14 @@ class TestPropagatorDenominators(unittest.TestCase):
             self.assertNotIn('1j', body, name)
             self.assertNotIn('madmatrix::denom', body, name)
             found = re.search(
-                r'const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>\( '
-                r'static_cast<fptype_denom>\(Ccoeff\) \* static_cast<cxtype_denom_sv>\(COUP\)'
-                r' / \( (.*) \) \);', body)
+                r'const cxtype_amp_sv denom = static_cast<fptype_amp>\( Ccoeff \) \* COUP'
+                r' / static_cast<cxtype_amp_sv>\( \( (.*) \) \);', body)
             self.assertTrue(found, name)
             denominator = found.group(1)
-            for piece in ('cI', 'M3', 'W3'):
+            for piece in ('dP3[0]', 'static_cast<fptype_denom>(M3)',
+                          'static_cast<fptype_denom>(W3)', 'cxsmpl<fptype_denom>(0., 1.)'):
                 self.assertIn(piece, denominator, name)
-            self.assertNotIn('dTMP', denominator, name)
+            self.assertIsNone(re.search(r'\b(?:cI|P3|TMP\d+)\b', denominator), name)
 
     def test_fd_polarised_propagator(self):
         """FD gauge: a polarised propagator ('w+{0}' decayed further) is the

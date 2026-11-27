@@ -928,7 +928,7 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
         return self._fp_constant.sub(r'\1d', self._tmp_ref.sub(r'd\1', denominator))
 
     def running_denominator_in_denom_precision(self):
-        """Evaluate a running custom denominator before narrowing any operand.
+        """Evaluate a custom denominator before narrowing any operand.
 
         Its TMP/FCT expressions also feed numerator code at vertex precision.
         Expand those references here so cancellation and powers use the original
@@ -1121,8 +1121,8 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                 else:
                     mydict['pre_coup'] = 'static_cast<fptype_denom>(%s' % mydict['pre_coup']
                     mydict['post_coup'] = '%s)' % mydict['post_coup']
-                # Custom denominators: divided at denom precision.
-                prop = lambda den: 'static_cast<cxtype_amp_sv>( %s%s%s / %s )' % (mydict['pre_coup'], coup_name, mydict['post_coup'], den)
+                # Custom denominator: evaluated at denom precision, divided at vertex precision (as madmatrix::denom).
+                prop_coup = 'static_cast<fptype_amp>( %s ) * %s' % (ccoeff, coup_vertex) if has_coup else 'fptype_amp( 1 )'
                 # Standard propagator: madmatrix::denom keeps only P^2 - Re(m^2) at denom precision.
                 # Qualified: the local variable is also called denom. Without coupling (one): 1 / ( P^2 - m^2 ).
                 coup_args = '%s, %s, ' % (ccoeff, coup_vertex) if has_coup else ''
@@ -1173,11 +1173,13 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         # str() prints a complex coefficient as a Python
                         # literal ('(-0+1j)'), which does not compile
                         denominator = self.write_obj(self.routine.denominator)
-                        if any(self.propagator_parameters.get(tag) for tag in self.tag):
-                            denominator = self.running_denominator_in_denom_precision()
                         mydict['denom'] = self.denominator_in_denom_precision(
                                                denominator)
-                        out.write('    %s = %s;\n' % (mydict['declnamedenom'], prop('( %s )' % mydict['denom'])))
+                        if mydict['denom'] != denominator:
+                            narrowed = 'fpamp_of_mom( ( %s ) )' % mydict['denom']
+                        else:
+                            narrowed = 'static_cast<cxtype_amp_sv>( ( %s ) )' % self.running_denominator_in_denom_precision()
+                        out.write('    %s = %s / %s;\n' % (mydict['declnamedenom'], prop_coup, narrowed))
                 else:
                     if arith_doubleexpansion:
                         out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
