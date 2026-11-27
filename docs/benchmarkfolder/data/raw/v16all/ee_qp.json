@@ -1,0 +1,61 @@
+{
+ "output": "P0_epem_chic013P01hc11P11",
+ "masses": [
+  0.0,
+  0.0,
+  3.1,
+  3.1
+ ],
+ "modes": [
+  "4"
+ ],
+ "note": "The quadruple-precision path of a two-P-wave output against its double\nprecision: the virtual at points in CTModeRun 1 (double precision), 4\n(quadruple precision) and 5 (quadruple precision, loop direction reversed),\nwith MLStabThres 1d99, and in CTModeRun -1 with MLStabThres 1d-30, so that\nMadLoop's stability test sends every point to quadruple precision (the\nrescue: return code 2xx when the two quadruple-precision passes agree).\n`--thres X` sets the MLStabThres of CTModeRun -1 instead (MadLoop's default\nis 1.0d-3).\nEach point prints the poles in units of Born * alpha_s/(2 pi) against\nONIA_IR_POLES, the finite parts, the differences between the passes, the\nreturn codes and the times.\n\n    qp_check.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--modes 1,4,5,-1] [--thres 1.0d-30]\n\nThe points are those of fixtures.py and acceptance.py (seed 1).\n",
+ "records": [
+  {
+   "energy": 10.58,
+   "point": 0,
+   "momenta": [
+    [
+     "0x1.528f5c28f5c29p+2",
+     "0x0.0p+0",
+     "0x0.0p+0",
+     "0x1.528f5c28f5c29p+2"
+    ],
+    [
+     "0x1.528f5c28f5c29p+2",
+     "0x0.0p+0",
+     "0x0.0p+0",
+     "-0x1.528f5c28f5c29p+2"
+    ],
+    [
+     "0x1.528f5c28f5c28p+2",
+     "0x1.b383f625d2db4p+1",
+     "-0x1.086f9e71e09ebp+1",
+     "-0x1.9724504ecf5f2p+0"
+    ],
+    [
+     "0x1.528f5c28f5c28p+2",
+     "-0x1.b383f625d2db4p+1",
+     "0x1.086f9e71e09ebp+1",
+     "0x1.9724504ecf5f2p+0"
+    ]
+   ],
+   "ctmode4": {
+    "born": 6.304336834457866e-10,
+    "finite": 4.5442449437936063e-10,
+    "single": 8.425998817615675e-12,
+    "double": 0.0,
+    "accuracy": -1.0,
+    "ret_code": 120,
+    "ao2pi": 0.01878028328484365,
+    "mu": 10.58,
+    "time": 178.8152,
+    "predicted_single_norm": 0.7116719452362144,
+    "predicted_double_norm": 0.0,
+    "finite_norm": 38.38134455963049,
+    "single_norm": 0.7116719452362222,
+    "double_norm": 0.0
+   }
+  }
+ ]
+}

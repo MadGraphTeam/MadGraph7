@@ -183,12 +183,15 @@ $alpha_s\/2pi$; literature values in units of $alpha_s\/pi$ doubled (sources in
   *Two bound states.* With the pinned TIRust every $e^+ e^- -> J\/psi thin eta_c$
   point meets refused lanes (a threshold bubble pinch, and pentagons holding the
   Coulomb relations of both onia) and is reported exceptional. The second row
-  uses TIRust 08cca00, which serves them. That revision is in
-  huashengshao/TIRust\#58, stacked on \#56, which holds the earlier 370b632; it
-  is not yet pinned.
+  uses TIRust 08cca00, which serves them, and the third TIRust da7902b with the
+  bridge patch v16 (TIRust PR \#71, the candidate of @twopw16). The fix is in
+  huashengshao/TIRust\#56 and \#58 (08cca00 is \#58 stacked on \#56, which holds
+  the earlier 370b632), both merged into TIRust's main branch on 2026-11-24;
+  da7902b is built on that main branch. Neither revision is pinned yet.
   - *Double precision.* Every point is stable (code 213). The poles are zero to
     $1.7 dot 10^(-13)$, and the finite part is within $5.3 dot 10^(-8)$ of Gong
-    and Wang, whose value has seven digits.
+    and Wang, whose value has seven digits. The two revisions agree to
+    $3 dot 10^(-16)$ at every point.
   - *Quadruple precision* gives 24.53642097 at every point (@sp).
   - *The earlier run* kept $b$ and $t$ in the loops, at 10 and 100 TeV, with
     370b632. Its poles were zero only to $1.3 dot 10^(-7)$ and its finite part
@@ -903,15 +906,109 @@ The numbers:
   constituents, are exempt. Separately, IREGI drops the loop of the
   leptonium process at its scale ($M = 2 m_e$; also at $M = 20$ MeV, while it is
   right at 2 GeV) and reports it stable: a limitation of IREGI at small
-  scales, outside the default chain. Open TIRust items (reproducers in
-  `research/tirust_qp_repro/`):
-  (1) the binary128 path refuses the degenerate lanes even with exact inputs,
-  so there is no QP rescue for bound states yet;
+  scales, outside the default chain. The TIRust column is the pinned revision.
+  Three of its limits are fixed in TIRust's main branch (PRs \#47, \#55, \#56
+  and \#58, merged on 2026-11-24) and in TIRust da7902b (PR \#71, built on that
+  branch) with the bridge patch v16, none of them pinned yet:
+  (1) its binary128 path refuses the degenerate lanes even with exact inputs,
+  so it has no QP rescue for bound states (reproducers in
+  `research/tirust_qp_repro/`); on da7902b the soft points of @mg255 are
+  rescued in quadruple precision (code `3xx`);
   (2) processes with two bound states ($e^+ e^- -> J\/psi eta_c$) meet refused
   lanes (a threshold bubble pinch; two Coulomb relations in one pentagon),
-  served by TIRust 370b632 and 08cca00 (PRs \#56 and \#58, not yet pinned; @analytic);
-  (3) P-wave states need the doubled-propagator integrals at threshold:
-  TIRust 48958d1 has them for the $2 -> 1$ processes (@pwave), not yet pinned.
+  served by 08cca00 and da7902b (@analytic);
+  (3) P-wave states need the doubled-propagator integrals at threshold, which
+  the pinned installation does not have (@pwave, @twopw16).
+]
+
+= The examples on TIRust da7902b <v16all>
+
+#let va = json("data/v16all.json").rows
+#let vrow(k) = va.find(r => r.key == k)
+#let vmg = vrow("mg255")
+#let vx = vrow("mg255x")
+Every example of the sections above was rerun on 2026-11-27 with TIRust
+da7902b and the bridge patch v16, the candidate of @twopw16 (TIRust PR \#71,
+built on TIRust's main branch, which has PRs \#47, \#55, \#56 and \#58). The
+outputs were generated from `86b1b68571`, and the points and settings are
+those of the records. @tab:v16all compares each group with its record. The
+processes of @twopw16 were first run on da7902b. The stability profiles
+(@stability) and the 80-bit switch (@ep) were not rerun.
+
+#let v16-groups = (
+  analytic: ([Analytic results, $2 -> 2$ poles (@analytic, @twotwo, TIRust column of @tab:reducers)], [pinned], [$c_0$ (rel.) or poles]),
+  mg255: ([Onium + jet against 2.5.5 (@tab:mg255), $b$, $t$ at $10^4$ GeV], [pinned], [2.5.5 $c_0$ (rel.)]),
+  mg255x: ([The same, $b$, $t$ excluded from the loops], [pinned, $10^4$ GeV], [2.5.5 $c_0$ (rel.)]),
+  pol: ([$g g -> J\/psi thin g$ per polarisation (@tab:jpsipol)], [pinned], [direct $c_0$ (rel.)]),
+  pwave: ([One P-wave state (@tab:pwave, @tab:pwave22)], [48958d1, 370b632], [predicted $c_1$ (abs.)]),
+  sp: ([$e^+ e^- -> J\/psi thin chi_(c J)$, double precision (@tab:sp, @tab:sphel)], [08cca00], [Wang–Ma–Chao $chevron.l c_0 chevron.r$ (rel.)]),
+  qpfloor: ([Heavy-quark floor, QP sum (@tab:qpfloor)], [08cca00], [reference $chevron.l c_0 chevron.r$ (rel.)]),
+  ee2p: ([$e^+ e^- -> chi_(c 0) thin h_c$ (@tab:ee2p, @tab:appb-ee)], [4f1b06c + v9], [predicted $c_1$ (abs.)]),
+  bc: ([Unequal masses, $B_c$ P waves (@tab:appb-bc)], [record], [predicted $c_1$ (rel.)]),
+)
+#block(breakable: false)[#figure(caption: [The examples on TIRust da7902b with the bridge patch v16 against their records (the TIRust of the record in the second column): the points; the stable ones (codes `1xx` to `3xx`) in the record and now; the largest deviation from the group's reference in the record and now, at the stable points; and "moved", the largest relative change of the finite part (of $c_1$, absolute, for the $B_c$ and table-2 rows) at the points stable in both. The $e^+ e^-$ rows include points in quadruple precision.])[
+  #tstyle(table(columns: (1fr, auto, auto, auto, auto, auto, auto),
+    stroke: tstroke, fill: thead-fill, align: (left, left, right, right, right, left, right),
+    [Examples], [Record], [Points], [Stable], [Deviation], [Against], [Moved],
+    ..va.map(r => {
+      let g = v16-groups.at(r.key)
+      (g.at(0), g.at(1), str(r.points),
+       if r.at("stable_before", default: none) == none [—] else [#r.stable_before → #r.stable_now],
+       [#sci(r.dev_before) → #sci(r.dev_now)], g.at(2),
+       if r.at("moved", default: none) == none [—] else [#sci(r.moved)])
+    }).flatten()))
+] <tab:v16all>]
+
+#box-note[
+  *What da7902b changes.* Every point the pinned TIRust refused is served and
+  stable:
+  - the $e^+ e^- -> J\/psi thin eta_c$ points (@analytic);
+  - the #vmg.soft.len() soft-jet points of the 2.5.5 comparison (@mg255). The
+    $J\/psi$ and $Upsilon$ ones are rescued in quadruple precision (code 323)
+    and agree with the reference to
+    #sci(calc.max(..vmg.soft.filter(s => s.case in ("gg_jpsig", "gg_upsg")).map(s => s.qp_vs_ref)))#[;]
+    of the $eta_c$ and $eta_b$ ones, one is rescued (below) and the others
+    pass in double precision (code 213), within
+    #sci(calc.max(..vmg.soft.filter(s => s.code < 300).map(s => s.dp_vs_qp))) of forced
+    quadruple precision.
+
+  *The heavy quarks of the 2.5.5 setup.* @mg255 decouples the $b$ and $t$
+  quarks with masses of $10^4$ GeV, and the rounding of their counterterms
+  ($M^2$-enhanced, @mg255) is what is left at the soft points. With them,
+  double precision is within #sci(vmg.dp_vs_qp) of forced quadruple precision
+  at all #vmg.points points, the largest at the softest $g g -> eta_c thin g$
+  point ($sqrt(s) = 3.1015$ GeV, estimate $7.7 dot 10^(-6)$). At
+  $g g -> eta_b thin g$, `PS.input` ($sqrt(s) = 11.1552$ GeV, a 1.5 GeV gluon
+  with $p_T = 0.9$ MeV), even quadruple precision is
+  #sci(vx.etab_point.mt1e4_vs_ref) from the reference, in both loop
+  directions#if vx.etab_point.directions == 0 [ (bit-identical)] else [ (#sci(vx.etab_point.directions) apart)],
+  and $m_t = 10^5$ GeV moves it to #sci(vx.etab_point.mt1e5_vs_ref). With the
+  top excluded from the loops it agrees to #sci(vx.etab_point.qp_vs_ref): the
+  2.5.5 reference is right there.
+
+  *With the heavy quarks excluded from the loops* instead (`/ t t~ b b~`, for
+  bottomonium `/ t t~`), the setup of the $e^+ e^-$ references (@analytic),
+  every point is stable (#vx.rescued rescued), quadruple precision agrees with
+  the reference to #sci(vx.qp_vs_ref) ($c_1$ to #sci(vx.qp_vs_ref_c1)) and
+  double precision to #sci(vx.dev_now), the soft points included
+  (#sci(vx.soft_dp_vs_qp) from quadruple precision). @tab:mg255 keeps the
+  setup of its record.
+
+  *MadLoop's estimate against forced quadruple precision.* It is below the
+  double-precision error at #vmg.estimate_below.count of the #vmg.points points
+  with the $10^4$ GeV quarks (errors up to #sci(vmg.estimate_below.max_error))
+  and at #vx.estimate_below.count with the quarks excluded (errors up to
+  #sci(vx.estimate_below.max_error)), all far inside `MLStabThres`. The largest
+  ratio is at the softest $u overline(u) -> eta_c thin g$ point
+  ($sqrt(s) = #fixed(vx.estimate_below.worst.sqrts, 4)$ GeV): an error of
+  #sci(vx.estimate_below.worst.error) against an estimate of
+  #sci(vx.estimate_below.worst.accuracy), in both setups, so it is common to
+  the two loop directions and not from the heavy quarks (not traced).
+
+  *Everything else* reproduces its record, as @tab:v16all shows: the P-wave
+  poles are closer to the prediction than on 48958d1 and 370b632, and the
+  $e^+ e^-$ two-onium results are bit-identical. The tables of the sections
+  above stay on the revisions of their records.
 ]
 
 = Stability profiles <stability>
@@ -1220,7 +1317,7 @@ contracted in the basis of the colour flows (`54a0c4cac1`).
 - Validation and reducers (one campaign, `data/raw/validate.json`):
   `tools/onia_loop_validate.py --work DIR --libs 9 3 8 6 7 1 --npoints 10 --timeout 120 --json validate.json`
   (cases and references in the tool and `research/literature.md`).
-  The two $e^+ e^-$ cases with $b$, $t$ excluded from the loops were rerun on 2026-11-24 at `344dfcaa9a` (`--cases ee_etac_a ee_psi_etac`, the same libraries) and replace the earlier entries. The second $e^+ e^- -> J\/psi thin eta_c$ row: the same with `--cases ee_psi_etac --libs 9 --tirust LIB --tirust-label '08cca00 (PR #58 on #56, candidate)' --json data/raw/validate_tirust08cca00.json`, `LIB` the TIRust 08cca00 installation of @sp.
+  The two $e^+ e^-$ cases with $b$, $t$ excluded from the loops were rerun on 2026-11-24 at `344dfcaa9a` (`--cases ee_etac_a ee_psi_etac`, the same libraries) and replace the earlier entries. The second $e^+ e^- -> J\/psi thin eta_c$ row: the same with `--cases ee_psi_etac --libs 9 --tirust LIB --tirust-label '08cca00 (PR #58 on #56, candidate)' --json data/raw/validate_tirust08cca00.json`, `LIB` the TIRust 08cca00 installation of @sp. The third row (2026-11-27, at `86b1b68571`): `--tirust-label 'da7902b + v16 (PR #71, candidate)' --json data/raw/validate_tirustda7902b.json`, `LIB` the TIRust da7902b installation with the bridge patch v16 of @twopw16.
 - Timing (`data/raw/timing/`): `tools/onia_loop_timing.py --root base=... --root cand=... --process ... --pairs 9`, settings as in @perf.
 - One process: `tools/onia_loop_check.py --model loop_sm_onia-c_mass --process "g g > etac(1|1S01) [virt=QCD]" --out DIR --libs 9`.
 - S-wave onium + jet against MG5 2.5.5 (`research/mg255_swave/data`): `build_ref.sh`,
@@ -1233,9 +1330,10 @@ contracted in the basis of the colour flows (`54a0c4cac1`).
   `psi_chic_exact_<J>.json`): `research/pwave_fd/psi_chic.py --work DIR --json OUT --J <J> --tirust LIB --tirust-label 08cca00`, and the same with `--exact --modes=-1,4,5 --tirust-label 08cca00` in the same `DIR` (without `--tirust`, which would regenerate the outputs). `LIB` is TIRust 08cca00 built by `research/pwave_fd/build.sh` with the bridge patch v8 of the two-P-wave work (`research/two_pwave/FIXTURES.md`). The reference is `research/pwave_fd/psi_chic_ref.py`. The heavy-quark floor (`data/raw/pwave/qp_floor_<case>.json`): `research/pwave_fd/qp_floor.py OUTDIR OUT 2` on `e+ e- > Jpsi(1|3S11) chic2(1|3P21) / z QED=2 [virt=QCD]` (the $b$ and $t$ in the loops), and `... etac` on `e+ e- > Jpsi(1|3S11) etac(1|1S01) / z QED=2 [virt=QCD]`, both generated with the same TIRust.
 - Two P-wave states (`data/raw/two_pwave/`): `hkw_phase0.json` collects the outputs of `research/two_pwave/kernel_check.py` and `sigma3_check.py` (the derivation) and its $e^+ e^- -> chi_(c 0) thin h_c$ reference; `ee_dp.json`, `ee_qp.json`, `gg_dp_*.json` are `research/two_pwave/qp_check.py OUTDIR OUT ...` ($e^+ e^-$: `7:1 10.58:2 30:1 --modes 1,2` and `10.58:1 --modes 4`; $g g$: `8:2 12:2`, `20:4`, `50:2 200:2` with `--modes 1,2,-1 --thres 1.0d-3`), and `gg_qp_*.json` are `research/two_pwave/qp_point.py OUTDIR OUT E 1 4`, on outputs generated with TIRust 4f1b06c and the bridge patch v9 (`research/pwave_fd/build.sh`).
 - Two P-wave states on TIRust da7902b with the bridge patch v16 (@twopw16; `data/raw/two_pwave/v16_*.json`, described in `research/two_pwave/FIXTURES.md`): `v16_gg_chic0_chic0.json` is the rerun of the $g g -> chi_(c 0) thin chi_(c 0)$ points with `qp_check.py` and `qp_point.py`, with its comparison against the records above; `v16_ggg_3p28_3p18_ct1.json`, `_ct2.json` (one loop direction each), `v16_uu_chic0_3p08.json` (with a `CTModeRun` 4 point and `appendix_b.py terms`) and `v16_gg_chic1_chib0.json` (with the Born at the tree output's check point) are `qp_check.py` records.
+- The examples on TIRust da7902b (@v16all; `data/raw/v16all/`, 2026-11-27, outputs generated at `86b1b68571` with `set tirust LIB`, `LIB` the installation of @twopw16): the same commands as above with `LIB` in place of the earlier builds: `tools/onia_loop_validate.py --libs 9 --tirust LIB` (`validate.json`); the 2.5.5 points through `research/mg255_swave/ml_side.py`'s cases and settings, then again in `CTModeRun` 4 (`mg255_<case>.json`: `dp`, `qp` and the reference `ref`); `research/mg255_swave/pol_jpsi.py OUTDIR LIB -1,4` (`pol.json`); `research/pwave_fd/pw_check.py` with `TIRUST_LIB=LIB` (`ENERGY` 10 for the $e^+ e^-$ cases, 20 for $g g -> chi_(c 0) g$ and the quark ones); `psi_chic.py --tirust LIB` and `--exact --modes=-1,4,5`; `qp_floor.py`; `research/two_pwave/qp_check.py` and `appendix_b.py table2` with the specifications of the records; `research/pwave_fd/unequal_mass.py OUTDIR OUT 20:2 30:2 --modes 1,2`.
 - Stability profiles (`data/raw/stability/`): `research/stability/stability.py WORK data/raw/stability CASE:SETUP ...` (cases and setups in the script; `TIRUST_LIB48958`, `TIRUST_LIB370`, `TIRUST_LIB08`, `TIRUST_LIB56`, `TIRUST_LIBEP` for the scratch TIRust builds; the last, for the 80-bit cases `...ep`, is TIRust d17085a built by `research/pwave_fd/build.sh` with the vendor part of `madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v2.patch` and the metadata key `raised_power_extended_inputs` of its installer; 5025e12 is built by `research/pwave_fd/build.sh` with `BRIDGE_PATCH=madloop-tirust-gate-and-relation-tiers.patch` and `ONELOOP_REV=cdbc912ab7b8…`), then `scripts/stability_plot.py data/raw/stability figures/stability.svg`, which also writes `figures/stability_octets.svg`.
 - The 80-bit switch (@ep): `research/pwave_stability/ep_switch.py OUTDIR ESTIM.json NWORKERS MODE ...` at the 24 points (data in `research/pwave_stability/data/ep_switch_*`), and `research/pwave_stability/cost.py CASE SETUP OFF_OUTDIR ON_OUTDIR NPOINTS 4 production+ep 8` for the cost.
-- This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust08cca00.json --two-pwave data/raw/two_pwave --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
+- This report: `python3 scripts/collect.py ... --validation-extra data/raw/validate_tirust08cca00.json data/raw/validate_tirustda7902b.json --two-pwave data/raw/two_pwave --v16all data/raw/v16all --mg255 research/mg255_swave/data --pwave data/raw/pwave; typst compile benchmark.typ benchmark.pdf`.
 - References: Petrelli, Cacciari, Greco, Maltoni, Mangano, hep-ph/9707223;
   Hagiwara, Sumino, Yokoya, 0804.1014; Sang, Chen, 0910.4071; Gong, Wang,
   0712.4220; Catani, Dittmaier, Trócsányi, hep-ph/0011222; quarkonium in

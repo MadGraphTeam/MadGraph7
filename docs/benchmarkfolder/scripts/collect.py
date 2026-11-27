@@ -60,11 +60,13 @@ STATUS_LINES = [
     'at threshold, not always detected by MadLoop\'s tests: their results are now reported '
     'unstable, and TIRust is the default chain (@reducers).',
     '*Two bound states* ($e^+ e^- -> J\\/psi thin eta_c$): the pinned TIRust refuses lanes '
-    'and the points are reported exceptional; TIRust 08cca00 (PR \\#58 on \\#56, not yet pinned) serves '
-    'them, stable, Gong–Wang reproduced to its seven digits ($5 dot 10^(-8)$; $b$, $t$ excluded '
+    'and the points are reported exceptional; TIRust 08cca00 (PR \\#58 on \\#56, both merged into '
+    'TIRust main) and da7902b with the bridge patch v16 (PR \\#71) serve them, neither pinned yet: '
+    'stable, Gong–Wang reproduced to its seven digits ($5 dot 10^(-8)$; $b$, $t$ excluded '
     'from the loops) (@analytic).',
-    '*No QP rescue yet:* TIRust\'s binary128 path refuses the threshold lanes (open TIRust '
-    'item); such points are reported unstable, not wrong.',
+    '*QP rescue:* the pinned TIRust\'s binary128 path refuses the threshold lanes, so such '
+    'points are reported unstable, not wrong; on da7902b (built on TIRust main, which has '
+    'PR \\#47) they are rescued (@v16all).',
     '*P-wave, one bound state* (@pwave): with TIRust 48958d1 (not yet pinned) the $2 -> 1$ '
     'literature values reproduced to $10^(-12)$, the poles as predicted with the $P -> S$ term '
     'of the soft current, also for $u overline(u) -> chi_(c 0) g$ and $g u -> chi_(c 0) u$.',
@@ -103,6 +105,13 @@ STATUS_LINES = [
     'tested; for unequal constituent masses ($B_c$) the virtual has no self-like pole, as eq. (B.2) '
     'says; `ONIA_IR_POLES` now has none either (it kept the self term and LDME '
     'counterterm of arXiv:2402.19221, off by up to 90% for a $B_c$ octet).',
+    '*Every example on TIRust da7902b* with the bridge patch v16 (@v16all): every point the '
+    'pinned TIRust refuses is served and stable, and the other results reproduce their records. '
+    'With $b$ and $t$ excluded from the loops instead of at $10^4$ GeV, the 2.5.5 comparison '
+    'agrees at every point, to $4 dot 10^(-10)$ in quadruple and $1.4 dot 10^(-8)$ in double '
+    'precision; with the $10^4$ GeV quarks their counterterm rounding leaves up to '
+    '$1.5 dot 10^(-5)$ at a 0.9 MeV jet, even in quadruple precision. The stability profiles '
+    'and the 80-bit switch were not rerun.',
     '*MadLoop speed* (@perf): `-O2` builds, tabulated colour contraction and hoisted IEEE '
     'checks, bit-identical, faster on every benchmark process. The final campaign, after all '
     'the bound-state work (`4ba297a911`, 15 pairs, pinned cores), gives upper 95% bounds of '
@@ -111,13 +120,16 @@ STATUS_LINES = [
 ]
 OPEN_ITEMS = [
     '*P-wave in TIRust:* a pinned revision with the raised powers at threshold (PRs \\#47, '
-    '\\#55 and \\#56; until then a P-wave point meets a refused integral and is reported unstable). '
+    '\\#55 and \\#56, merged into TIRust main on 2026-11-24; until then a P-wave point meets a '
+    'refused integral and is reported unstable). '
     '370b632 (in \\#56) also serves $g g -> chi_(c 0) g$ (@pwave). For double precision '
     'at high energy, the relation tiers of \\#56 (5025e12) with their bridge patch, and the pole '
     'kernels of the bridge on the `oneloop` of that revision (@stability).',
-    '*Two S-wave bound states* in one process: a pinned TIRust with PR \\#56 '
-    '(threshold bubble pinches, two Coulomb relations in one loop; served by 370b632 and 08cca00).',
-    '*Quadruple-precision rescue:* the degenerate lanes in TIRust\'s binary128 path.',
+    '*Two S-wave bound states* in one process: a pinned TIRust with PRs \\#56 and \\#58 '
+    '(threshold bubble pinches, two Coulomb relations in one loop; both merged into TIRust main '
+    'on 2026-11-24; served by 08cca00 and by da7902b with the bridge patch v16).',
+    '*Quadruple-precision rescue:* a pinned TIRust with PR \\#47 (the degenerate lanes of the '
+    'binary128 path; merged into TIRust main, and da7902b rescues the soft-jet points, @v16all).',
     '*Binary64 gate of the bridge* (patch 0006, gate $10^(-10)$; MadGraph7\\#528): it removes '
     'the true double-precision errors of the $J\\/psi$, $Upsilon$ tail (@stability). A bridge '
     'patch with the gate and the relation tiers together exists; neither is on `onia_loop`\'s '
@@ -129,7 +141,9 @@ OPEN_ITEMS = [
     '22% at a 1.5 MeV gluon with the $10^4$ GeV $b$, $t$ of the comparison, $1.7 dot 10^(-4)$ '
     'with physical masses), which MadLoop\'s loop-direction test does not vary. Fixed: bound-state '
     'outputs now estimate the rounding of the counterterm interference and rescue such points in '
-    'quadruple precision (every point right).',
+    'quadruple precision (every point right). da7902b serves them too: the $J\\/psi$, $Upsilon$ '
+    'ones are rescued in quadruple precision, the $eta_c$, $eta_b$ ones are within $10^(-5)$ in '
+    'double precision (@v16all).',
     '*Loop-induced processes* with bound states; the FKS integration on `onia_fks` '
     '(its `BinothLHA` can call this virtual).',
     '*80-bit switch:* the bridge patch v2 (inputs as hi + lo words, check pass at the input '
@@ -626,6 +640,188 @@ def summarize_two_pwave_v16(folder):
     return dict(rerun=rerun, cases=cases, so_qp=so_qp, so_terms=so_terms, born=born)
 
 
+def summarize_v16all(folder):
+    """The report's examples rerun on TIRust da7902b with the bridge patch v16
+    (data/raw/v16all, at the same points and settings), against the records
+    of the tables before (data/raw and research/mg255_swave/data). Per group:
+    the points, the stable ones (codes 1xx to 3xx) before and now, the
+    largest deviation from the group's reference before and now, and how far
+    the results moved at the points stable in both."""
+    if not os.path.isdir(folder):
+        return None
+    raw = os.path.dirname(os.path.abspath(folder))
+    mgdata = os.path.join(os.path.dirname(HERE), 'research', 'mg255_swave', 'data')
+
+    def J(*p):
+        return json.load(open(os.path.join(*p)))
+
+    def ok(code):
+        return code // 100 in (1, 2, 3)
+
+    def rel(a, b):
+        return abs(a - b) / abs(b) if b else abs(a)
+
+    def below(pts):
+        """Points where MadLoop's double-precision estimate is below its error
+        against forced quadruple precision: count, largest error among them,
+        and the one with the largest ratio."""
+        b = [(rel(r['dp']['fin'], r['qp']['fin']), r) for r in pts
+             if rel(r['dp']['fin'], r['qp']['fin']) > r['dp']['accuracy']]
+        e, w = max(b, key=lambda x: x[0] / max(x[1]['dp']['accuracy'], 1e-300))
+        return dict(count=len(b), max_error=max(x[0] for x in b),
+                    worst=dict(case=w['case'], tag=w['tag'], sqrts=w['sqrts'], error=e,
+                               accuracy=w['dp']['accuracy']))
+
+    rows = []
+    # Table 1 and 2 (and the TIRust column of the reducer table)
+    new = J(folder, 'validate.json')
+    old = dict((c['name'], c) for c in J(raw, 'validate.json'))
+    a = [(c['libs']['9'], old[c['name']]['libs']['9']) for c in new]
+
+    def dev(r):
+        # finite part against the reference, or the poles against the prediction
+        return max(r.get('max_deviation') or 0., r.get('max_pole_deviation') or 0.)
+    rows.append(dict(key='analytic', processes=len(a), points=sum(len(n['points']) for n, _ in a),
+                     stable_before=sum(o['stable_points'] for _, o in a),
+                     stable_now=sum(n['stable_points'] for n, _ in a),
+                     dev_before=max(dev(o) for _, o in a if o['stable_points']),
+                     dev_now=max(dev(n) for n, _ in a),
+                     moved=max(rel(x['finite'], y['finite']) for n, o in a
+                               for x, y in zip(n['points'], o['points'])
+                               if ok(x['ret_code']) and ok(y['ret_code']))))
+    # Tables 3 and 4: the 2.5.5 comparison
+    pts, worst = [], None
+    for path in sorted(glob.glob(os.path.join(folder, 'mg255_*.json'))):
+        case = os.path.basename(path)[6:-5]
+        for r, o in zip(J(path), J(mgdata, 'cmp_%s.json' % case)):
+            r['case'], r['pinned'] = case, o['ml']
+            pts.append(r)
+    for r in pts:
+        r['qp_vs_ref'] = rel(r['qp']['fin'], r['ref']['fin'])
+    worst = max(pts, key=lambda r: r['qp_vs_ref'])
+    rows.append(dict(key='mg255', processes=len(set(r['case'] for r in pts)), points=len(pts),
+                     stable_before=sum(ok(r['pinned']['code']) for r in pts),
+                     stable_now=sum(ok(r['dp']['code']) for r in pts),
+                     rescued=sum(r['dp']['code'] // 100 == 3 for r in pts),
+                     dev_before=max(rel(r['pinned']['fin'], r['ref']['fin']) for r in pts if ok(r['pinned']['code'])),
+                     dev_now=max(rel(r['dp']['fin'], r['ref']['fin']) for r in pts if ok(r['dp']['code'])),
+                     moved=max(rel(r['dp']['fin'], r['pinned']['fin']) for r in pts
+                               if ok(r['dp']['code']) and ok(r['pinned']['code'])),
+                     dp_vs_qp=max(rel(r['dp']['fin'], r['qp']['fin']) for r in pts),
+                     qp_vs_ref=sorted(r['qp_vs_ref'] for r in pts)[-2],
+                     estimate_below=below(pts),
+                     soft=[dict(case=r['case'], tag=r['tag'], sqrts=r['sqrts'], code=r['dp']['code'],
+                                accuracy=r['dp']['accuracy'], dp_vs_qp=rel(r['dp']['fin'], r['qp']['fin']),
+                                dp_vs_ref=rel(r['dp']['fin'], r['ref']['fin']), qp_vs_ref=r['qp_vs_ref'])
+                           for r in pts if not ok(r['pinned']['code'])],
+                     worst_qp=dict(case=worst['case'], tag=worst['tag'], sqrts=worst['sqrts'],
+                                   qp_vs_ref=worst['qp_vs_ref'], code=worst['dp']['code'])))
+    # the same points with the heavy quarks excluded from the loops (mg255excl_<case>.json)
+    xp = []
+    for path in sorted(glob.glob(os.path.join(folder, 'mg255excl_*.json'))):
+        case = os.path.basename(path)[10:-5]
+        old = J(mgdata, 'cmp_%s.json' % case)
+        d = J(path)
+        assert [r['tag'] for r in d['rows']] == [o['tag'] for o in old]
+        for r, o in zip(d['rows'], old):
+            r['case'], r['ref'], r['pinned'], r['sqrts'] = case, o['ref']['3'], o['ml'], o['sqrts']
+            xp.append(r)
+    soft = [r for r in xp if not ok(r['pinned']['code'])]
+    mt = J(folder, 'etab_ps_mt.json')
+    rows.append(dict(key='mg255x', processes=len(set(r['case'] for r in xp)), points=len(xp),
+                     stable_before=sum(ok(r['pinned']['code']) for r in xp),
+                     stable_now=sum(ok(r['dp']['code']) for r in xp),
+                     rescued=sum(r['dp']['code'] // 100 == 3 for r in xp),
+                     dev_before=max(rel(r['pinned']['fin'], r['ref']['fin']) for r in xp if ok(r['pinned']['code'])),
+                     dev_now=max(rel(r['dp']['fin'], r['ref']['fin']) for r in xp if ok(r['dp']['code'])),
+                     dp_vs_qp=max(rel(r['dp']['fin'], r['qp']['fin']) for r in xp),
+                     qp_vs_ref=max(rel(r['qp']['fin'], r['ref']['fin']) for r in xp),
+                     qp_vs_ref_c1=max(abs(r['qp']['c1'] - r['ref']['c1']) for r in xp),
+                     soft_dp_vs_qp=max(rel(r['dp']['fin'], r['qp']['fin']) for r in soft),
+                     estimate_below=below(xp),
+                     etab_point=dict(qp_vs_ref=rel(next(r['qp']['fin'] for r in xp if r['case'] == 'gg_etabg'
+                                                        and r['tag'] == 'PS.input'), mt['reference']),
+                                     mt1e4_vs_ref=rel(mt['runs']['mt1e4 mode4']['finite_norm'], mt['reference']),
+                                     mt1e5_vs_ref=rel(mt['runs']['mt1e5 mode4']['finite_norm'], mt['reference']),
+                                     directions=rel(mt['runs']['mt1e4 mode5']['finite_norm'],
+                                                    mt['runs']['mt1e4 mode4']['finite_norm']))))
+    # Table 5: J/psi polarisations
+    pol, ref = J(folder, 'pol.json'), J(mgdata, 'pol_gg_jpsig.json')
+    pin = [(p, o['ml']['%s_pin_-1' % p]) for o in ref for p in ('all', 'T', 'L')]
+    rows.append(dict(key='pol', processes=1, points=3 * len(ref),
+                     stable_before=sum(ok(x['code']) for _, x in pin),
+                     stable_now=sum(ok(x['ret_code']) for p in ('all', 'T', 'L') for x in pol['%s_-1' % p]),
+                     rescued=sum(x['ret_code'] // 100 == 3 for p in ('all', 'T', 'L') for x in pol['%s_-1' % p]),
+                     dev_before=max(rel(x['fin'], o['ref'][p]['fin']) for o in ref for p in ('all', 'T', 'L')
+                                    for x in [o['ml']['%s_pin_-1' % p]] if ok(x['code'])),
+                     dev_now=max(rel(x['finite_norm'], o['ref'][p]['fin']) for p in ('all', 'T', 'L')
+                                 for x, o in zip(pol['%s_-1' % p], ref)),
+                     qp_vs_ref=max(rel(x['finite_norm'], o['ref'][p]['fin']) for p in ('all', 'T', 'L')
+                                   for x, o in zip(pol['%s_4' % p], ref))))
+    # Tables 6 and 7: P waves (poles against the prediction)
+    pw = []
+    for path in sorted(glob.glob(os.path.join(folder, 'pw_check_*.json'))):
+        case = os.path.basename(path)[9:-5]
+        pw += list(zip(J(path)[case], J(raw, 'pwave', 'pw_check_%s.json' % case)[case]))
+    rows.append(dict(key='pwave', processes=len(glob.glob(os.path.join(folder, 'pw_check_*.json'))),
+                     points=len(pw), stable_before=sum(ok(y['ret_code']) for _, y in pw),
+                     stable_now=sum(ok(x['ret_code']) for x, _ in pw),
+                     dev_before=max(abs(y['single_norm'] - y['predicted_single_norm']) for _, y in pw),
+                     dev_now=max(abs(x['single_norm'] - x['predicted_single_norm']) for x, _ in pw),
+                     moved=max(rel(x['finite'], y['finite']) for x, y in pw if y['finite'])))
+    # Tables 8 and 9: J/psi chi_cJ (angular averages against Wang, Ma and Chao)
+    sp = []
+    for tag in ('', 'exact_'):
+        for j in (0, 1, 2):
+            x = list(J(folder, 'psi_chic_%s%d.json' % (tag, j))['cases'].values())[0]['modes']
+            y = list(J(raw, 'pwave', 'psi_chic_%s%d.json' % (tag, j))['cases'].values())[0]['modes']
+            sp += [(x[m], y[m], m) for m in x]
+    rows.append(dict(key='sp', processes=3, points=sum(len(x['points']) for x, _, _ in sp),
+                     stable_before=sum(ok(p['ret_code']) for _, y, _ in sp for p in y['points']),
+                     stable_now=sum(ok(p['ret_code']) for x, _, _ in sp for p in x['points']),
+                     dev_before=max(y['c0_relative_deviation'] for _, y, m in sp if m == '-1'),
+                     dev_now=max(x['c0_relative_deviation'] for x, _, m in sp if m == '-1'),
+                     qp_before=max(y['c0_relative_deviation'] for _, y, m in sp if m != '-1'),
+                     qp_now=max(x['c0_relative_deviation'] for x, _, m in sp if m != '-1'),
+                     moved=max(rel(x['c0'], y['c0']) for x, y, _ in sp)))
+    # Table 10: the QP floor
+    fl = []
+    for case in ('chic2', 'etac'):
+        fl += list(zip(J(folder, 'qp_floor_%s.json' % case)['rows'], J(raw, 'pwave', 'qp_floor_%s.json' % case)['rows']))
+    rows.append(dict(key='qpfloor', processes=2, points=sum(len(x['points']) for x, _ in fl),
+                     dev_before=max(y['dev_qp_sum'] for _, y in fl), dev_now=max(x['dev_qp_sum'] for x, _ in fl),
+                     moved=max(rel(x['c0_madloop'], y['c0_madloop']) for x, y in fl)))
+    # Tables 12 and 15: e+ e- -> chic0 hc
+    ee = []
+    for tag in ('dp', 'qp'):
+        for x, y in zip(J(folder, 'ee_%s.json' % tag)['records'], J(raw, 'two_pwave', 'ee_%s.json' % tag)['records']):
+            ee += [(x[k], y[k]) for k in x if k.startswith('ctmode')]
+    t2 = []
+    for tag in ('dp', 'qp'):
+        t2 += list(zip(J(folder, 'appb_table2_%s.json' % tag)['rows'], J(raw, 'two_pwave', 'appb_table2_%s.json' % tag)['rows']))
+    rows.append(dict(key='ee2p', processes=1, points=len(ee) + len(t2),
+                     stable_before=sum(ok(y['ret_code']) for _, y in ee) + sum(ok(y['code']) for _, y in t2),
+                     stable_now=sum(ok(x['ret_code']) for x, _ in ee) + sum(ok(x['code']) for x, _ in t2),
+                     dev_before=max([abs(y['single_norm'] - y['predicted_single_norm']) for _, y in ee
+                                     if ok(y['ret_code'])] +
+                                    [abs(y['c1'] - y['predicted']) for _, y in t2 if ok(y['code'])]),
+                     dev_now=max([abs(x['single_norm'] - x['predicted_single_norm']) for x, _ in ee
+                                  if ok(x['ret_code'])] +
+                                 [abs(x['c1'] - x['predicted']) for x, _ in t2 if ok(x['code'])]),
+                     moved=max([rel(x['finite'], y['finite']) for x, y in ee] +
+                               [abs(x['c1'] - y['c1']) for x, y in t2])))
+    # Table 14: unequal constituent masses
+    bc = []
+    for tag in ('bc1p1', 'bc3p1', 'bc1p8'):
+        bc += list(zip(J(folder, 'appb_unequal_%s.json' % tag)['rows'],
+                       J(raw, 'two_pwave', 'appb_unequal_fixed_%s.json' % tag)['rows']))
+    rows.append(dict(key='bc', processes=3, points=len(bc), stable_before=sum(ok(y['code']) for _, y in bc),
+                     stable_now=sum(ok(x['code']) for x, _ in bc),
+                     dev_before=max(y['dev_predicted'] for _, y in bc), dev_now=max(x['dev_predicted'] for x, _ in bc),
+                     moved=max(abs(x['c1'] - y['c1']) for x, y in bc)))
+    return dict(rows=rows)
+
+
 # Table 2 (tab:chic0hc) of the two-P-wave manuscript,
 # Manuscript/Quarkonium_FKS/JHEP_2Pwave/paper.tex: (m_c, sqrt(s)) -> the
 # 1/eps of e+ e- -> chic0 hc per Born alpha_s/2pi, eq. (B.2), seven digits.
@@ -748,6 +944,7 @@ def main():
     parser.add_argument('--mg255', help='research/mg255_swave/data')
     parser.add_argument('--pwave', help='data/raw/pwave')
     parser.add_argument('--two-pwave', help='data/raw/two_pwave')
+    parser.add_argument('--v16all', help='data/raw/v16all (the examples on TIRust da7902b + v16)')
     parser.add_argument('--git', default='')
     parser.add_argument('--date', default='')
     args = parser.parse_args()
@@ -794,6 +991,9 @@ def main():
     if args.two_pwave:
         with open(os.path.join(DATA, 'two_pwave.json'), 'w') as f:
             json.dump(summarize_two_pwave(args.two_pwave), f, indent=1)
+    if args.v16all:
+        with open(os.path.join(DATA, 'v16all.json'), 'w') as f:
+            json.dump(summarize_v16all(args.v16all), f, indent=1)
     meta = dict(
         revision=args.git, date=args.date, host='AMD EPYC 9754 (shared host)',
         baseline=BASELINE, commits=commits(BASELINE), decisions=DECISIONS,

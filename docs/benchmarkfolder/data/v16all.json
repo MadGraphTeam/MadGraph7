@@ -1,0 +1,519 @@
+{
+ "rows": [
+  {
+   "key": "analytic",
+   "processes": 11,
+   "points": 110,
+   "stable_before": 100,
+   "stable_now": 110,
+   "dev_before": 2.442308374335503e-07,
+   "dev_now": 2.442308374335503e-07,
+   "moved": 2.2213722931157503e-11
+  },
+  {
+   "key": "mg255",
+   "processes": 10,
+   "points": 161,
+   "stable_before": 123,
+   "stable_now": 161,
+   "rescued": 10,
+   "dev_before": 2.3126964938533757e-06,
+   "dev_now": 1.4738223505997105e-05,
+   "moved": 1.9535810793946927e-08,
+   "dp_vs_qp": 9.823814068441267e-06,
+   "qp_vs_ref": 9.252369762354969e-07,
+   "estimate_below": {
+    "count": 51,
+    "max_error": 9.823814068441267e-06,
+    "worst": {
+     "case": "uux_etacg",
+     "tag": "PS.input",
+     "sqrts": 3.1015,
+     "error": 2.418075981318843e-09,
+     "accuracy": 1.5612e-10
+    }
+   },
+   "soft": [
+    {
+     "case": "gg_etabg",
+     "tag": "PS.input",
+     "sqrts": 11.155227148110125,
+     "code": 323,
+     "accuracy": 0.0,
+     "dp_vs_qp": 0.0,
+     "dp_vs_ref": 1.4738223505997105e-05,
+     "qp_vs_ref": 1.4738223505997105e-05
+    },
+    {
+     "case": "gg_etabg",
+     "tag": "PS3.input",
+     "sqrts": 9.506,
+     "code": 213,
+     "accuracy": 8.7847e-08,
+     "dp_vs_qp": 4.73089145755092e-08,
+     "dp_vs_ref": 5.090246403658132e-08,
+     "qp_vs_ref": 3.593549291065198e-09
+    },
+    {
+     "case": "gg_etabg",
+     "tag": "PS4.input",
+     "sqrts": 9.51,
+     "code": 213,
+     "accuracy": 3.7493e-07,
+     "dp_vs_qp": 5.093688525635381e-07,
+     "dp_vs_ref": 4.7615693695702976e-07,
+     "qp_vs_ref": 3.321189868940163e-08
+    },
+    {
+     "case": "gg_etabg",
+     "tag": "PS5.input",
+     "sqrts": 9.52,
+     "code": 213,
+     "accuracy": 5.6788e-08,
+     "dp_vs_qp": 6.15072438879274e-08,
+     "dp_vs_ref": 5.584340529611006e-08,
+     "qp_vs_ref": 5.663838940184455e-09
+    },
+    {
+     "case": "gg_etabg",
+     "tag": "PS6.input",
+     "sqrts": 9.54,
+     "code": 213,
+     "accuracy": 2.604e-08,
+     "dp_vs_qp": 2.322906664685372e-08,
+     "dp_vs_ref": 2.7995218630948596e-08,
+     "qp_vs_ref": 4.766151873381616e-09
+    },
+    {
+     "case": "gg_etabg",
+     "tag": "PS7.input",
+     "sqrts": 9.55,
+     "code": 213,
+     "accuracy": 2.1014e-08,
+     "dp_vs_qp": 1.311819902076979e-08,
+     "dp_vs_ref": 1.2694709031063691e-08,
+     "qp_vs_ref": 4.2348998415067317e-10
+    },
+    {
+     "case": "gg_etabg",
+     "tag": "rnd11",
+     "sqrts": 11.0,
+     "code": 213,
+     "accuracy": 7.0643e-08,
+     "dp_vs_qp": 8.298034726781758e-08,
+     "dp_vs_ref": 7.928902855805717e-08,
+     "qp_vs_ref": 3.691318403453533e-09
+    },
+    {
+     "case": "gg_etabg",
+     "tag": "rnd11",
+     "sqrts": 11.0,
+     "code": 213,
+     "accuracy": 6.7884e-08,
+     "dp_vs_qp": 2.0197064444747666e-07,
+     "dp_vs_ref": 1.9861975332187947e-07,
+     "qp_vs_ref": 3.3508918023789664e-09
+    },
+    {
+     "case": "gg_etacg",
+     "tag": "PS3.input",
+     "sqrts": 3.1015,
+     "code": 213,
+     "accuracy": 7.6802e-06,
+     "dp_vs_qp": 9.823814068441267e-06,
+     "dp_vs_ref": 1.0270154766163532e-05,
+     "qp_vs_ref": 4.46336312997312e-07
+    },
+    {
+     "case": "gg_etacg",
+     "tag": "PS4.input",
+     "sqrts": 3.11,
+     "code": 213,
+     "accuracy": 2.7923e-07,
+     "dp_vs_qp": 2.161266062726334e-07,
+     "dp_vs_ref": 2.2652497160556942e-07,
+     "qp_vs_ref": 1.039836758029993e-08
+    },
+    {
+     "case": "gg_etacg",
+     "tag": "PS5.input",
+     "sqrts": 3.15,
+     "code": 213,
+     "accuracy": 1.3399e-07,
+     "dp_vs_qp": 2.2305176031483993e-07,
+     "dp_vs_ref": 2.4285482836032837e-07,
+     "qp_vs_ref": 1.9803063628380222e-08
+    },
+    {
+     "case": "gg_etacg",
+     "tag": "PS6.input",
+     "sqrts": 3.12,
+     "code": 213,
+     "accuracy": 1.7366e-07,
+     "dp_vs_qp": 4.092312688675989e-07,
+     "dp_vs_ref": 4.1456090741913364e-07,
+     "qp_vs_ref": 5.329640732590405e-09
+    },
+    {
+     "case": "gg_jpsig",
+     "tag": "PS3.input",
+     "sqrts": 3.1015,
+     "code": 323,
+     "accuracy": 0.0,
+     "dp_vs_qp": 0.0,
+     "dp_vs_ref": 1.200566866367966e-12,
+     "qp_vs_ref": 1.200566866367966e-12
+    },
+    {
+     "case": "gg_jpsig",
+     "tag": "PS4.input",
+     "sqrts": 3.11,
+     "code": 323,
+     "accuracy": 0.0,
+     "dp_vs_qp": 0.0,
+     "dp_vs_ref": 5.477626005543264e-16,
+     "qp_vs_ref": 5.477626005543264e-16
+    },
+    {
+     "case": "gg_jpsig",
+     "tag": "PS5.input",
+     "sqrts": 3.15,
+     "code": 323,
+     "accuracy": 0.0,
+     "dp_vs_qp": 0.0,
+     "dp_vs_ref": 7.137358116166084e-16,
+     "qp_vs_ref": 7.137358116166084e-16
+    },
+    {
+     "case": "gg_jpsig",
+     "tag": "PS6.input",
+     "sqrts": 3.12,
+     "code": 323,
+     "accuracy": 0.0,
+     "dp_vs_qp": 0.0,
+     "dp_vs_ref": 3.3159886234462043e-15,
+     "qp_vs_ref": 3.3159886234462043e-15
+    },
+    {
+     "case": "gg_upsg",
+     "tag": "PS.input",
+     "sqrts": 9.55,
+     "code": 323,
+     "accuracy": 0.0,
+     "dp_vs_qp": 0.0,
+     "dp_vs_ref": 3.774642129219298e-14,
+     "qp_vs_ref": 3.774642129219298e-14
+    },
+    {
+     "case": "gg_upsg",
+     "tag": "PS3.input",
+     "sqrts": 9.506,
+     "code": 323,
+     "accuracy": 0.0,
+     "dp_vs_qp": 0.0,
+     "dp_vs_ref": 2.3207158665136085e-13,
+     "qp_vs_ref": 2.3207158665136085e-13
+    },
+    {
+     "case": "gg_upsg",
+     "tag": "PS4.input",
+     "sqrts": 9.51,
+     "code": 323,
+     "accuracy": 0.0,
+     "dp_vs_qp": 0.0,
+     "dp_vs_ref": 3.1380243847823925e-13,
+     "qp_vs_ref": 3.1380243847823925e-13
+    },
+    {
+     "case": "gg_upsg",
+     "tag": "PS5.input",
+     "sqrts": 9.52,
+     "code": 323,
+     "accuracy": 0.0,
+     "dp_vs_qp": 0.0,
+     "dp_vs_ref": 9.65463528106468e-13,
+     "qp_vs_ref": 9.65463528106468e-13
+    },
+    {
+     "case": "gg_upsg",
+     "tag": "PS6.input",
+     "sqrts": 9.54,
+     "code": 323,
+     "accuracy": 0.0,
+     "dp_vs_qp": 0.0,
+     "dp_vs_ref": 7.068757159314304e-14,
+     "qp_vs_ref": 7.068757159314304e-14
+    },
+    {
+     "case": "gg_upsg",
+     "tag": "rnd11",
+     "sqrts": 11.0,
+     "code": 213,
+     "accuracy": 6.5392e-05,
+     "dp_vs_qp": 3.680842201568987e-08,
+     "dp_vs_ref": 3.68084109439213e-08,
+     "qp_vs_ref": 1.1071768163532662e-14
+    },
+    {
+     "case": "gg_upsg",
+     "tag": "rnd11",
+     "sqrts": 11.0,
+     "code": 213,
+     "accuracy": 1.7106e-05,
+     "dp_vs_qp": 3.7793823096723715e-09,
+     "dp_vs_ref": 3.779378484104299e-09,
+     "qp_vs_ref": 3.825568087143016e-15
+    },
+    {
+     "case": "gu_etacu",
+     "tag": "PS3.input",
+     "sqrts": 3.1015,
+     "code": 213,
+     "accuracy": 1.3372e-05,
+     "dp_vs_qp": 3.87600075563345e-06,
+     "dp_vs_ref": 4.686451261397299e-06,
+     "qp_vs_ref": 8.104473644692518e-07
+    },
+    {
+     "case": "gu_etacu",
+     "tag": "PS4.input",
+     "sqrts": 3.11,
+     "code": 213,
+     "accuracy": 3.6899e-07,
+     "dp_vs_qp": 5.832705421230185e-07,
+     "dp_vs_ref": 5.595983518623323e-07,
+     "qp_vs_ref": 2.3672204067985446e-08
+    },
+    {
+     "case": "gu_etacu",
+     "tag": "PS6.input",
+     "sqrts": 3.12,
+     "code": 213,
+     "accuracy": 6.5044e-07,
+     "dp_vs_qp": 3.5819925532481783e-07,
+     "dp_vs_ref": 4.111764977064528e-07,
+     "qp_vs_ref": 5.297726135805055e-08
+    },
+    {
+     "case": "ug_etacu",
+     "tag": "PS3.input",
+     "sqrts": 3.1015,
+     "code": 213,
+     "accuracy": 7.5056e-07,
+     "dp_vs_qp": 4.24382215788673e-07,
+     "dp_vs_ref": 3.4886221353520343e-07,
+     "qp_vs_ref": 7.551997020413731e-08
+    },
+    {
+     "case": "ug_etacu",
+     "tag": "PS4.input",
+     "sqrts": 3.11,
+     "code": 213,
+     "accuracy": 9.2005e-07,
+     "dp_vs_qp": 1.2986671342808465e-07,
+     "dp_vs_ref": 1.318730088102222e-07,
+     "qp_vs_ref": 2.0062956426885777e-09
+    },
+    {
+     "case": "ug_etacu",
+     "tag": "PS6.input",
+     "sqrts": 3.12,
+     "code": 213,
+     "accuracy": 2.4534e-07,
+     "dp_vs_qp": 3.188230708496776e-08,
+     "dp_vs_ref": 7.787994898920275e-09,
+     "qp_vs_ref": 2.4094311417865246e-08
+    },
+    {
+     "case": "uux_etabg",
+     "tag": "PS3.input",
+     "sqrts": 9.506,
+     "code": 213,
+     "accuracy": 1.6159e-11,
+     "dp_vs_qp": 2.30096188626683e-10,
+     "dp_vs_ref": 1.5863772913660775e-10,
+     "qp_vs_ref": 3.8873391785273694e-10
+    },
+    {
+     "case": "uux_etabg",
+     "tag": "PS4.input",
+     "sqrts": 9.51,
+     "code": 213,
+     "accuracy": 1.8609e-11,
+     "dp_vs_qp": 2.4385091429788037e-11,
+     "dp_vs_ref": 3.3593010598275074e-10,
+     "qp_vs_ref": 3.603151974213251e-10
+    },
+    {
+     "case": "uux_etabg",
+     "tag": "PS5.input",
+     "sqrts": 9.52,
+     "code": 213,
+     "accuracy": 2.434e-11,
+     "dp_vs_qp": 8.03950355598723e-11,
+     "dp_vs_ref": 4.5379745337428927e-10,
+     "qp_vs_ref": 5.34192488977108e-10
+    },
+    {
+     "case": "uux_etabg",
+     "tag": "PS6.input",
+     "sqrts": 9.54,
+     "code": 213,
+     "accuracy": 2.9361e-11,
+     "dp_vs_qp": 1.1249424072882883e-10,
+     "dp_vs_ref": 5.900856722590822e-10,
+     "qp_vs_ref": 7.025799130669473e-10
+    },
+    {
+     "case": "uux_etabg",
+     "tag": "PS7.input",
+     "sqrts": 9.55,
+     "code": 213,
+     "accuracy": 3.1296e-11,
+     "dp_vs_qp": 4.506334061572707e-11,
+     "dp_vs_ref": 7.319505624450475e-10,
+     "qp_vs_ref": 7.770139030957894e-10
+    },
+    {
+     "case": "uux_etacg",
+     "tag": "PS.input",
+     "sqrts": 3.1015,
+     "code": 213,
+     "accuracy": 1.5612e-10,
+     "dp_vs_qp": 2.418075981318843e-09,
+     "dp_vs_ref": 2.3496889076057285e-09,
+     "qp_vs_ref": 6.838707387847952e-11
+    },
+    {
+     "case": "uux_etacg",
+     "tag": "PS4.input",
+     "sqrts": 3.11,
+     "code": 213,
+     "accuracy": 2.5059e-10,
+     "dp_vs_qp": 1.0955612724084208e-10,
+     "dp_vs_ref": 2.494630368256719e-10,
+     "qp_vs_ref": 1.3990690956950212e-10
+    },
+    {
+     "case": "uux_etacg",
+     "tag": "PS5.input",
+     "sqrts": 3.15,
+     "code": 213,
+     "accuracy": 2.5228e-09,
+     "dp_vs_qp": 4.057918481516713e-10,
+     "dp_vs_ref": 7.085058873069375e-11,
+     "qp_vs_ref": 3.34941259556894e-10
+    },
+    {
+     "case": "uux_etacg",
+     "tag": "PS6.input",
+     "sqrts": 3.12,
+     "code": 213,
+     "accuracy": 3.0769e-10,
+     "dp_vs_qp": 3.340919474843294e-10,
+     "dp_vs_ref": 4.778054896227282e-10,
+     "qp_vs_ref": 1.4371354209038523e-10
+    }
+   ],
+   "worst_qp": {
+    "case": "gg_etabg",
+    "tag": "PS.input",
+    "sqrts": 11.155227148110125,
+    "qp_vs_ref": 1.4738223505997105e-05,
+    "code": 323
+   }
+  },
+  {
+   "key": "mg255x",
+   "processes": 10,
+   "points": 161,
+   "stable_before": 123,
+   "stable_now": 161,
+   "rescued": 1,
+   "dev_before": 2.3126964938533757e-06,
+   "dev_now": 1.3731429765106007e-08,
+   "dp_vs_qp": 1.3730229198256123e-08,
+   "qp_vs_ref": 3.867392150671254e-10,
+   "qp_vs_ref_c1": 2.6769171768137312e-08,
+   "soft_dp_vs_qp": 1.3730229198256123e-08,
+   "estimate_below": {
+    "count": 18,
+    "max_error": 2.2453706116599907e-09,
+    "worst": {
+     "case": "uux_etacg",
+     "tag": "PS.input",
+     "sqrts": 3.1015,
+     "error": 2.2453706116599907e-09,
+     "accuracy": 4.3028e-12
+    }
+   },
+   "etab_point": {
+    "qp_vs_ref": 3.8699925639545116e-10,
+    "mt1e4_vs_ref": 1.4738223766042266e-05,
+    "mt1e5_vs_ref": 0.0009943193059749457,
+    "directions": 0.0
+   }
+  },
+  {
+   "key": "pol",
+   "processes": 1,
+   "points": 48,
+   "stable_before": 36,
+   "stable_now": 48,
+   "rescued": 12,
+   "dev_before": 9.152691327645428e-07,
+   "dev_now": 9.152691315885817e-07,
+   "qp_vs_ref": 3.236781211147078e-12
+  },
+  {
+   "key": "pwave",
+   "processes": 16,
+   "points": 64,
+   "stable_before": 64,
+   "stable_now": 64,
+   "dev_before": 6.9740266894768865e-09,
+   "dev_now": 1.6537882174816332e-11,
+   "moved": 9.862906865085762e-11
+  },
+  {
+   "key": "sp",
+   "processes": 3,
+   "points": 69,
+   "stable_before": 69,
+   "stable_now": 69,
+   "dev_before": 3.401692748143901e-07,
+   "dev_now": 3.4016927516817995e-07,
+   "qp_before": 1.3092631676119082e-14,
+   "qp_now": 1.3687751297760858e-14,
+   "moved": 5.951196223186059e-16
+  },
+  {
+   "key": "qpfloor",
+   "processes": 2,
+   "points": 32,
+   "dev_before": 2.9910207374833564e-07,
+   "dev_now": 2.9910207374833564e-07,
+   "moved": 4.343804256683564e-16
+  },
+  {
+   "key": "ee2p",
+   "processes": 1,
+   "points": 26,
+   "stable_before": 24,
+   "stable_now": 24,
+   "dev_before": 0.0012440598575704787,
+   "dev_now": 0.0012440598575705897,
+   "moved": 3.3306690738754696e-16
+  },
+  {
+   "key": "bc",
+   "processes": 3,
+   "points": 24,
+   "stable_before": 24,
+   "stable_now": 24,
+   "dev_before": 3.086581972026244e-12,
+   "dev_now": 3.086968164874228e-12,
+   "moved": 1.0658141036401503e-14
+  }
+ ]
+}
