@@ -34,7 +34,7 @@ tutorial = Tutorial(
     title='the MG5-compatible MadEvent path',
     description='output madevent: the classic directory, cards and tools',
     order='sequence',
-    see_also=('lo', 'mg7', 'run', 'decays', 'syntax'),
+    see_also=('lo', 'run', 'decays', 'syntax'),
     steps=[
 
 Step('tutorial', """

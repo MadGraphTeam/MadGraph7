@@ -108,7 +108,8 @@ The two cards worth knowing here:
   run_card.toml    beams, cuts, number of events, integrator settings
 
 The rest belong to whichever programs are switched on above them.
-`tutorial mg7` goes through the run card properly.
+The run card is documented at
+https://docs.madgraph.org/latest/run_card.html
 %(editor)s
 **For this tutorial the defaults are fine -- just press Enter.**
 """
@@ -311,7 +312,7 @@ tutorial = Tutorial(
     section='basic',
     ai_generated=False,
     order='sequence',
-    see_also=('syntax', 'madevent', 'mg7', 'model', 'bsm', 'standalone',
+    see_also=('syntax', 'madevent', 'model', 'bsm', 'standalone',
               'nlo', 'run', 'decays', 'checks', 'exercises'),
     steps=[
 
@@ -418,7 +419,8 @@ The **theoretical** uncertainty gets its own box at the end:
 
 %(systematics)s
 
-`tutorial mg7` covers how it is computed and how to change what is varied.
+The [systematics] section of the run card sets what is varied, see
+https://docs.madgraph.org/latest/run_card.html#systematics
 %(lhapdf)s%(editor)s
 Save what you typed, so you can do this again without remembering it:
 
