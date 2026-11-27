@@ -631,6 +631,16 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             filename = 'OLE_order.lh'
             self.write_lh_order(filename, [matrix_element.born_me.get('processes')[0]], OLP)
         
+        # bound states: a Born that vanishes identically (colour or C parity)
+        # has a zero virtual; no MadLoop directory, whose every evaluation
+        # (all helicities, the threshold integrals) would return zero
+        if matrix_element.virt_matrix_element and \
+                fks_onia.born_vanishes(matrix_element.born_me):
+            logger.info('Bound states: the Born of %s vanishes identically (colour or C '
+                        'parity): no virtual, MadLoop not used.' % borndir)
+            matrix_element.virt_matrix_element = None
+            matrix_element.onia_virtual = True
+
         if matrix_element.virt_matrix_element:
                     calls += self.generate_virt_directory( \
                             matrix_element.virt_matrix_element, \
@@ -2931,7 +2941,10 @@ As a result, the default card will not be tailored to the process generated.""")
         """onia_virtual.inc: the built-in virtual of a Born with bound states
         (fks_onia.builtin_virtual), read by BinothLHA_onia.f."""
         process = matrix_element.born_me.get('base_amplitude').get('process')
-        info = fks_onia.builtin_virtual(process.get('legs'), process.get('model'))
+        if fks_onia.born_vanishes(matrix_element.born_me):
+            info = dict(case=5, bconst=0., label='vanishing Born (colour or C parity): no virtual')
+        else:
+            info = fks_onia.builtin_virtual(process.get('legs'), process.get('model'))
         if info['case'] == 0:
             logger.warning('No built-in virtual for %s: the run will stop unless '
                            'SubProcesses/%s/BinothLHA.f is replaced by a user virtual '
@@ -3019,6 +3032,21 @@ As a result, the default card will not be tailored to the process generated.""")
                   '      FKS_ONIA_NOSECTOR = NOSEC(NFKSPROCESS,I)',
                   '      END', '', '']
         lines += ONIA_SET_LDME_COMMON.splitlines()
+        # a Born that vanishes identically (colour, C parity, Landau-Yang)
+        # without a P-wave soft current: no Born, virtual or counterterm, a
+        # finite real, integrated in the hard real-emission channels alone
+        born = matrix_element.born_me
+        legs = born.get('processes')[0].get('legs')
+        vanishes = fks_onia.born_vanishes(born) and \
+            not any(fks_onia.onium_of(l).get('L', 0) > 0 for l in legs)
+        lines += ['', '',
+                  '      LOGICAL FUNCTION ONIA_BORN_VANISHES()',
+                  'C     True if the Born vanishes identically and has no P-wave soft',
+                  'C     current: its finite real is integrated in the hard',
+                  'C     real-emission channels only (export_fks.write_onia_legs_file)',
+                  '      IMPLICIT NONE',
+                  '      ONIA_BORN_VANISHES = %s' % ('.TRUE.' if vanishes else '.FALSE.'),
+                  '      END']
         writer = writers.FortranWriter(filename)
         writer.writelines('\n'.join(lines) + '\n')
         writer.close()
@@ -6466,6 +6494,16 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
         for path in [card_path, pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'),
                      pjoin(self.dir_path, 'SubProcesses', 'MadLoopParams.dat')]:
             card.write(path)
+        # MadLoop's bound-state layer sums over the polarisations of the bound
+        # states and refuses the selection of a helicity configuration
+        # (SLOOPMATRIXHEL): the virtual sums over the helicities explicitly
+        # (BinothLHA.f's MC over helicities needs SLOOPMATRIXHEL)
+        fks_card = pjoin(self.dir_path, 'Cards', 'FKS_params.dat')
+        if os.path.exists(fks_card):
+            text = open(fks_card).read()
+            new = re.sub(r'(?m)^(#NHelForMCoverHels\s*\n)\s*-?\d+', r'\g<1>-1', text, count=1)
+            if new != text:
+                open(fks_card, 'w').write(new)
 
     def write_pmass_file(self, writer, matrix_element):
         """pmass.inc. The MadLoop exporter's version (bound states of a loop

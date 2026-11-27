@@ -97,3 +97,12 @@ C     layer (onia_loop.f), once (export_fks.ONIA_SET_LDME_COMMON)
       STOP 1
       END
 
+
+      LOGICAL FUNCTION ONIA_BORN_VANISHES()
+C     True if the Born vanishes identically and has no P-wave soft
+C     current: its finite real is integrated in the hard
+C     real-emission channels only (export_fks.write_onia_legs_file)
+      IMPLICIT NONE
+      ONIA_BORN_VANISHES = .FALSE.
+      END
+

@@ -29,3 +29,14 @@ c**************************************************************************
       implicit none
       return
       end
+
+
+      logical function onia_born_vanishes()
+c**************************************************************************
+c     No bound state in this process: the Born does not vanish identically
+c     (see onia_legs.f).
+c**************************************************************************
+      implicit none
+      onia_born_vanishes=.false.
+      return
+      end

@@ -1001,8 +1001,8 @@ c Born subprocess: the same real process can belong to several Borns.
       double precision rwgt,real_channel_invariant,fks_Sij,raw_split(amp_split_size)
       double precision vi,vj
       integer ids(nexternal),ids_me(nexternal)
-      logical passcuts
-      external real_channel_invariant,fks_Sij,passcuts
+      logical passcuts,onia_born_vanishes
+      external real_channel_invariant,fks_Sij,passcuts,onia_born_vanishes
       integer i_fks,j_fks
       common /fks_indices/ i_fks,j_fks
       integer fks_j_from_i(nexternal,0:nexternal)
@@ -1073,6 +1073,9 @@ c partition also covers nonzero interference with vanishing weights.
          enddo
          softvar=max(0d0,2d0*real_channel_invariant(p,i_fks,j_fks)/shat)
          hard=softvar**2/(real_channels_x0**2+softvar**2)
+c Bound states: a Born that vanishes identically has no Born channels
+c (symmetry_fks_v3.f): its finite real is all here
+         if (onia_born_vanishes()) hard=1d0
          if (hard.eq.0d0) cycle
          sij=fks_Sij(p,i_fks,j_fks,xi_i_fks_ev,y_ij_fks_ev)
          if (sij.le.0d0) cycle

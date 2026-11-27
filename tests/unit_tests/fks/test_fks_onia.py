@@ -301,6 +301,27 @@ class TestFKSOniaGeneration(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn('no QCD loops', why)
 
+    def test_vanishing_born(self):
+        """Borns that vanish identically by colour or C parity, or as a
+        vanishing 2 -> 1 Born (Landau-Yang: g g > 3S1[8]; colour: q q~ >
+        chi_c0[1]) (fks_onia.born_vanishes): their virtual is zero, and the FKS
+        output does not use MadLoop for them (export_fks.generate_directories_fks)."""
+        import madgraph.fks.fks_helas_objects as fks_helas
+        self.cmd.exec_cmd('define p = g u d s u~ d~ s~')
+        self.cmd.exec_cmd('define j = g u d s u~ d~ s~')
+        for line, nonzero in [('p p > Jpsi(1|3S11) j [real=QCD]', ['gg']),
+                              ('p p > etac(1|1S01) [real=QCD]', ['gg']),
+                              ('p p > Jpsi(1|3S18) [real=QCD]', ['uux', 'uxu']),
+                              ('p p > chic0(1|3P01) [real=QCD]', ['gg'])]:
+            self.cmd.exec_cmd('generate %s' % line)
+            mp = fks_helas.FKSHelasMultiProcess(self.cmd._fks_multi_proc)
+            for me in mp['matrix_elements']:
+                name = me.born_me.get('processes')[0].shell_string()
+                self.assertEqual(fks_onia.born_vanishes(me.born_me),
+                                 not any(name.startswith('0_%s_' % n) for n in nonzero), name)
+        self.cmd.exec_cmd('define p = g u c d s u~ c~ d~ s~')
+        self.cmd.exec_cmd('define j = p')
+
     def test_builtin_virtuals(self):
         """[QCD] with bound states: which 2 -> 1 Borns get a built-in virtual
         (BinothLHA_onia.f: Petrelli et al., and g g -> 1P1[8] recomputed),

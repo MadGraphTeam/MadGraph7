@@ -921,6 +921,26 @@ def madloop_virtual(process):
     return True, ''
 
 
+def born_vanishes(born_me):
+    """True when the Born matrix element (a HelasMatrixElement with bound
+    states) vanishes identically: every colour amplitude is empty once the
+    diagrams whose projection vanishes by colour or C parity are left out
+    (HelasMatrixElement.get_color_amplitudes), e.g. u u~ > J/psi[3S1(1)] g or
+    q q~ > eta_c, or that is one of the vanishing 2 -> 1 Borns (vanishing_2to1:
+    Landau-Yang, e.g. g g > 3S1[8], parity, helicity). Its virtual,
+    2 Re(B* V), is then zero as well (also for a P wave, whose soft current
+    acts through the auxiliary S waves, not through B)."""
+    try:
+        process = born_me.get('processes')[0]
+    except (IndexError, KeyError):
+        return False
+    if not has_onia(process.get('legs')):
+        return False
+    if vanishing_2to1(process.get('legs'), process.get('model')):
+        return True
+    return all(not col_amp for col_amp in born_me.get_color_amplitudes())
+
+
 def virtual_legs(legs):
     """The legs of the virtual process of a Born with bound states, as
     fks_common.to_legs, which leaves 'onium' out: MadLoop projects the

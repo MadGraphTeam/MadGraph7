@@ -641,9 +641,17 @@ c Smooth non-hard fraction; callers on the legacy path never need it.
       external real_channel_invariant
       integer i_fks,j_fks
       common /fks_indices/ i_fks,j_fks
+      logical onia_born_vanishes
+      external onia_born_vanishes
       real_channel_soft_fraction=1d0
       if (.not.(real_channels_x0.gt.0d0.and.
      $          real_channels_x0.lt.1d0)) return
+c Bound states: a Born that vanishes identically leaves its whole real
+c to the hard channels (compute_hard_real_channels, driver_mintFO.f)
+      if (onia_born_vanishes()) then
+         real_channel_soft_fraction=0d0
+         return
+      endif
       x=max(0d0,2d0*real_channel_invariant(p,i_fks,j_fks)/shat)
       real_channel_soft_fraction=real_channels_x0**2/
      $                         (real_channels_x0**2+x**2)

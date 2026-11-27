@@ -332,6 +332,8 @@ c***************************************************************************
       character*30 fname,mname
       character*2 postfix
       logical j_fks_ini,j_fks_fin,two_jobs,force_one_job
+      logical born_channels,onia_born_vanishes
+      external onia_born_vanishes
       
       j_fks_ini=.false.
       j_fks_fin=.false.
@@ -349,8 +351,16 @@ c***************************************************************************
       call open_bash_file(26,fname,lname)
       call close_bash_file(26)
       open(unit=26,file='channels.txt',status='unknown')
+c Bound states: a Born that vanishes identically and has no P-wave soft
+c current (onia_legs.f) has no Born, virtual or counterterm, and its real
+c is finite: with the hard real-emission channels the whole real goes
+c there (driver_mintFO.f, compute_hard_real_channels), and there is no
+c Born channel to integrate.
+      born_channels=.not.(onia_born_vanishes().and.
+     $     real_channels_x0.gt.0d0.and.real_channels_x0.lt.1d0
+     $     .and..not.force_one_job)
       do i=1,mapconfig(0)
-         if (use_config(i) .gt. 0) then
+         if (use_config(i) .gt. 0 .and. born_channels) then
             if (two_jobs) then
                postfix='.1'
             else

@@ -349,6 +349,11 @@ integer iamp,orders(2)
 orders=[2*iamp,2*iamp+1]
 end subroutine
 
+! bound states (onia_legs.f, onia_legs_dummy.f): the Born does not vanish
+logical function onia_born_vanishes()
+onia_born_vanishes=.false.
+end function
+
 integer function get_orders_tag(orders)
 integer orders(2)
 get_orders_tag=orders(1)+10*orders(2)
