@@ -575,6 +575,8 @@ def run_single(switch=None, reweight=None) -> "MadgraphProcess":
     compute_auto_widths()
     process = MadgraphProcess()
     process.store_matrix_elements = getattr(reweight, "backend", None) == "madtrex"
+    if switch:
+        process.madspin_switch = not _off(switch.get("madspin"))
     process.survey()
     process.train_madnis()
     process.lhe_from_binary = lhe_via_binary(process, reweight)

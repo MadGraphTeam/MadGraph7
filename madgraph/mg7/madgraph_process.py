@@ -18,6 +18,7 @@ from madgraph.various import misc
 from madgraph.various.banner import RunCardMG7
 from madgraph.models.check_param_card import ParamCard
 from madgraph.models.model_reader import Alphas_Runner
+from madgraph.mg7 import gridpack_madspin
 from madgraph.mg7 import helicity_choice as helicity_choice_module
 from madgraph.mg7 import hwu_output
 from madgraph.mg7 import lepton_density as lepton_density_module
@@ -300,6 +301,9 @@ class MadgraphProcess:
     # set by a cluster job, which only writes the data/ of a gridpack: the rest
     # is the same for all of them, and written once for the merged gridpack
     gridpack_data_only = False
+    # the madspin switch of the launch (True/False), None when not known: what
+    # [gridpack] include_madspin = auto follows (see gridpack_madspin)
+    madspin_switch = None
 
     def __init__(self, extra_make_args=(), split_flavors=False, run_card_path=None,
                  steering_only=False):
@@ -2984,7 +2988,21 @@ class MadgraphProcess:
         self.write_gridpack_shell(
             gridpack_path, self.run_card, self.backends, self.custom_function_paths,
             self.subprocess_data, self.gridpack_run_mode)
+        self.add_gridpack_madspin(gridpack_path)
         self.compress_gridpack(gridpack_path, self.run_card)
+
+    def add_gridpack_madspin(self, gridpack_path: str) -> None:
+        """Prepare MadSpin in the gridpack when [gridpack] include_madspin
+        asks for it (see gridpack_madspin): from the events of this run when
+        it wrote LHE events, else from a sample the gridpack generates."""
+        if not gridpack_madspin.madspin_wanted(self.run_card, self.madspin_switch):
+            return
+        events = None
+        if self.gridpack_run_mode == "regular":
+            events = getattr(self, "events_path", None)
+        gridpack_madspin.add_madspin(
+            gridpack_path, self.run_seed, events, str(_INSTALL_DIR),
+            self.run_card["run"]["cpu_thread_pool_size"])
 
     def write_gridpack_data(self, gridpack_path: str) -> None:
         """The data/ of a gridpack: what the integration of the selected
