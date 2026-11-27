@@ -317,12 +317,14 @@ C     helicity configuration (onia_loop_data.inc), one HEL line each.
 C       SLOOPMATRIXHEL leaves USERHEL set, as in MadLoop
         USERHEL=-1
         CALL @PREFIX@SLOOPMATRIX_THRES(P,ANS,-1D0,PREC,RET)
-        WRITE(*,'(A,2I6,4ES26.17E3,ES12.4,I5)') 'HEL',K,0,ANS(0,0),
-     &   ANS(1,0),ANS(2,0),ANS(3,0),PREC(0),RET
+        WRITE(*,'(A,2I6,4ES26.17E3,ES12.4,I5,4ES26.17E3)') 'HEL',K,0,
+     &   ANS(0,0),ANS(1,0),ANS(2,0),ANS(3,0),PREC(0),RET,
+     &   (ANS(I,NDIM),I=0,3)
         DO H=1,ONIA_PHYS_NCOMB
           CALL @PREFIX@SLOOPMATRIXHEL_THRES(P,H,ANS,-1D0,PREC,RET)
-          WRITE(*,'(A,2I6,4ES26.17E3,ES12.4,I5)') 'HEL',K,H,ANS(0,0),
-     &     ANS(1,0),ANS(2,0),ANS(3,0),PREC(0),RET
+          WRITE(*,'(A,2I6,4ES26.17E3,ES12.4,I5,4ES26.17E3)') 'HEL',K,H,
+     &     ANS(0,0),ANS(1,0),ANS(2,0),ANS(3,0),PREC(0),RET,
+     &     (ANS(I,NDIM),I=0,3)
         ENDDO
         USERHEL=-1
       ENDDO
@@ -334,9 +336,12 @@ def run_points_hel(pdir, momenta, mu=None, timeout=None):
     """Per point (lists of 4-vectors) of a bound-state output: the summed
     result and that of every physical helicity configuration
     (SLOOPMATRIXHEL_THRES), as {'sum': r, 'configs': [r1, r2, ...], 'helavg': n}
-    with r = dict(born, finite, single, double, accuracy, ret_code). As in
-    MadLoop, a configuration is not averaged over the initial helicities: the
-    configurations add up to helavg times the sum."""
+    with r = dict(born, finite, single, double, accuracy, ret_code) of ANS(:,0)
+    (the sum over the squared split orders) and r['last_column'] the same of
+    the last split-order column ANS(:,NDIM) (column 1 with one split order,
+    which is what MadFKS reads). As in MadLoop, a configuration is not averaged
+    over the initial helicities: the configurations add up to helavg times the
+    sum."""
     prefix = open(os.path.join(pdir, 'proc_prefix.txt')).read().strip()
     nexternal = int(re.search(r'NEXTERNAL_PHYS=(\d+)',
                               open(os.path.join(pdir, 'onia_loop.f')).read()).group(1))
@@ -364,7 +369,9 @@ def run_points_hel(pdir, momenta, mu=None, timeout=None):
         f = line.split()
         k, h = int(f[1]), int(f[2])
         r = dict(born=float(f[3]), finite=float(f[4]), single=float(f[5]), double=float(f[6]),
-                 accuracy=float(f[7]), ret_code=int(f[8]))
+                 accuracy=float(f[7]), ret_code=int(f[8]),
+                 last_column=dict(born=float(f[9]), finite=float(f[10]), single=float(f[11]),
+                                  double=float(f[12])))
         if h == 0:
             out[k - 1]['sum'] = r
         else:

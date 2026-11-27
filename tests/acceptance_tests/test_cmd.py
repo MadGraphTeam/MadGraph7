@@ -5039,6 +5039,12 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
                              ('double', 1e-11)):
                 total = sum(c[key] for c in r['configs']) / r['helavg']
                 self.assertLess(abs(total / r['sum'][key] - 1.), tol, key)
+                # the split-order column that MadFKS reads (one split order:
+                # column 1 = column 0), scaled like column 0
+                total = sum(c['last_column'][key] for c in r['configs']) / r['helavg']
+                self.assertLess(abs(total / r['sum']['last_column'][key] - 1.), tol, key)
+                for c in [r['sum']] + r['configs']:
+                    self.assertEqual(c['last_column'][key], c[key], key)
 
         # MadLoop's own helicity filter stays off for bound states even when
         # MadLoopParams.dat asks for it: it would learn the filter in the
