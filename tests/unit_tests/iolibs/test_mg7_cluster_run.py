@@ -15,6 +15,7 @@ system is used. Running it is covered by the acceptance test."""
 from __future__ import absolute_import
 import json
 import os
+import shutil
 import sys
 import tempfile
 import types
@@ -23,6 +24,8 @@ from unittest import mock
 
 from madgraph.mg7 import bootstrap as mg7_bootstrap
 from madgraph.various.banner import RunCardMG7
+
+pjoin = os.path.join
 
 # Importing launch without a compiled madspace starts the madspace build, and
 # test_manager imports every unit test module while collecting: check first.
@@ -459,3 +462,31 @@ class TestSupported(unittest.TestCase):
     def test_reweighting_is_refused(self):
         with self.assertRaisesRegex(cluster_run.ClusterRunError, 'reweight'):
             cluster_run.check_supported({}, object())
+
+    def test_madspin_runs_in_the_jobs_when_the_gridpack_carries_it(self):
+        """The merged gridpack decays the events of each generation job when
+        it carries MadSpin ([gridpack] include_madspin)."""
+        path = tempfile.mkdtemp(prefix='cluster_madspin_')
+        cwd = os.getcwd()
+        try:
+            os.chdir(path)
+            os.makedirs('Cards')
+            switch = {'madspin': 'ON'}
+            # no madspin card: nothing to carry, refused as before
+            with self.assertRaisesRegex(cluster_run.ClusterRunError, 'MadSpin'):
+                cluster_run.check_supported(switch, None, card())
+            with open(pjoin('Cards', 'madspin_card.dat'), 'w') as f:
+                f.write('decay t > w+ b\n')
+            cluster_run.check_supported(switch, None, card())
+            cluster_run.check_supported(
+                switch, None, card(gridpack__include_madspin=True))
+            with self.assertRaisesRegex(cluster_run.ClusterRunError, 'MadSpin'):
+                cluster_run.check_supported(
+                    switch, None, card(gridpack__include_madspin=False))
+            # the other tools still are
+            with self.assertRaisesRegex(cluster_run.ClusterRunError, 'Pythia8'):
+                cluster_run.check_supported(
+                    dict(switch, shower='Pythia8'), None, card())
+        finally:
+            os.chdir(cwd)
+            shutil.rmtree(path, ignore_errors=True)

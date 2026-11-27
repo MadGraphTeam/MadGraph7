@@ -16,13 +16,15 @@ bin/generate_events then runs ``MadSpin.gridpack_decay decay`` on its LHE
 events (see template_files/mg7/gridpack.py).
 """
 
+import logging
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
 
-from madgraph.mg7.common import logger
+# the launcher's logger (madgraph.mg7.common), without importing madspace
+logger = logging.getLogger("madgraph7")
 
 MADSPIN_DIR = "madspin"
 MS_DIR = os.path.join(MADSPIN_DIR, "ms_dir")
@@ -86,6 +88,8 @@ def _python_env(*paths) -> dict:
 
 
 def _run(command, cwd, env, log_path, what):
+    """Run ``command``; on failure raise with the tail of its log, which the
+    caller keeps (see add_madspin)."""
     with open(log_path, "w") as log:
         returncode = subprocess.call(command, cwd=cwd, env=env, stdout=log,
                                      stderr=subprocess.STDOUT)
@@ -95,8 +99,10 @@ def _run(command, cwd, env, log_path, what):
                 tail = "\n".join(f.read().splitlines()[-30:])
         except OSError:
             tail = ""
+        kept = os.path.join(os.path.dirname(os.path.dirname(log_path)),
+                            "madspin_" + os.path.basename(log_path))
         raise GridpackMadSpinError(
-            f"{what} failed (exit {returncode}), see {log_path}:\n{tail}")
+            f"{what} failed (exit {returncode}), see {kept}:\n{tail}")
 
 
 def production_sample(gridpack_path, work_dir, seed, madspace_path=None,
@@ -149,6 +155,7 @@ def add_madspin(gridpack_path, seed, events_path=None, madspace_path=None,
         shutil.rmtree(os.path.join(gridpack_path, MADSPIN_DIR))
     work = tempfile.mkdtemp(prefix="madspin_gridpack_",
                             dir=os.path.dirname(gridpack_path))
+    failed = True
     try:
         if not events_path or not events_path.endswith((".lhe", ".lhe.gz")):
             events_path = production_sample(gridpack_path, work, seed,
@@ -164,7 +171,14 @@ def add_madspin(gridpack_path, seed, events_path=None, madspace_path=None,
         # the prepare log is the record of what was built
         shutil.copy(os.path.join(work, "prepare.log"),
                     os.path.join(gridpack_path, MADSPIN_DIR, "prepare.log"))
+        failed = False
     finally:
+        if failed:
+            # keep the logs of what failed next to the gridpack
+            for name in ("sample.log", "prepare.log"):
+                if os.path.exists(os.path.join(work, name)):
+                    shutil.copy(os.path.join(work, name), os.path.join(
+                        os.path.dirname(gridpack_path), "madspin_" + name))
         shutil.rmtree(work, ignore_errors=True)
 
     gridpack_decay.install_runtime(os.path.join(gridpack_path, PYTHON_DIR),

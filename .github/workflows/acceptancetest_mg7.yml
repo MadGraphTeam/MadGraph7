@@ -628,6 +628,16 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_madspin_mg7_decays_reproducible_with_seed -pA -t0 -l INFO
+
+      # ---- acceptancetest_mg7_gridpack_madspin ----
+      # A gridpack made with [gridpack] include_madspin decays its own events:
+      # seeds, sigma x BR, a run with MadGraph off the path, the cluster mode
+      # (local_parallel). ~2 min. Self-skips if madspace / the PDF is missing.
+      - name: "acceptancetest_mg7_gridpack_madspin"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py 'test_gridpack_madspin.*' -pA -t0 -l INFO
       - name: Cancel the other CI runs of this commit (fail fast)
         if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
         env:
