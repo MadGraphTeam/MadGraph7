@@ -26,21 +26,16 @@ from .contraction_types import (
 )
 from .plan_types import GenericColorPlan, LCColorSector, LCOpenColorLine
 
-_MAX_SYMMETRIC_GROUP_DEGREE = 10
 _ZERO_SECTOR_OWNER = 0xFFFF_FFFF
-_SYMMETRIC_GROUP_ORDERS = tuple(
-    math.factorial(degree) for degree in range(_MAX_SYMMETRIC_GROUP_DEGREE + 1)
-)
 
 
 def _symmetric_group_order(degree: int) -> int:
-    if (
-        not isinstance(degree, int)
-        or isinstance(degree, bool)
-        or not 0 <= degree <= _MAX_SYMMETRIC_GROUP_DEGREE
-    ):
-        raise ValueError("symmetric-group degree is unsupported")
-    return _SYMMETRIC_GROUP_ORDERS[degree]
+    """``degree!`` for any degree (no degree cap: the plan's size bounds
+    are the codec's own u32 group ids, checked where it is written)."""
+
+    if not isinstance(degree, int) or isinstance(degree, bool) or degree < 0:
+        raise ValueError("symmetric-group degree must be a non-negative integer")
+    return math.factorial(degree)
 
 
 def _lexicographic_permutation_rank(
@@ -64,7 +59,7 @@ def _lexicographic_permutation_rank(
         except ValueError as exc:
             raise ValueError("permutation labels are not a bijection") from exc
         rank += (
-            available_index * _SYMMETRIC_GROUP_ORDERS[expected_degree - position - 1]
+            available_index * math.factorial(expected_degree - position - 1)
         )
         del available[available_index]
     return rank
@@ -87,7 +82,7 @@ def _lexicographic_permutation_unrank(
     permutation: list[int] = []
     remainder = rank
     for position in range(degree):
-        suffix_order = _SYMMETRIC_GROUP_ORDERS[degree - position - 1]
+        suffix_order = math.factorial(degree - position - 1)
         available_index, remainder = divmod(remainder, suffix_order)
         permutation.append(available.pop(available_index))
     return tuple(permutation)
@@ -103,7 +98,7 @@ class _LexicographicPermutations(Sequence[tuple[int, ...]]):
         _symmetric_group_order(self.degree)
 
     def __len__(self) -> int:
-        return _SYMMETRIC_GROUP_ORDERS[self.degree]
+        return math.factorial(self.degree)
 
     @overload
     def __getitem__(self, index: int) -> tuple[int, ...]: ...
@@ -155,7 +150,7 @@ class CertifiedSymmetricGroupOrbit:
                 raise ValueError(
                     "symmetric-group orbit permutations are not lexicographic"
                 )
-        if len(self.permutations) != _SYMMETRIC_GROUP_ORDERS[degree]:
+        if len(self.permutations) != math.factorial(degree):
             raise ValueError("symmetric-group orbit has the wrong group order")
         if len(self.sector_ids) != len(self.permutations):
             raise ValueError(
@@ -191,8 +186,8 @@ class SymmetricGroupOrbitPartition:
             raise ValueError(
                 "symmetric-group degree does not match permuted adjoint labels"
             )
-        if self.degree < 0 or self.degree > _MAX_SYMMETRIC_GROUP_DEGREE:
-            raise ValueError("symmetric-group orbit degree is unsupported")
+        if self.degree < 0:
+            raise ValueError("symmetric-group orbit degree is negative")
         labels = (*self.fixed_adjoint_labels, *self.permuted_adjoint_labels)
         if len(set(labels)) != len(labels):
             raise ValueError("symmetric-group adjoint label partition overlaps")
@@ -267,11 +262,6 @@ def certify_symmetric_group_orbits(
     active_sector_ids = tuple(sorted(active_owners))
     permuted_labels, fixed_labels = _adjoint_action_labels(color_plan)
     degree = len(permuted_labels)
-    if degree > _MAX_SYMMETRIC_GROUP_DEGREE:
-        raise ValueError(
-            "symmetric-group degree exceeds the supported maximum "
-            f"{_MAX_SYMMETRIC_GROUP_DEGREE}"
-        )
     group_order = _symmetric_group_order(degree)
     lexicographic_permutations = _LexicographicPermutations(degree)
 
@@ -497,7 +487,7 @@ def build_symmetric_group_color_contraction_plan(
                         left_sector,
                         sector_by_id[right_sector_id],
                         accuracy=accuracy,
-                        full_col_acc=20,
+                        full_col_acc=None,
                     )
                     if cache_key is not None:
                         diagonal_trace_exact[cache_key] = exact
@@ -556,7 +546,7 @@ def build_symmetric_group_color_contraction_plan(
                     sector_by_id[left_sector_id],
                     sector_by_id[local_sector_ids[right_local_index]],
                     accuracy=accuracy,
-                    full_col_acc=20,
+                    full_col_acc=None,
                 )
                 residual_entries.append(
                     ColorContractionTemplateEntry(
@@ -1086,7 +1076,7 @@ def _certify_cross_channel_hermiticity(
                     sector_by_id[right_orbit.sector_ids[0]],
                     sector_by_id[left_orbit.sector_ids[inverse_index]],
                     accuracy=accuracy,
-                    full_col_acc=20,
+                    full_col_acc=None,
                 )
                 if (
                     kernel_exact_by_key[(left_channel, right_channel, relative_index)]
@@ -1152,7 +1142,7 @@ def _certify_sampled_equivariance(
                     left_sector,
                     sector_by_id[right_orbit.sector_ids[right_permutation_index]],
                     accuracy=accuracy,
-                    full_col_acc=20,
+                    full_col_acc=None,
                 )
                 if (
                     kernel_exact_by_key[(left_channel, right_channel, relative_index)]

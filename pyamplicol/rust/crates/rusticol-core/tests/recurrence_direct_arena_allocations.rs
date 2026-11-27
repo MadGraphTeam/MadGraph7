@@ -8,14 +8,14 @@ use rusticol_core::recurrence::direct_runtime::DirectRecurrenceExecutionRuntime;
 use rusticol_core::recurrence::{
     CheckedTableRange, ClosureExecutionProofGroupV2, ClosureProofContributionV2,
     ClosureProofMetadataV2, DIRECT_NONE_U32, DirectAmplitudeDestinationDescriptor,
-    DirectClosureRow, DirectContributionRow, DirectCurrentDescriptor, DirectDestinationOperation,
-    DirectExecutorRole, DirectFinalizationRow, DirectMomentumFormDescriptor, DirectMomentumTerm,
-    DirectNodeKind, DirectRecurrencePlan, DirectRecurrencePlanParts, DirectReplayTargetDescriptor,
-    DirectResolvedHelicityDescriptor, DirectResolvedSourceSelection, DirectRowGroupDescriptor,
-    DirectSelectorDomainDescriptor, DirectSourceDispatchVariantDescriptor,
-    DirectSourceEmbeddingRow, DirectSourceProjectionRow, DirectSourceRow,
-    DirectSourceStateAssignment, ExactComplexRational, RecurrenceStrategy, SemanticDigest,
-    closure_component_factor_digest_v2, closure_selector_domain_digest_v2,
+    DirectAmplitudeOrders, DirectClosureRow, DirectContributionRow, DirectCurrentDescriptor,
+    DirectDestinationOperation, DirectExecutorRole, DirectFinalizationRow,
+    DirectMomentumFormDescriptor, DirectMomentumTerm, DirectNodeKind, DirectRecurrencePlan,
+    DirectRecurrencePlanParts, DirectReplayTargetDescriptor, DirectResolvedHelicityDescriptor,
+    DirectResolvedSourceSelection, DirectRowGroupDescriptor, DirectSelectorDomainDescriptor,
+    DirectSourceDispatchVariantDescriptor, DirectSourceEmbeddingRow, DirectSourceProjectionRow,
+    DirectSourceRow, DirectSourceStateAssignment, ExactComplexRational, RecurrenceStrategy,
+    SemanticDigest, closure_component_factor_digest_v2, closure_selector_domain_digest_v2,
 };
 use rusticol_core::{NativeRuntime, RusticolError};
 use std::alloc::{GlobalAlloc, Layout, System};
@@ -568,6 +568,7 @@ fn direct_runtime(strategy: RecurrenceStrategy) -> DirectRecurrenceExecutionRunt
             vec![],
         )
         .unwrap(),
+        amplitude_orders: DirectAmplitudeOrders::without_coupling_orders(1),
     })
     .unwrap();
 

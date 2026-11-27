@@ -44,9 +44,11 @@ def test_crossed_two_line_public_flow_is_lc_only(
     expected_ids: tuple[str, ...],
 ) -> None:
     model = BuiltinSMModel()
+    # QCD alone: d d~ > t t~ also has the photon and Z exchange.
     dag = compile_generic_dag(
         build_process_ir("d d~ > t t~", color_accuracy=color_accuracy),
         model=model,
+        max_coupling_orders={"QED": 0},
     )
 
     physics = build_resolved_physics_from_dag(dag, model)

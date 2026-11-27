@@ -615,9 +615,10 @@ c coefficients once and apply them to all of their hard momenta.
       end subroutine boost_isr_recoil
 
 
-      subroutine prepare_isr_recoil_boost(xi,y,phi,boost)
+      subroutine prepare_isr_recoil_boost(xi,y,phi,boost,one_minus_xi)
       implicit none
       double precision,intent(in) :: xi,y,phi
+      double precision,optional,intent(in) :: one_minus_xi
       type(isr_recoil_boost),intent(out) :: boost
       double precision z,bnorm
       boost%identity=xi.eq.0d0.or.y.eq.1d0
@@ -626,6 +627,7 @@ c coefficients once and apply them to all of their hard momenta.
       boost%b_squared=0d0
       if(boost%identity)return
       z=1d0-xi
+      if(present(one_minus_xi))z=one_minus_xi
       boost%a=1d0+xi*(1d0-y)/(2d0*z)
       bnorm=-xi*sqrt((1d0-y)*(1d0+y))/(2d0*sqrt(z))
       boost%b(1)=bnorm*cos(phi)

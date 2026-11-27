@@ -451,7 +451,7 @@ impl OnTheFlyRuntimeMetadata {
                         || component != expected_component
                         || projection.runtime_name != *runtime_name
                         || parameter.name != format!("{runtime_name}.{component}")
-                        || (previous_runtime_name == Some(runtime_name)
+                        || (previous_runtime_name == Some(runtime_name.as_str())
                             && previous_kind != Some(parameter.kind.as_str()))
                     {
                         return Err(RusticolError::integrity(

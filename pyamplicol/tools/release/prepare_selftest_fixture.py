@@ -12,7 +12,7 @@ import re
 import shutil
 import sys
 import tomllib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -147,6 +147,126 @@ def _normalize_compiled_model_version(
     path.write_bytes(_canonical_json(compiled_model))
     payload["sha256"] = _sha256(path)
     payload["size_bytes"] = path.stat().st_size
+
+
+# The generated UMAMI providers (pyamplicol.artifacts.umami): one metadata.json
+# per provider (API/umami/ for one provider, API/umami/providers/<id>/ for
+# several, next to an index), and provider_<id>.h rendered from the same
+# record, whose UMAMI_ARTIFACT_ID line the provider's loader compares with the
+# loaded artifact's identity.
+_UMAMI_PROVIDER_METADATA = re.compile(
+    r"API/umami/(?:providers/[A-Za-z0-9_]+/)?metadata\.json"
+)
+_UMAMI_PROVIDER_INDEX_KIND = "pyamplicol-umami-provider-index"
+_UMAMI_PROVIDER_ID = re.compile(r"[A-Za-z0-9_]+")
+_ARTIFACT_ID = re.compile(r"[0-9a-f]{64}")
+
+
+def _umami_identity_line(artifact_id: object) -> str:
+    # pyamplicol.artifacts.umami_c.provider_header's rendering of the id.
+    value = "NULL" if artifact_id is None else json.dumps(str(artifact_id))
+    return f"#define UMAMI_ARTIFACT_ID {value}\n"
+
+
+def umami_identity_updates(
+    manifest: Mapping[str, object],
+    read: Callable[[str], bytes | None],
+) -> dict[str, bytes]:
+    """Return the UMAMI provider files that must change to name ``artifact_id``.
+
+    Retargeting the fixture and normalizing its version change the runtime
+    payload identity after the generator bound its UMAMI providers to the old
+    one, and a provider refuses any other artifact. The UMAMI files are API
+    payloads, outside that identity, so rebinding them leaves it unchanged.
+    ``read`` maps an artifact-relative path to its bytes (None when absent).
+    The result is empty when every provider already names the identity or the
+    artifact exports none.
+    """
+
+    artifact_id = manifest.get("artifact_id")
+    if not isinstance(artifact_id, str) or not _ARTIFACT_ID.fullmatch(artifact_id):
+        raise RuntimeError("artifact identity is invalid")
+    payloads = manifest.get("payloads")
+    if not isinstance(payloads, list):
+        raise RuntimeError("artifact payload inventory is invalid")
+    declared = {
+        payload["path"]
+        for payload in payloads
+        if isinstance(payload, dict) and isinstance(payload.get("path"), str)
+    }
+    updates: dict[str, bytes] = {}
+    for relative in sorted(declared):
+        if not _UMAMI_PROVIDER_METADATA.fullmatch(relative):
+            continue
+        data = read(relative)
+        if data is None:
+            raise RuntimeError(f"UMAMI provider metadata is missing: {relative}")
+        try:
+            document = json.loads(data)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise RuntimeError(
+                f"UMAMI provider metadata is invalid: {relative}"
+            ) from error
+        if not isinstance(document, dict):
+            raise RuntimeError(f"UMAMI provider metadata is invalid: {relative}")
+        if document.get("kind") == _UMAMI_PROVIDER_INDEX_KIND:
+            continue
+        provider = document.get("provider")
+        if not isinstance(provider, dict) or not _UMAMI_PROVIDER_ID.fullmatch(
+            str(provider.get("id"))
+        ):
+            raise RuntimeError(f"UMAMI provider record is invalid: {relative}")
+        header_relative = f"API/umami/provider_{provider['id']}.h"
+        header = read(header_relative) if header_relative in declared else None
+        if header is None:
+            raise RuntimeError(f"UMAMI provider header is missing: {header_relative}")
+        current = _umami_identity_line(provider.get("artifact_id")).encode()
+        if header.count(current) != 1:
+            raise RuntimeError(
+                f"UMAMI provider header {header_relative} does not carry the "
+                "artifact identity of its metadata"
+            )
+        if provider.get("artifact_id") == artifact_id:
+            continue
+        provider["artifact_id"] = artifact_id
+        # The UMAMI exporter's JSON form (umami._json_payload).
+        updates[relative] = (
+            json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\n"
+        ).encode()
+        updates[header_relative] = header.replace(
+            current, _umami_identity_line(artifact_id).encode()
+        )
+    return updates
+
+
+def refresh_umami_artifact_identity(
+    artifact: Path,
+    manifest: Mapping[str, object],
+) -> int:
+    """Bind the artifact's UMAMI providers to its current identity.
+
+    Rewrites the files ``umami_identity_updates`` returns and their payload
+    records in ``manifest`` (written by the caller); returns how many files
+    changed.
+    """
+
+    def read(relative: str) -> bytes | None:
+        path = artifact / relative
+        return path.read_bytes() if path.is_file() else None
+
+    updates = umami_identity_updates(manifest, read)
+    payloads = manifest.get("payloads")
+    assert isinstance(payloads, list)
+    for payload in payloads:
+        data = (
+            updates.get(str(payload.get("path"))) if isinstance(payload, dict) else None
+        )
+        if data is None:
+            continue
+        (artifact / payload["path"]).write_bytes(data)
+        payload["sha256"] = hashlib.sha256(data).hexdigest()
+        payload["size_bytes"] = len(data)
+    return len(updates)
 
 
 def _workspace_version() -> str:
@@ -1090,6 +1210,7 @@ def prepare(source: Path, destination: Path | None = None) -> Path:
         producer["version"] = version
         runtime_metadata["engine_version"] = version
         manifest["artifact_id"] = _artifact_id(manifest)
+        refresh_umami_artifact_identity(artifact, manifest)
         manifest_path.write_bytes(_canonical_json(manifest))
         expected = {
             "schema_version": 1,
@@ -1098,7 +1219,7 @@ def prepare(source: Path, destination: Path | None = None) -> Path:
             "compatible_targets": list(COMPATIBLE_TARGETS),
             "source_generation_target": source_target,
             "serialization": {
-                "kind": "symjit-application-mir-v3",
+                "kind": "symjit-application-mir-v4",
                 "endianness": "little",
                 "word_size_bits": 64,
                 "load_behavior": "recompile-mir-for-loading-host",

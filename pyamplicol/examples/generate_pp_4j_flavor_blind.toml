@@ -41,4 +41,3 @@ batch_size = 128
 
 [output]
 progress = "auto"
-log_level = "info"

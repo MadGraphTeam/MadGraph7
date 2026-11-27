@@ -4,7 +4,7 @@
 # Further modified by: D. Massaro, O. Mattelaer, A. Valassi, Z. Wettersten (2021-2025).
 # Integrated with the MadGraph7 project in Feb 2026.
 
-PLUGIN_NAME = __name__ # PLUGIN_NAME can be one of PLUGIN/CUDACPP_OUTPUT or MG5aMC_PLUGIN/CUDACPP_OUTPUT
+PLUGIN_NAME = __name__
 
 # Require the same Python as MadGraph itself (see bin/madgraph), so that the
 # plugin never becomes the reason a supported interpreter is refused. It used

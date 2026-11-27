@@ -50,6 +50,28 @@ KERNELSPEC void kernel_sample_discrete_probs(
 }
 
 template <typename T>
+KERNELSPEC void kernel_sample_discrete_probs_reuse(
+    FIn<T, 0> r, FIn<T, 1> probs, IIn<T, 0> preferred,
+    IOut<T, 0> output, IOut<T, 0> replaced
+) {
+    FVal<T> norm(0.);
+    IVal<T> eligible(0);
+    for (std::size_t i = 0; i < probs.size(); ++i) {
+        norm = norm + probs[i];
+        eligible = where((preferred == i) & (probs[i] > 0.), IVal<T>(1), eligible);
+    }
+    FVal<T> cumulative(0.);
+    IVal<T> fallback(0);
+    for (std::size_t i = 0; i < probs.size(); ++i) {
+        auto keep = (r < cumulative) | (probs[i] == 0.);
+        cumulative = cumulative + probs[i] / norm;
+        fallback = where(keep, fallback, IVal<T>(i));
+    }
+    output = where(eligible != 0, IVal<T>(preferred), fallback);
+    replaced = where(eligible != 0, IVal<T>(0), IVal<T>(1));
+}
+
+template <typename T>
 KERNELSPEC void kernel_sample_discrete_probs_inverse(
     IIn<T, 0> index, FIn<T, 1> probs, FOut<T, 0> r, FOut<T, 0> det
 ) {

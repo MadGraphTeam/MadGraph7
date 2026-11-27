@@ -849,6 +849,214 @@ c
       return
       end
 
+      subroutine ixxxxxr(p,fmass,nhel,nsf,flavor,r , fi)
+c
+c This subroutine computes a MASSIVE fermion wavefunction with the
+c flowing-IN fermion number, with its spin quantised along the axis
+c fixed by the reference momentum r instead of along its own momentum
+c (Kleiss-Stirling spinors):
+c
+c     u(p,h;r) = (pslash + m) u0(r,-h) / sqrt(2 p.r)      (nsf = +1)
+c     v(p,h;r) = (pslash - m) v0(r,-h) / sqrt(2 p.r)      (nsf = -1)
+c
+c with u0(r,h), v0(r,h) the massless spinors of momentum r. Writing
+c p = pflat + m^2/(2 p.r) r, with pflat lightlike, one of the two
+c chiral components is the massless spinor of pflat and the other the
+c massless spinor of r times m/<pflat r> (or m/[pflat r]). The spin
+c axis is s = p/m - m r/(p.r); the helicity states of ixxxxx are
+c recovered, up to a phase, for r = (|p|,-p).
+c
+c The two states h = +-1 still satisfy the Dirac equation and
+c sum_h u ubar = pslash + m: the sum over the helicities of the squared
+c amplitude is unchanged, an amplitude for a given h is NOT a helicity
+c amplitude. Choosing r among the momenta entering the polarisation
+c vectors of the massless vectors (see vxxxxxr) makes the fermion-vector
+c couplings, and hence whole currents and amplitudes, vanish for given
+c h. See arXiv:2011.10075 and arXiv:2312.07447.
+c
+c Only the direction of r matters, so that r need not be exactly
+c lightlike. r is ignored (ixxxxx) for a massless fermion, whose
+c spinor is fixed up to a phase, and for a vanishing r.
+c
+c pslash u0(r) is not evaluated as such: for r close to the direction
+c of p it is the difference of two numbers of order E, while the result
+c is of order m^2/E. With xi(+-) and rho(+-) the two-component spinors
+c of helicity +-1 along p and along r, (E -+ pvec.sigma) rho is
+c expanded on the xi, which are its eigenvectors with the eigenvalues
+c E+|p| and E-|p| = m^2/(E+|p|):
+c     c = <xi+|rho+> ,  d = <xi-|rho+> ,  rho- = c* xi- - d* xi+ .
+c The two states are then orthonormal to rounding for any p and r, and
+c the spin axis is the one of r to a relative accuracy epsilon*E/m.
+c
+c input:
+c       real    p(0:3)         : four-momentum of fermion
+c       real    fmass          : mass          of fermion
+c       integer nhel = -1 or 1 : spin state    of fermion along s
+c       integer nsf  = -1 or 1 : +1 for particle, -1 for anti-particle
+c       real    r(0:3)         : reference momentum
+c
+c output:
+c       complex fi % W(4)      : fermion wavefunction               |fi>
+c
+      use ALOHA_OBJECT
+      implicit none
+      type(aloha) fi
+      integer flavor, nhel, nsf
+      double precision p(0:3), r(0:3), fmass
+
+      double complex xi(2), rho(2), c, d
+      double precision pp, rr, omp2, omm2, rn, fm
+      double precision rZero
+      parameter( rZero = 0.0d0 )
+
+      rr = dsqrt(r(1)**2+r(2)**2+r(3)**2)
+      if ( fmass.eq.rZero .or. rr.eq.rZero ) then
+         call ixxxxx(p,fmass,nhel,nsf,flavor , fi)
+         return
+      endif
+      pp = min(p(0),dsqrt(p(1)**2+p(2)**2+p(3)**2))
+c
+c     xi(+) = (xi(1),xi(2)) and xi(-) = (-conjg(xi(2)),xi(1)), with a
+c     real xi(1); the same for rho
+      call hlspxx(p,pp , xi)
+      call hlspxx(r,rr , rho)
+      c = xi(1)*rho(1) + dconjg(xi(2))*rho(2)
+      d = xi(1)*rho(2) - xi(2)*rho(1)
+      omp2 = p(0)+pp
+      omm2 = fmass**2/omp2
+c     omp2*|d|^2 + omm2*|c|^2 = p.r/|r| > 0
+      rn = 1d0/dsqrt( omp2*dble(d*dconjg(d)) + omm2*dble(c*dconjg(c)) )
+      fm = nsf*fmass*rn
+      omp2 = omp2*rn
+      omm2 = omm2*rn
+
+      if ( nhel*nsf.eq.1 ) then
+c        +-m rho(-) above, (E + pvec.sigma) rho(-) below
+         fi % W(1) = -fm*dconjg(rho(2))
+         fi % W(2) = fm*rho(1)
+         fi % W(3) = -omm2*dconjg(c*xi(2)) - omp2*dconjg(d)*xi(1)
+         fi % W(4) = omm2*dconjg(c)*xi(1) - omp2*dconjg(d)*xi(2)
+      else
+c        (E - pvec.sigma) rho(+) above, +-m rho(+) below
+         fi % W(1) = omm2*c*xi(1) - omp2*d*dconjg(xi(2))
+         fi % W(2) = omm2*c*xi(2) + omp2*d*xi(1)
+         fi % W(3) = fm*rho(1)
+         fi % W(4) = fm*rho(2)
+      endif
+
+      fi % P(0)  = p(0)*nsf*-1
+      fi % P(1)  = p(1)*nsf*-1
+      fi % P(2)  = p(2)*nsf*-1
+      fi % P(3)  = p(3)*nsf*-1
+      fi % flv_index = flavor
+c
+      return
+      end
+
+
+      subroutine oxxxxxr(p,fmass,nhel,nsf,flavor,r , fo)
+c
+c This subroutine computes a MASSIVE fermion wavefunction with the
+c flowing-OUT fermion number, with its spin quantised along the axis
+c fixed by the reference momentum r: the Dirac conjugate of the spinor
+c of ixxxxxr (see there),
+c
+c     ubar(p,h;r) = ubar0(r,-h) (pslash + m) / sqrt(2 p.r)   (nsf = +1)
+c     vbar(p,h;r) = vbar0(r,-h) (pslash - m) / sqrt(2 p.r)   (nsf = -1)
+c
+c r is ignored (oxxxxx) for a massless fermion and for a vanishing r.
+c
+c input:
+c       real    p(0:3)         : four-momentum of fermion
+c       real    fmass          : mass          of fermion
+c       integer nhel = -1 or 1 : spin state    of fermion along s
+c       integer nsf  = -1 or 1 : +1 for particle, -1 for anti-particle
+c       real    r(0:3)         : reference momentum
+c
+c output:
+c       complex fo % W(4)      : fermion wavefunction               <fo|
+c
+      use ALOHA_OBJECT
+      implicit none
+      type(aloha) fo
+      integer flavor, nhel, nsf
+      double precision p(0:3), r(0:3), fmass
+
+      double complex w(4)
+      double precision rZero
+      parameter( rZero = 0.0d0 )
+
+      if ( fmass.eq.rZero .or.
+     &     (r(1).eq.rZero.and.r(2).eq.rZero.and.r(3).eq.rZero) ) then
+         call oxxxxx(p,fmass,nhel,nsf,flavor , fo)
+         return
+      endif
+
+c     fo = fi^dagger gamma0: the complex conjugate of the spinor, with
+c     its upper and its lower two components exchanged
+      call ixxxxxr(p,fmass,nhel,nsf,flavor,r , fo)
+      w(1) = dconjg(fo % W(3))
+      w(2) = dconjg(fo % W(4))
+      w(3) = dconjg(fo % W(1))
+      w(4) = dconjg(fo % W(2))
+      fo % W(1) = w(1)
+      fo % W(2) = w(2)
+      fo % W(3) = w(3)
+      fo % W(4) = w(4)
+
+      fo % P(0)  = p(0)*nsf
+      fo % P(1)  = p(1)*nsf
+      fo % P(2)  = p(2)*nsf
+      fo % P(3)  = p(3)*nsf
+c
+      return
+      end
+
+
+      subroutine hlspxx(p,pp , chi)
+c
+c This subroutine computes the two-component spinor of helicity +1
+c along the three-momentum of p, normalised to one and with a real
+c first component; the one of helicity -1 is (-conjg(chi(2)),chi(1)).
+c
+c input:
+c       real    p(0:3)         : four-momentum (p(0) is not used)
+c       real    pp             : norm of its three-momentum
+c
+c output:
+c       complex chi(2)         : spinor
+c
+      implicit none
+      double precision p(0:3), pp, pp3
+      double complex chi(2)
+      double precision rZero, rHalf, rOne, rTwo
+      parameter( rZero = 0.0d0, rHalf = 0.5d0 )
+      parameter( rOne = 1.0d0, rTwo = 2.0d0 )
+
+      if ( pp.eq.rZero ) then
+c        no direction: quantised along +z
+         chi(1) = dcmplx( rOne )
+         chi(2) = dcmplx( rZero )
+         return
+      endif
+c     light-cone identity, as in ixxxxx: no |p|+p3 cancellation
+      if ( p(3).lt.rZero ) then
+         pp3 = max((p(1)**2+p(2)**2)/(pp-p(3)),rZero)
+      else
+         pp3 = max(pp+p(3),rZero)
+      endif
+      if ( pp3.eq.rZero ) then
+c        along -z
+         chi(1) = dcmplx( rZero )
+         chi(2) = dcmplx( rOne )
+      else
+         chi(1) = dcmplx( dsqrt(pp3*rHalf/pp) )
+         chi(2) = dcmplx( p(1), p(2) )/dsqrt(rTwo*pp*pp3)
+      endif
+c
+      return
+      end
+
       subroutine onia_proj(p1, m1, nhel1, p2, m2, nhel2, p3, m3, nhel3,
      $       spin, proj)
 c

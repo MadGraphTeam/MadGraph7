@@ -10,7 +10,7 @@ from tests.unit_tests.fks.test_momentum_maps import ROOT, TEMPLATE, fortran_rout
 
 
 CLUSTER_ROUTINES = (
-    'cluster_and_reweight', 'iforest_to_list',
+    'cluster_and_reweight', 'get_step_mother_pdg', 'iforest_to_list',
     'cluster', 'Reweighting', 'set_particle_type', 'reset_valid_confs',
     'limit_cluster_iconfig', 'IsBreitWigner', 'remove_confs_BW',
     'cluster_one_step', 'update_valid_confs', 'update_momenta',

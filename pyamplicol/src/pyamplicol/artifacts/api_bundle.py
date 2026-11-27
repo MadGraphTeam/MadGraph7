@@ -8,6 +8,7 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Literal
 
 from .manifest import PayloadRecord
 from .writer import ArtifactBuilder
@@ -59,6 +60,20 @@ _TEMPLATES: tuple[tuple[str, str, str, bool], ...] = (
     ("umami/umami.exports.macos", "text/plain", "api-build-file", False),
     ("umami/UMAMI_LICENSE", "text/plain", "sdk-metadata", False),
     ("umami/README.md", "text/markdown", "sdk-metadata", False),
+)
+
+
+_VIRTUAL_TEMPLATES: tuple[tuple[str, str, str, bool], ...] = (
+    ("README.md", "text/markdown", "sdk-metadata", False),
+    ("common/input.h", "text/x-chdr", "api-source", False),
+    ("python/check_standalone.py", "text/x-python", "api-source", True),
+    ("c/check_standalone.c", "text/x-csrc", "api-source", False),
+    ("cpp/check_standalone.cpp", "text/x-c++src", "api-source", False),
+    ("fortran/check_standalone.f90", "text/x-fortran", "api-source", False),
+    ("fortran/Makefile", "text/x-makefile", "api-build-file", False),
+    ("rust/check_standalone.rs", "text/x-rust", "api-source", False),
+    ("umami/check_standalone.c", "text/x-csrc", "api-source", False),
+    ("umami/Makefile", "text/x-makefile", "api-build-file", False),
 )
 
 
@@ -122,17 +137,33 @@ def format_validation_points(
 
 def api_bundle_payloads(
     validation_points: Mapping[str, ValidationPoint] | None = None,
+    *,
+    contribution_kind: Literal["tree", "virtual"] = "tree",
 ) -> tuple[ApiBundlePayload, ...]:
+    if contribution_kind not in {"tree", "virtual"}:
+        raise ValueError("unknown API bundle contribution kind")
+    templates = _TEMPLATES if contribution_kind == "tree" else _VIRTUAL_TEMPLATES
+    prefix = "" if contribution_kind == "tree" else "virtual/"
     payloads = [
         ApiBundlePayload(
             path=f"API/{relative}",
-            content=_template_bytes(relative),
+            content=_template_bytes(prefix + relative),
             role=role,
             media_type=media_type,
             executable=executable,
         )
-        for relative, media_type, role, executable in _TEMPLATES
+        for relative, media_type, role, executable in templates
     ]
+    if contribution_kind == "virtual":
+        payloads.extend(
+            ApiBundlePayload(
+                path=f"API/{language}/Makefile",
+                content=_template_bytes(f"{language}/Makefile"),
+                role="api-build-file",
+                media_type="text/x-makefile",
+            )
+            for language in ("c", "cpp", "rust")
+        )
     payloads.append(
         ApiBundlePayload(
             path="API/validation_points.dat",
@@ -147,6 +178,8 @@ def api_bundle_payloads(
 def emit_api_bundle(
     builder: ArtifactBuilder,
     validation_points: Mapping[str, ValidationPoint] | None = None,
+    *,
+    contribution_kind: Literal["tree", "virtual"] = "tree",
 ) -> tuple[PayloadRecord, ...]:
     """Write exactly one root API bundle through an active artifact builder."""
 
@@ -158,7 +191,9 @@ def emit_api_bundle(
             media_type=payload.media_type,
             executable=payload.executable,
         )
-        for payload in api_bundle_payloads(validation_points)
+        for payload in api_bundle_payloads(
+            validation_points, contribution_kind=contribution_kind
+        )
     )
 
 

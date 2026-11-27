@@ -126,7 +126,7 @@ pyamplicol/_sdk/
   include/rusticol.hpp
   fortran/rusticol.f90
   rust/rusticol.rs
-  lib/librusticol_capi.a
+  lib/librusticol_capi.a        (lib/librusticol_capi.a.xz in distribution wheels)
   config.py
   metadata.json
   link.json
@@ -135,6 +135,13 @@ pyamplicol/_sdk/
 The backend captures one static archive from Cargo JSON messages, validates the
 complete C ABI, rejects non-relocatable link inputs, scans for Python-family
 symbols, and records only target-appropriate system libraries/frameworks.
+Distribution wheels (`pyamplicol.distribution-wheel=true`) ship the validated
+archive xz-compressed; `metadata.json` names it and records the unpacked
+archive's SHA-256 and size (`archive_compression`), `rusticol-config` unpacks
+it on first use into the per-user cache (`$PYAMPLICOL_CACHE_DIR/sdk/` or the
+platform cache) and checks it there, and the release audit (which requires the
+compressed form for release wheels) unpacks it in memory for its scans and the
+link probe.
 `rusticol-config` exposes typed C/C++ flags, Fortran source, Rust linker flags,
 and JSON metadata without a machine-specific build path.
 
@@ -181,7 +188,10 @@ without Rust in the consumer environment. That deployment includes:
 - `twine check` and platform/native-dependency audits;
 - import, CLI, direct-JIT f64 self-test, and packaged-example checks;
 - Python total/resolved runtime behavior with Symbolica imports blocked;
-- C11, C++17, Fortran 2008, and Rust 2021 f64 driver compilation/execution;
+- C11, C++17, Fortran 2008, and Rust 2021 f64 driver compilation/execution,
+  and the self-test's UMAMI provider built with its own Makefile and run
+  (its matrix element equals the self-test total), first on an empty SDK
+  cache and then on the warm one, plus two concurrent first uses of the cache;
 - model-parameter card and direct UFO-parameter override behavior.
 
 CPython 3.14 receives a focused abi3 installation, import, metadata, and
@@ -208,7 +218,11 @@ The release inventory is exactly one source distribution and one wheel per
 supported target. Publication never rebuilds these files.
 
 The validated-artifact workflow is manually dispatched with read-only source
-permissions. A separate manual publishing workflow downloads the successful
+permissions. Every wheel is built from the one retained sdist. The manylinux
+job also builds a comparison wheel from the checkout and requires the same
+filename, version, tags and target; the macOS jobs build the sdist wheel only
+(`--skip-checkout-wheel`): two native builds do not fit the six-hour job limit
+on `macos-15-intel`, and the sdist wheel's own audit pins the same fields. A separate manual publishing workflow downloads the successful
 validated inventory, verifies the expected platforms and non-candidate version,
 and publishes through a protected TestPyPI or PyPI environment using OIDC
 Trusted Publishing. Only that final job receives `id-token: write`.

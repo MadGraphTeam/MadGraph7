@@ -1,0 +1,48 @@
+{
+  "kind": "local-chiral-fermion-two-point-source-aloha-and-vector-control",
+  "native_arithmetic": "exact Symbolica expressions",
+  "reference_arithmetic": "binary64 generated ALOHA",
+  "reference_phase_removed": "-i*COUP",
+  "momentum_reference": "original first source leg, unchanged by endpoint exchange",
+  "physical_frame": "typed endpoint exchange; no additional FFS projector swap",
+  "off_shell_complex_momenta_and_arbitrary_spinor_components": true,
+  "exact_chiral_sum_identities": 16,
+  "scalar_couplings_validated": false,
+  "full_process_validated": false,
+  "controls": [
+    {
+      "source_key": [
+        "counterterm_vertices",
+        123,
+        0,
+        1,
+        0
+      ],
+      "source_lorentz": "P(-1,1)*Gamma(-1,2,-2)*ProjM(-2,1)",
+      "source_color": "Identity(1,2)",
+      "vector_source_lorentz": "Gamma(3,2,-1)*ProjM(-1,1)",
+      "reference_source": "FF3_0.f",
+      "reference_sha256": "62f33512ed1e029e9eed8319c97a03b08de138c9f0459e68bcd33e6647a11e01",
+      "checks": 34,
+      "maximum_scaled_error": 1.984385348930225e-16,
+      "exact_vector_projection_and_endpoint_identities": 48
+    },
+    {
+      "source_key": [
+        "counterterm_vertices",
+        123,
+        0,
+        2,
+        0
+      ],
+      "source_lorentz": "P(-1,1)*Gamma(-1,2,-2)*ProjP(-2,1)",
+      "source_color": "Identity(1,2)",
+      "vector_source_lorentz": "Gamma(3,2,-1)*ProjP(-1,1)",
+      "reference_source": "FF6_0.f",
+      "reference_sha256": "cb267ea4300f46573bfe2cb78ca3102f6fea9c348b04157ce3aa14bb0cbaed95",
+      "checks": 34,
+      "maximum_scaled_error": 2.0302320035997284e-16,
+      "exact_vector_projection_and_endpoint_identities": 48
+    }
+  ]
+}

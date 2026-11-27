@@ -38,5 +38,19 @@ using IVal = typename T::IVal;
 template <typename T>
 using BVal = typename T::BVal;
 
+// The smallest normal double, the floor of quantities such as 1 - x that have
+// to stay positive and normal where a power of a random number underflows.
+inline constexpr double SMALLEST_NORMAL = 2.2250738585072014e-308;
+
+// base^exponent, zero for a base that is not positive or not a number. The
+// base is replaced before pow sees it: with a fractional exponent a negative
+// base gives NaN, and one NaN in a SIMD lane is enough to spoil the whole
+// batch.
+template <typename T>
+KERNELSPEC FVal<T> positive_pow(FVal<T> base, FVal<T> exponent) {
+    auto positive = base > 0.;
+    return where(positive, pow(where(positive, base, 1.), exponent), 0.);
+}
+
 } // namespace kernels
 } // namespace madspace

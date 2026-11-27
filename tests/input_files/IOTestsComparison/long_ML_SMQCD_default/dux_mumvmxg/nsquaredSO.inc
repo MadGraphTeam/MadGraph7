@@ -1,2 +1,1 @@
-      INTEGER NSQUAREDSO
-      PARAMETER (NSQUAREDSO=0)
+../../_shared/long_ML_SMQCD_default%dux_mumvmxg%nsquaredSO.inc

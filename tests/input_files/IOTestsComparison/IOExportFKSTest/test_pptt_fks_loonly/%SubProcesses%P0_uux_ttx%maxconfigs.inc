@@ -1,2 +1,1 @@
-      INTEGER LMAXCONFIGS
-      PARAMETER(LMAXCONFIGS=1)
+../../_shared/IOExportFKSTest%test_pptt_fks_loonly%%SubProcesses%P0_uux_ttx%maxconfigs.inc

@@ -10,6 +10,7 @@ from pyamplicol.models import compiler_contact_trees as contact_trees
 from pyamplicol.models import compiler_symbolica as _sym
 from pyamplicol.models.compiler_contacts import _execute_dense_tensor
 from pyamplicol.models.compiler_kernels import (
+    DenseTensors,
     _oriented_component_expressions,
     _spin_axis_labels,
     _spin_representations,
@@ -72,13 +73,13 @@ def test_rank_zero_symbol_detection_is_order_independent(
 
 def test_rank_zero_tensor_contraction_keeps_scalar_dispatch() -> None:
     _sym._ensure_symbolica()
-    library = _sym.TensorLibrary.hep_lib_atom()
+    library = DenseTensors()
     representation = _sym.Representation.euc(3)
     slot = representation("rank_zero_axis")
+    library.register_dense("rank_zero_left", (representation,), [1, 2, 3])
+    library.register_dense("rank_zero_right", (representation,), [4, 5, 6])
     left = _sym.TensorName("rank_zero_left")
     right = _sym.TensorName("rank_zero_right")
-    library.register(_sym.Tensor.dense(left(representation), [1, 2, 3]))
-    library.register(_sym.Tensor.dense(right(representation), [4, 5, 6]))
     expression = left(slot).to_expression() * right(slot).to_expression()
 
     assert _execute_dense_tensor(expression, library, axis_labels=()) == (_sym.E("32"),)
@@ -152,18 +153,13 @@ def test_staged_contact_contraction_preserves_dense_axis_order(
         for leg, particle in enumerate(particles, start=1)
         for slot in _spin_slots(particle.spin, leg)
     )
-    source_name = _sym.TensorName(registry.qualified_name("test_contact"))
+    source_name = registry.qualified_name("test_contact")
     source_components = tuple(_sym.E(str(index + 1)) for index in range(4**4))
 
     def source_tensor() -> tuple[object, object]:
-        library = _sym.TensorLibrary.hep_lib_atom()
-        library.register(
-            _sym.Tensor.dense(
-                source_name(*representations),
-                source_components,
-            )
-        )
-        return source_name(*slots).to_expression(), library
+        library = DenseTensors()
+        library.register_dense(source_name, representations, source_components)
+        return _sym.TensorName(source_name)(*slots).to_expression(), library
 
     direct_expression, direct_library = source_tensor()
     for leg, (components, _momentum) in sorted(payload.items()):

@@ -7,12 +7,17 @@
 #ifndef constexpr_math_h
 #define constexpr_math_h 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include <cassert>
 #include <cmath>
 #include <iomanip>
 #include <limits>
+#include <numbers>
+
+#ifndef __cpp_lib_math_constants
+#error Unsupported standard library: <numbers> (C++20) is required
+#endif
 
 // SWITCH ON/OFF DEBUGGING
 #undef CONSTEXPR_MATH_DEBUG // no-debug
@@ -27,7 +32,6 @@
 #define CONSTEXPRMATHVAR constexpr
 #endif
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   // Constexpr implementation of sqrt (see https://stackoverflow.com/a/34134071)
@@ -67,16 +71,10 @@ namespace madmatrix
     return iexp == 0 ? 1 : base * constexpr_pow( base, iexp - 1 );
   }
 
-  // PI constants
-  // NB1: M_PIl from from cmath is not defined on Mac
-  // NB2: std::numbers::pi needs c++20 but we are still using c++17
-  // NB3: I could use my constexpr_atan(1)*4... but a literal is better?
-  //constexpr long double constexpr_pi = M_PIl;        // pi
-  //constexpr long double constexpr_pi_by_2 = M_PI_2l; // pi/2
-  //constexpr long double constexpr_pi_by_4 = M_PI_4l; // pi/4
-  constexpr long double constexpr_pi = 3.141592653589793238462643383279502884L;      // same as M_PIl in gcc
-  constexpr long double constexpr_pi_by_2 = 1.570796326794896619231321691639751442L; // same as M_PI_2l in gcc
-  constexpr long double constexpr_pi_by_4 = 0.785398163397448309615660845819875721L; // same as M_PI_4l in gcc
+  // Long double: only used in compile-time evaluation, where fptype would lose precision in float builds.
+  constexpr long double constexpr_pi = std::numbers::pi_v<long double>;
+  constexpr long double constexpr_pi_by_2 = constexpr_pi / 2;
+  constexpr long double constexpr_pi_by_4 = constexpr_pi / 4;
   static_assert( constexpr_pi_by_4 * 4 == constexpr_pi );
   static_assert( constexpr_pi_by_4 * 2 == constexpr_pi_by_2 );
   static_assert( constexpr_pi_by_2 * 2 == constexpr_pi );

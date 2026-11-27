@@ -13,13 +13,15 @@ import tempfile
 import threading
 import time
 
-from madgraph.mg7.common import backend_of, fptype_of, interference_helicities_summed, lhe_helicities, lhe_weight_info, logger, me_parameters, mlm_pdf_ladder, ms, resolve_auto_backend, resolve_seed, resolve_verbosity
+from madgraph.mg7.common import backend_of, fptype_of, interference_helicities_summed, lhe_helicities, lhe_weight_info, logger, me_parameters, mlm_pdf_ladder, ms, new_run_path, resolve_auto_backend, resolve_seed, resolve_verbosity
 from madgraph.various import misc
 from madgraph.various.banner import RunCardMG7
 from madgraph.models.check_param_card import ParamCard
 from madgraph.models.model_reader import Alphas_Runner
+from madgraph.mg7 import helicity_choice as helicity_choice_module
 from madgraph.mg7 import hwu_output
 from madgraph.mg7 import lepton_density as lepton_density_module
+from madgraph.mg7 import upc_luminosity as upc_luminosity_module
 import madgraph.various.py8_bstrahl as py8_bstrahl
 from madgraph.mg7 import npy_to_lhe
 from madgraph.mg7 import options
@@ -36,7 +38,9 @@ from madgraph.mg7.observables import CutItem, HistItem, build_observable, clean_
 from madgraph.mg7.options import lhapdf_paths
 from madgraph.mg7.postprocess import _find_event_file
 from madgraph.mg7.model_widths import _proc_characteristic
-from madgraph.mg7.subprocess_amplicol import AmplicolSubprocess, amplicol_subproc_args, is_amplicol
+from madgraph.mg7.subprocess_amplicol import (
+    AmplicolSubprocess, amplicol_parameters, amplicol_subproc_args, is_amplicol,
+)
 from madgraph.mg7.subprocess_madmatrix import MadgraphSubprocess, PhaseSpace, build_multi_channel_data
 
 # From this many subprocess directories to compile, the standard headers are
@@ -284,14 +288,23 @@ class MadgraphProcess:
     # reweighting with instead of evaluating it again; set before survey()
     store_matrix_elements = False
 
-    def __init__(self, extra_make_args=(), split_flavors=False):
+    # set by a cluster job, which only writes the data/ of a gridpack: the rest
+    # is the same for all of them, and written once for the merged gridpack
+    gridpack_data_only = False
+
+    def __init__(self, extra_make_args=(), split_flavors=False, run_card_path=None,
+                 steering_only=False):
         # appended to the make command that builds the matrix elements
         self.extra_make_args = list(extra_make_args)
         # one subprocess per flavour of a decay (split_decay_flavors)
         self.split_flavors = split_flavors
+        # a cluster job reads the card made for it
+        self.run_card_path = run_card_path or os.path.join("Cards", "run_card.toml")
         self.madnis_trained = False
         self.lhe_completer = None
         self.load_cards()
+        if steering_only:
+            return
         self.init_backend()
         self.init_event_dir()
         self.init_context()
@@ -303,8 +316,15 @@ class MadgraphProcess:
         self.init_beam()
         self.init_subprocesses()
 
+    @classmethod
+    def for_steering(cls) -> "MadgraphProcess":
+        """A process that has only read the cards, for the steering of a
+        cluster run: it builds the matrix elements and writes gridpacks, but
+        integrates nothing itself."""
+        return cls(steering_only=True)
+
     def load_cards(self) -> None:
-        self.run_card = RunCardMG7(os.path.join("Cards", "run_card.toml"))
+        self.run_card = RunCardMG7(self.run_card_path)
         misc.configure_gzip(self.run_card.gzip_configuration())
         # Resolved once so every generator built during this run shares the same
         # seed; the concrete value (even if randomly drawn) is recorded in each
@@ -315,7 +335,15 @@ class MadgraphProcess:
         with open(os.path.join("SubProcesses", "subprocesses.json")) as f:
             self.subprocess_data = json.load(f)
         merge_subprocesses = self.run_card["phasespace"]["merge_subprocesses"]
-        if merge_subprocesses and self.run_card["beam"]["dynamical_scale_choice"] == "mlm":
+        if merge_subprocesses and self.run_card.is_ckkwl_merged():
+            # the merging cut is built per subprocess from its leg flavours
+            logger.warning(
+                "merge_subprocesses is not supported with a CKKW-L merging cut "
+                "(ktdurham/ptlund); the subprocesses are kept separate"
+            )
+            merge_subprocesses = False
+        if merge_subprocesses and self.run_card["beam"]["dynamical_scale_choice"] in (
+                "mlm", "ckkwl"):
             # A merged subprocess bundles matrix elements whose legs differ -
             # q q~ > l l g next to q g > l l q - while the MLM clustering is
             # built once per subprocess from a single assignment of flavours to
@@ -324,7 +352,8 @@ class MadgraphProcess:
             # weights of one element only.
             logger.warning(
                 "merge_subprocesses is not supported with dynamical_scale_choice "
-                "= mlm; the subprocesses are kept separate"
+                "= %s; the subprocesses are kept separate",
+                self.run_card["beam"]["dynamical_scale_choice"]
             )
             merge_subprocesses = False
         if merge_subprocesses:
@@ -427,7 +456,9 @@ class MadgraphProcess:
             self.decaying_mass = None
             single = [meta["outgoing"] for meta in self.subprocess_data
                       if len(clean_pids(meta["outgoing"])) == 1]
-            if single and self.run_card["beam"]["leptonic"]:
+            # a gamma-UPC luminosity samples s_hat whatever beam.leptonic says
+            if single and self.run_card["beam"]["leptonic"] \
+                    and not self.run_card["beam"]["upc_flux"]:
                 raise ValueError(
                     f"2 -> 1 processes ({single[0]} ...) need beams with a PDF "
                     "(leptonic = false in [beam]): with fixed beam energies the "
@@ -523,22 +554,7 @@ class MadgraphProcess:
             self.run_path = os.path.abspath(os.path.expanduser(output_dir))
             os.makedirs(self.run_path, exist_ok=True)
         else:
-            run_name = self.run_card["run"]["run_name"]
-            os.makedirs("Events", exist_ok=True)
-            run_dir_prefix = os.path.join("Events", f"{run_name}_")
-            existing_run_dirs = glob.glob(f"{run_dir_prefix}*")
-            run_index = 1
-            for run_dir in existing_run_dirs:
-                run_index_str = run_dir[len(run_dir_prefix):]
-                if run_index_str.isnumeric():
-                    run_index = max(run_index, int(run_index_str) + 1)
-            while True:
-                try:
-                    self.run_path = f"{run_dir_prefix}{run_index:02d}"
-                    os.mkdir(self.run_path)
-                    break
-                except FileExistsError:
-                    run_index += 1
+            self.run_path = new_run_path(self.run_card["run"]["run_name"])
         # temporary npy files of the channel generators
         self.auto_temp_path = temp_dir == "auto"
         if self.auto_temp_path:
@@ -564,8 +580,13 @@ class MadgraphProcess:
         self.contexts = []
         # AmpliCol libraries, shared by all channels of their process
         self.amplicol_apis = {}
-        # [path format, init path, parameters] of every load_matrix_element, in order
+        self.amplicol_positions = None
+        # [path format, init path, parameters, helicity choice] of every
+        # load_matrix_element, in order
         self.loaded_matrix_elements = []
+        # the helicity choice of each madmatrix library (by path format), see
+        # helicity_choice()
+        self.helicity_choices = {}
         self.device_types = []
         self.devices = []
         self.pool_sizes = []
@@ -590,27 +611,74 @@ class MadgraphProcess:
             self.pool_sizes.append(pool_size)
             self.contexts.append(ms.Context(device=device, thread_count=pool_size))
 
-    def load_matrix_element(self, path_format: str, init_path: str, parameters: dict):
+    def load_matrix_element(
+        self, path_format: str, init_path: str, parameters: dict,
+        helicity_choice=None, position=None
+    ):
         """Load a matrix-element library into every context, recorded for the
         gridpack to load the same ones at the same indices. The init path is
-        the param card, or the artifact of an AmpliCol library."""
+        the param card, or the artifact of an AmpliCol library. A madmatrix
+        library is given its helicity choice (see helicity_choice()).
+        ``position`` is its place among the matrix elements (default: after the
+        last one), which the compiled functions refer to it by."""
+        helicity_choice = list(helicity_choice or [])
+        # appended by default: [surrogate] libraries take context slots that
+        # loaded_matrix_elements does not record
+        index = -1 if position is None else len(self.custom_function_paths) + position
+        if position is None:
+            position = len(self.loaded_matrix_elements)
         for context, backend in zip(self.contexts, self.backends):
             api = context.load_matrix_element(
                 path_format.format(device=backend, fptype=self.fptype),
                 os.path.abspath(init_path),
-                parameters
+                parameters,
+                helicity_choice,
+                index=index,
             )
-        self.loaded_matrix_elements.append([path_format, init_path, parameters])
+        missing = position + 1 - len(self.loaded_matrix_elements)
+        self.loaded_matrix_elements.extend([None] * max(missing, 0))
+        self.loaded_matrix_elements[position] = [
+            path_format, init_path, parameters, helicity_choice]
         return api
+
+    def helicity_choice(self, path_format: str, param_card: str, parameters: dict):
+        """The good helicities of a madmatrix library for every context,
+        chosen once, from the cards, on a CPU build (see
+        madgraph/mg7/helicity_choice.py): on 16 RAMBO points of the collider
+        of the run card, up to its centre-of-mass energy, from just above the
+        threshold of the process when the beams have PDFs, ISR or
+        beamstrahlung, and in the partonic centre-of-mass and lab frames. None
+        if the library cannot choose so: each instance then chooses on its
+        first events."""
+        if path_format not in self.helicity_choices:
+            backend, fptype = self.helicity_choice_build
+            spread = not self.is_decay and (
+                not self.leptonic or bool(self._lepton_density_name)
+                or bool(self.upc_flux))
+            choice = helicity_choice_module.choose(
+                path_format.format(device=backend, fptype=fptype), param_card,
+                parameters, self.e_cm, self.beam_rapidity, spread)
+            if choice is not None and not any(self.helicity_choices.values()):
+                logger.info(
+                    "good helicities chosen from the cards on the %s build (16 points "
+                    "at sqrt(s) = %g GeV%s), for every thread and device",
+                    backend, self.e_cm, " and down to threshold" if spread else "")
+            if choice is None:
+                logger.debug("%s: the good helicities are chosen on the first "
+                             "events of each instance", os.path.basename(path_format))
+            else:
+                logger.debug(
+                    "%s: %d good helicities, chosen on the %s %s build at sqrt(s) = %g GeV%s",
+                    os.path.basename(path_format), len(choice) - 1, backend, fptype,
+                    self.e_cm, " and below" if spread else "")
+            self.helicity_choices[path_format] = choice
+        return self.helicity_choices[path_format]
 
     CUSTOM_FUNCTION_KINDS = ("cut", "scale", "pdf", "bias")
 
-    def init_custom_functions(self) -> None:
-        """Load the functions of [custom_functions], building the libraries
-        first. They are loaded before the matrix elements, so that they have the
-        same index in every context and in a gridpack made from this run."""
-        self.custom_functions = {}
-        self.custom_function_paths = []
+    def custom_function_entries(self):
+        """[kind, path, parameters] of every function of [custom_functions],
+        after building its library when it has a Makefile."""
         for kind in self.CUSTOM_FUNCTION_KINDS:
             path = self.run_card["custom_functions"][kind]
             if not path:
@@ -623,7 +691,20 @@ class MadgraphProcess:
                     f"[custom_functions] {kind} = {path!r}: file not found. "
                     "Create a .so library or a .py file with bin/init_custom_func."
                 )
-            parameters = self.run_card.custom_parameters(kind)
+            yield kind, path, self.run_card.custom_parameters(kind)
+
+    def init_custom_function_paths(self) -> None:
+        """Only the paths of the custom functions, which a gridpack refers to,
+        for a process that does not load them (see for_steering)."""
+        self.custom_function_paths = [list(entry) for entry in self.custom_function_entries()]
+
+    def init_custom_functions(self) -> None:
+        """Load the functions of [custom_functions], building the libraries
+        first. They are loaded before the matrix elements, so that they have the
+        same index in every context and in a gridpack made from this run."""
+        self.custom_functions = {}
+        self.custom_function_paths = []
+        for kind, path, parameters in self.custom_function_entries():
             apis = load_custom_function(
                 ms, self.contexts, self.device_types, kind, path, parameters
             )
@@ -658,6 +739,9 @@ class MadgraphProcess:
             raise RuntimeError("[surrogate] cannot be used with dummy_matrix_element")
         if self.run_card["gridpack"]["save_gridpack"]:
             raise RuntimeError("[surrogate] does not support gridpacks yet")
+        if self.run_card["phasespace"]["subprocess_selection"]:
+            # the selection loads the matrix elements at fixed context slots
+            raise RuntimeError("[surrogate] cannot be used with subprocess_selection")
         self.surrogate = dict(settings)
         if not self.surrogate["param_card"]:
             self.surrogate["param_card"] = self.param_card_path
@@ -800,6 +884,21 @@ class MadgraphProcess:
             elif cuts.get(key, {}).get("min", 0.0) > xqcut:
                 cuts[key]["min"] = 0.0
 
+    def init_merging_cut(self) -> None:
+        """The CKKW-L merging cut (ktdurham or ptlund) of the run card, as
+        (measure, minimum, merging pdg ids), or None."""
+        self.merging_cut = None
+        ps = self.run_card["phasespace"]
+        if self.is_decay or not self.run_card.is_ckkwl_merged():
+            return
+        if float(ps["ktdurham"]) > 0:
+            measure, value = ms.MergingScale.Measure.kt_durham, float(ps["ktdurham"])
+        else:
+            measure, value = ms.MergingScale.Measure.pt_lund, float(ps["ptlund"])
+        # the list the banner reports as pdgs_for_merging_cut
+        pdgs = self.run_card.resolved_merging_pdgs()
+        self.merging_cut = (measure, value, {abs(pdg) for pdg in pdgs})
+
     def init_cuts(self) -> None:
         inf = float("inf")
         order_observable = self.run_card["cuts"].get("order_by", "pt")
@@ -809,6 +908,7 @@ class MadgraphProcess:
             if key != "order_by"
         }
         self.apply_auto_ptj_mjj(cuts)
+        self.init_merging_cut()
         self.cut_data = [
             CutItem(
                 observable_kwargs=self.parse_observable(key, order_observable),
@@ -938,6 +1038,25 @@ class MadgraphProcess:
             self.beam_rapidity = 0.5 * math.log(ebeam1 / ebeam2)
             self.leptonic = beam_args["leptonic"]
 
+        # gamma-UPC (beam.upc_flux): one tabulated two-photon luminosity
+        # replaces the PDFs, as a dressed-lepton density does, so the run is
+        # 'leptonic' in the sense of "no PDF" (alpha_s from the param card).
+        # ebeam1/ebeam2 are the energies of the whole ions, as in madevent;
+        # the phase space is generated per nucleon (see upc_luminosity.py).
+        # Built lazily, from the subprocesses' lowest partonic energy.
+        self.upc_flux = "" if self.is_decay else str(beam_args.get("upc_flux", ""))
+        self.upc_ions = self.run_card.upc_ions()
+        self._upc_luminosity = None
+        if self.upc_flux:
+            e1, e2 = upc_luminosity_module.nucleon_energies(
+                self.beam_energies, self.upc_ions)
+            self.e_cm = 2.0 * math.sqrt(e1 * e2)
+            self.beam_rapidity = 0.5 * math.log(e1 / e2)
+            self.leptonic = True
+            logger.info(
+                "gamma-UPC %s photon-photon luminosity: sqrt(s_NN) = %g GeV "
+                "(Z,N = %s, %s)", self.upc_flux, self.e_cm, *self.upc_ions)
+
         # A dressed-lepton density is not the same thing as beam.leptonic:
         # 'leptonic' means no parton luminosity at all (monochromatic beams),
         # while a density brings ISR and, for the collider-specific sets,
@@ -959,14 +1078,17 @@ class MadgraphProcess:
         # "mlm" is not one of the closed-form scale choices: it needs the diagram
         # topologies of each subprocess, so the EnergyScale is built later, in
         # MadgraphSubprocess.init_madspace, from an MLMClustering instance.
-        if beam_args["dynamical_scale_choice"] == "mlm":
+        # "ckkwl" is the same clustering without the alpha_s and pdf ladders.
+        self.ckkwl_scale = beam_args["dynamical_scale_choice"] == "ckkwl"
+        if not self.is_decay:
+            # the jets of the clustering and of a merging cut have to be the
+            # massless quarks of the model: no free max_jet_flavor when merging
+            self.run_card.check_mlm_max_jet_flavor(
+                _proc_characteristic().get("max_jet_flavor", 0))
+        if beam_args["dynamical_scale_choice"] in ("mlm", "ckkwl"):
             self.mlm_clustering = True
             self.scale_kwargs = {}
             if not self.is_decay:
-                # the clustering's jets have to be the massless quarks of the
-                # model: no free choice of max_jet_flavor with MLM
-                self.run_card.check_mlm_max_jet_flavor(
-                    _proc_characteristic().get("max_jet_flavor", 0))
                 # where the shower of the particles that are not light partons
                 # starts: the hardest scale of the event (max of the
                 # core-process scale the clustering gives them, mu_F and the
@@ -1002,22 +1124,32 @@ class MadgraphProcess:
             # The merging needs the scales of its own clustering history: a
             # custom scale or a factor on it would move the merging scale away
             # from the one the shower is matched to.
+            choice = beam_args["dynamical_scale_choice"]
             if self.custom_functions.pop("scale", None) is not None:
                 logger.warning(
-                    "custom scale ignored under dynamical_scale_choice = mlm")
+                    "custom scale ignored under dynamical_scale_choice = %s", choice)
             if float(beam_args.get("scale_factor", 1.)) != 1.:
                 logger.warning(
-                    "scale_factor ignored under dynamical_scale_choice = mlm")
+                    "scale_factor ignored under dynamical_scale_choice = %s", choice)
+            # lepton beams have no factorisation scale, fixed by default
+            if beam_args["fixed_ren_scale"] or (
+                    beam_args["fixed_fact_scale"] and not self.leptonic):
+                logger.warning(
+                    "fixed_ren_scale/fixed_fact_scale ignored under "
+                    "dynamical_scale_choice = %s: the scales come from the "
+                    "clustering", choice)
         if self.is_decay:
             # One scale is available for a decay -- the decaying mass -- so use
             # it, fixed, whatever the card asks for. That includes "mlm": a
             # decay has no beams to cluster into, so there is no merging to do.
             if self.mlm_clustering:
                 logger.warning(
-                    "dynamical_scale_choice = mlm has no meaning for a decay; "
-                    "using the decaying mass as a fixed scale instead"
+                    "dynamical_scale_choice = %s has no meaning for a decay; "
+                    "using the decaying mass as a fixed scale instead",
+                    beam_args["dynamical_scale_choice"]
                 )
                 self.mlm_clustering = False
+                self.ckkwl_scale = False
             self.scale_kwargs.setdefault(
                 "dynamical_scale_type", ms.EnergyScale.half_transverse_mass
             )
@@ -1269,6 +1401,7 @@ class MadgraphProcess:
         # the emission scale of the MLM alpha_s vertices, which only an MLM
         # sample with per-vertex alpha_s has
         if (self.mlm_clustering and not self.is_decay
+                and self.run_card["beam"]["dynamical_scale_choice"] != "ckkwl"
                 and self.run_card["beam"]["alphas_reweighting"] != "none"):
             config.alps = [float(v) for v in syst["alps"]]
         else:
@@ -1339,6 +1472,9 @@ class MadgraphProcess:
             "nominal_info_file": info_path,
             # matrix elements re-evaluated for the mixed-order subprocesses
             "me_paths": [meta["me_path"] for meta in self.subprocess_data],
+            # and their helicity choices, see helicity_choice()
+            "helicity_choices": [self.helicity_choices.get(meta["me_path"]) or []
+                                 for meta in self.subprocess_data],
             "me_backend": me_backend,
             "flavor_remap": flavor_remap,
             "me_frame": self.me_frame,
@@ -1413,7 +1549,8 @@ class MadgraphProcess:
             api = context.load_matrix_element(
                 meta["me_path"].format(device=backend, fptype=self.fptype),
                 self.param_card_path,
-                me_parameters(self.run_card))
+                me_parameters(self.run_card),
+                self.helicity_choices.get(meta["me_path"]) or [])
             matrix_elements.append(ms.MatrixElement(
                 api,
                 [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
@@ -1704,25 +1841,73 @@ class MadgraphProcess:
         self.event_generator_config = cfg
         self.event_generator = None
 
+    def me_layout(self) -> tuple[list[list], list[int], dict[str, int]]:
+        """The matrix elements in the order they are loaded into a context
+        (after the custom functions) as [path, init path, parameters], the
+        position of the first one of every subprocess (merge group) in it, and
+        the position of every AmpliCol library by its path. The compiled
+        functions refer to a matrix element by its position, so a run that
+        integrates only some of the subprocesses still loads them at their
+        position in the full list, which is also the order data.json of a
+        gridpack lists them in. An AmpliCol library is loaded once, for the
+        first subprocess that needs it, followed by its full-colour ratio."""
+        if self.merged_subprocess_data is None:
+            groups = [[i] for i in range(len(self.subprocess_data))]
+        else:
+            groups = [meta["subprocesses"] for meta in self.merged_subprocess_data]
+        full_colour = self.run_card["amplicol"]["color_accuracy"] != "lc"
+        entries = []
+        offsets = []
+        amplicol_positions = {}
+        for group in groups:
+            offsets.append(len(entries))
+            for i in group:
+                meta = self.subprocess_data[i]
+                if not is_amplicol(meta):
+                    entries.append([meta["me_path"], self.param_card_path,
+                                    me_parameters(self.run_card)])
+                    continue
+                parameters = amplicol_parameters(meta, self)
+                libraries = [(meta["me_path"], meta["artifact"])]
+                if full_colour:
+                    libraries.append((meta["ratio_path"], meta["ratio_artifact"]))
+                for path, artifact in libraries:
+                    if path not in amplicol_positions:
+                        amplicol_positions[path] = len(entries)
+                        entries.append([path, artifact, parameters])
+        return entries, offsets, amplicol_positions
+
     def init_subprocesses(self) -> None:
         self.backends = self.compile_matrix_elements()
+        metas = (
+            self.subprocess_data if self.merged_subprocess_data is None
+            else self.merged_subprocess_data
+        )
+        selection = self.run_card["phasespace"]["subprocess_selection"]
+        if any(subproc_id >= len(metas) for subproc_id in selection):
+            raise ValueError(
+                f"subprocess_selection {list(selection)} names a subprocess beyond "
+                f"the {len(metas)} of this process"
+            )
+        self.selected_subprocess_ids = sorted(selection) or list(range(len(metas)))
+        # positions only matter for a selection
+        self.amplicol_positions = None
+        me_offsets = None
+        if selection:
+            _, me_offsets, self.amplicol_positions = self.me_layout()
         self.subprocesses = []
-        if self.merged_subprocess_data is None:
-            for subproc_id, meta in enumerate(self.subprocess_data):
-                subproc_class = (
-                    AmplicolSubprocess if is_amplicol(meta) else MadgraphSubprocess
-                )
-                self.subprocesses.append(subproc_class(self, meta, subproc_id))
-        else:
-            for subproc_id, meta in enumerate(self.merged_subprocess_data):
-                # an AmpliCol subprocess is never merged with another one
-                first = self.subprocess_data[meta["subprocesses"][0]]
-                subproc_class = (
-                    AmplicolSubprocess if is_amplicol(first) else MadgraphSubprocess
-                )
-                self.subprocesses.append(
-                    subproc_class(self, meta, subproc_id, self.subprocess_data)
-                )
+        for subproc_id in self.selected_subprocess_ids:
+            meta = metas[subproc_id]
+            unmerged = None if self.merged_subprocess_data is None else self.subprocess_data
+            first = self.subprocess_data[
+                meta["subprocesses"][0] if unmerged is not None else subproc_id]
+            # an AmpliCol subprocess is never merged with another one
+            subproc_class = AmplicolSubprocess if is_amplicol(first) else MadgraphSubprocess
+            # an AmpliCol subprocess finds its libraries by path, see amplicol_positions
+            kwargs = ({} if me_offsets is None or is_amplicol(first)
+                      else {"me_index": me_offsets[subproc_id]})
+            self.subprocesses.append(
+                subproc_class(self, meta, subproc_id, unmerged, **kwargs))
 
     def compile_matrix_elements(self) -> list[str]:
         """Build the matrix-element library of every subprocess, and return the
@@ -1749,6 +1934,7 @@ class MadgraphProcess:
         madmatrix_data = [
             meta for meta in self.subprocess_data if not is_amplicol(meta)
         ]
+        self.helicity_choice_build = None
         if not madmatrix_data:
             return backends
 
@@ -1804,7 +1990,15 @@ class MadgraphProcess:
                 {"": "10 (default)", "0": "<no limit>"}.get(limit, limit)
             )
         hr_flags = ":".join(arg.split("=", 1)[1] for arg in hr_args)
-        for backend in resolved:
+        # the good helicities are chosen on a CPU build (helicity_choice()):
+        # the CPU one of the run, else one in scalar double precision
+        cpu_backends = [b for b in resolved if not b.startswith(("cuda", "hip"))]
+        self.helicity_choice_build = (
+            (cpu_backends[0], fptype) if cpu_backends else ("scalar", "d"))
+        builds = [(backend, fptype) for backend in resolved]
+        if not cpu_backends and not self.run_card["run"]["dummy_matrix_element"]:
+            builds.append(self.helicity_choice_build)
+        for backend, fptype in builds:
             # by library: the flavours of a split subprocess share one; a library
             # built with other recycling settings is rebuilt too: its SigmaKin.o
             # records them in build.<backend>/.hrflags (madmatrix.mk)
@@ -1946,7 +2140,10 @@ class MadgraphProcess:
     def build_event_generator(self, phasespaces: list[PhaseSpace]) -> ms.EventGenerator:
         channel_generators = []
         subprocess_channels = [[] for _ in self.subprocesses]
-        for i, (subproc, phasespace) in enumerate(zip(self.subprocesses, phasespaces)):
+        for position, (subproc, phasespace) in enumerate(zip(self.subprocesses, phasespaces)):
+            # the global index, not the position in a selection: the names have
+            # to stay unique when the gridpacks of several selections are merged
+            i = subproc.subproc_id
             for integrand, channel in zip(
                 subproc.build_integrands(phasespace), phasespace.channels
             ):
@@ -1961,7 +2158,7 @@ class MadgraphProcess:
                         name=f"{i}.{channel.name}",
                         histograms=subproc.histograms
                     )
-                subprocess_channels[i].append(len(channel_generators))
+                subprocess_channels[position].append(len(channel_generators))
                 channel_generators.append(channel.event_generator)
 
         groups = self.weighting_groups(subprocess_channels)
@@ -2140,6 +2337,15 @@ class MadgraphProcess:
             phasespace = subproc.build_madnis(phasespace)
             madnis_phasespaces.append(phasespace)
             trained_phasespaces.append(phasespace)
+            # the channel dropping keeps the last channel of every resonance
+            channel_resonances = []
+            if madnis_args["resonance_guard"]:
+                resonance_ids = {}
+                channel_resonances = [
+                    [resonance_ids.setdefault(key, len(resonance_ids))
+                     for key in channel.resonances]
+                    for channel in phasespace.channels
+                ]
             training_args.append(
                 ms.TrainingArgs(
                     config=config,
@@ -2149,6 +2355,7 @@ class MadgraphProcess:
                         drop_cuts_and_rescale=madnis_args["drop_zero_integrands"]
                     ),
                     cwnet=phasespace.cwnet,
+                    channel_resonances=channel_resonances,
                 )
             )
 
@@ -2262,10 +2469,21 @@ class MadgraphProcess:
             self.write_lhe_header(systematics)
         elif output_format == "lhe":
             self.lhe_completer = self.build_lhe_completer()
-            lhe_path = os.path.join(self.run_path, "events.lhe")
+            # Ship the LHE compressed. These files are large and very
+            # compressible, madevent has always stored its events gzipped, and
+            # every consumer here already accepts either form (see
+            # _find_event_file). A GPU gzips while the events are written;
+            # otherwise misc.gzip replaces events.lhe with events.lhe.gz using
+            # pigz, which beats in-process gzip at any file size. Beamstrahlung
+            # annotation rewrites the file, so write it plain.
+            gzip_device = None if has_beamstrahlung else self.lhe_gzip_device()
+            lhe_path = os.path.join(
+                self.run_path, "events.lhe.gz" if gzip_device else "events.lhe"
+            )
             self.event_generator.combine_to_lhe(
                 lhe_path, self.lhe_completer,
-                self.build_lhe_meta(), systematics, histograms
+                self.build_lhe_meta(), systematics, histograms, gzip_device,
+                self.run_card["run"]["lhe_gzip_algorithm"]
             )
             # A dressed-lepton density folds beamstrahlung into the PDF, so
             # the initial-state momenta carry x = x_BS * x_ISR and a shower
@@ -2280,13 +2498,8 @@ class MadgraphProcess:
                 logger.info(
                     "wrote <beamstrahlung> into %d events; they need the "
                     "dedicated Pythia8 main to be showered correctly", count)
-            # Ship the LHE compressed by default. These files are large and
-            # very compressible, madevent has always stored its events
-            # gzipped, and every consumer here already accepts either form
-            # (see _find_event_file). misc.gzip replaces events.lhe with
-            # events.lhe.gz, and switches to an external multithreaded tool
-            # above 256 MB.
-            misc.gzip(lhe_path)
+            if gzip_device is None:
+                misc.gzip(lhe_path, forceexternal=True)
             self.events_path = _find_event_file(self.run_path)
         else:
             raise ValueError("Unknown output format")
@@ -2296,6 +2509,12 @@ class MadgraphProcess:
             self.write_systematics_sidecar()
             self.log_systematics_summary()
         self.save_gridpack()
+
+    def lhe_gzip_device(self):
+        """The device that gzips the LHE output, None to gzip it on the CPU."""
+        if self.run_card["run"]["lhe_compression"] != "auto":
+            return None
+        return next((device for device in self.devices if device.supports_gzip()), None)
 
     def save_lhe_completer(self) -> None:
         """Keep the LHE completer next to compact_npy events, so npy_to_lhe
@@ -2471,6 +2690,38 @@ class MadgraphProcess:
                     raise ValueError(error)
         return self._lepton_density
 
+    def upc_luminosity(self):
+        """The gamma-UPC luminosity (upc_luminosity.UPCLuminosity) of the run,
+        or None without beam.upc_flux: one table, down to the lowest
+        s_hat / s_NN any subprocess reaches, since each costs minutes for ions.
+
+        gamma-UPC beams only give photons (madevent gives any other parton no
+        flux), so a subprocess with another incoming parton is refused."""
+        if not self.upc_flux:
+            return None
+        if self._upc_luminosity is None:
+            for subproc in self.subprocesses:
+                others = subproc.non_photon_incoming()
+                if others:
+                    raise ValueError(
+                        "beam.upc_flux = %s: subprocess %s > %s has incoming %s, "
+                        "but gamma-UPC beams only give photons; generate the "
+                        "photon-photon processes alone (e.g. a a > ...)"
+                        % (self.upc_flux, subproc.meta["incoming"],
+                           subproc.meta["outgoing"], others))
+            tau_min = min(subproc.upc_tau_min() for subproc in self.subprocesses)
+            gamma_dir = os.path.abspath(os.path.join("Source", "PDF", "gammaUPC"))
+            if not os.path.isdir(gamma_dir):
+                raise RuntimeError(
+                    "beam.upc_flux needs the gamma-UPC sources in %s, which an "
+                    "output ships for photon-photon processes only" % gamma_dir)
+            mg5_options = options.load_mg5_options(with_cluster=True)
+            self._upc_luminosity = upc_luminosity_module.UPCLuminosity(
+                ms, self.contexts, gamma_dir, self.upc_flux, self.upc_ions,
+                self.beam_energies, upc_luminosity_module.table_xmin(tau_min),
+                mg5_options.get("fortran_compiler"))
+        return self._upc_luminosity
+
     @property
     def fixed_fact_scale(self):
         """The factorisation scale as a number, or None if it is dynamical.
@@ -2497,6 +2748,10 @@ class MadgraphProcess:
             data = self.subprocess_data[0]
             pdg = clean_pids(data["incoming"])[0]
             return [pdg, 0], [float(self.e_cm), 0.0]
+        if self.upc_flux:
+            # the protons or ions emitting the photons, at their full energy
+            return ([upc_luminosity_module.lhe_beam_id(ion) for ion in self.upc_ions],
+                    list(self.beam_energies))
         if not self.leptonic:
             # hadronic collider: proton beams (p-pbar is not distinguished)
             return [2212, 2212], list(self.beam_energies)
@@ -2577,10 +2832,14 @@ class MadgraphProcess:
         del writer  # closes the file (writes the closing tag)
 
     def build_lhe_completer(self):
+        # always over every subprocess, also when only some are integrated
+        selected = (
+            {} if self.merged_subprocess_data is not None
+            else {subproc.subproc_id: subproc for subproc in self.subprocesses}
+        )
         all_mcdata = [
             None if is_amplicol(meta)
-            else self.subprocesses[index].build_multi_channel_data()
-            if self.merged_subprocess_data is None
+            else selected[index].build_multi_channel_data() if index in selected
             else build_multi_channel_data(meta, self)
             for index, meta in enumerate(self.subprocess_data)
         ]
@@ -2606,16 +2865,39 @@ class MadgraphProcess:
             bw_cutoff=self.run_card["phasespace"]["bw_cutoff"]
         )
 
+    @staticmethod
+    def gridpack_custom_paths(custom_function_paths: list) -> list:
+        """[kind, path, parameters] of the custom functions as the gridpack
+        refers to them: by a path relative to the gridpack."""
+        paths = []
+        for kind, path, parameters in custom_function_paths:
+            rel_path = os.path.normpath(path)
+            if os.path.isabs(rel_path) or rel_path.startswith(".."):
+                rel_path = os.path.join("custom_functions", kind, os.path.basename(path))
+            paths.append([kind, rel_path, parameters])
+        return paths
+
     def save_gridpack(self) -> None:
         if not self.run_card["gridpack"]["save_gridpack"]:
             return
-
         gridpack_path = os.path.join(self.run_path, "gridpack")
-        data_path = os.path.join(gridpack_path, "data")
-        events_path = os.path.join(gridpack_path, "Events")
         os.mkdir(gridpack_path)
+        self.write_gridpack_data(gridpack_path)
+        if self.gridpack_data_only:
+            return
+        self.write_gridpack_shell(
+            gridpack_path, self.run_card, self.backends, self.custom_function_paths,
+            self.subprocess_data, self.gridpack_run_mode)
+        self.compress_gridpack(gridpack_path, self.run_card)
+
+    def write_gridpack_data(self, gridpack_path: str) -> None:
+        """The data/ of a gridpack: what the integration of the selected
+        subprocesses produced (the trained state and the channels) and the
+        description of the process. The gridpacks of runs over different
+        subprocess selections can be merged from these alone, see
+        merge_gridpacks.py."""
+        data_path = os.path.join(gridpack_path, "data")
         os.mkdir(data_path)
-        os.mkdir(events_path)
         self.contexts[0].save_globals(os.path.join(data_path, "globals.tar"))
 
         include_estimates = self.gridpack_run_mode == "fix_max_weight"
@@ -2630,181 +2912,25 @@ class MadgraphProcess:
         with open(os.path.join(data_path, "groups.json"), "w") as f:
             f.write(self.weighting_groups_json)
 
-        lib_path = os.path.join(gridpack_path, "lib")
-        if self.run_card["gridpack"]["include_source"]:
-            os.mkdir(lib_path)
-            shutil.copytree("src", os.path.join(gridpack_path, "src"))
-            shutil.copytree("SubProcesses", os.path.join(gridpack_path, "SubProcesses"))
-            shutil.copytree("backend", os.path.join(gridpack_path, "backend"))
-        else:
-            shutil.copytree("lib", lib_path)
-        # the gridpack refers to its own copies, by paths relative to it
-        gridpack_custom_paths = []
-        for kind, path, parameters in self.custom_function_paths:
-            rel_path = os.path.normpath(path)
-            if os.path.isabs(rel_path) or rel_path.startswith(".."):
-                rel_path = os.path.join("custom_functions", kind, os.path.basename(path))
-            target = os.path.join(gridpack_path, rel_path)
-            if not os.path.exists(target):
-                os.makedirs(os.path.dirname(target), exist_ok=True)
-                shutil.copy(path, target)
-            gridpack_custom_paths.append([kind, rel_path, parameters])
-
-        if self.run_card["gridpack"]["include_madspace_source"]:
-            shutil.copytree(
-                _MADSPACE_DIR,
-                os.path.join(gridpack_path, "madspace"),
-                ignore=shutil.ignore_patterns("build", "install"),
-            )
-
-        if self.run_card["gridpack"]["include_madspace"]:
-            shutil.copytree(
-                _INSTALL_DIR / "madspace",
-                os.path.join(gridpack_path, "madspace", "install", "madspace"),
-                ignore=shutil.ignore_patterns("include"),
-            )
-
-        # MadtRex (event reweighting) is optional and installed separately on
-        # top of madspace (madtrex/install.py), so a missing install is
-        # skipped rather than an error.
-        if self.run_card["gridpack"]["include_madtrex_source"]:
-            shutil.copytree(
-                _MADTREX_DIR,
-                os.path.join(gridpack_path, "madtrex"),
-                ignore=shutil.ignore_patterns("build", "install", "__pycache__"),
-            )
-
-        # madspace/madtrex sources build with their pyproject.toml, which takes
-        # the version from the MadGraph VERSION file one level above them
-        if (self.run_card["gridpack"]["include_madspace_source"]
-                or self.run_card["gridpack"]["include_madtrex_source"]):
-            shutil.copy(_MG_ROOT / "VERSION", os.path.join(gridpack_path, "VERSION"))
-
-        include_madtrex = (
-            self.run_card["gridpack"]["include_madtrex"]
-            and (_MADTREX_INSTALL_DIR / "madtrex").is_dir()
-        )
-        if include_madtrex:
-            # only the runtime pieces: madtrex itself, the bundled Rex fork
-            # (pyrex, plus librex/libtearex in lib/), not the build tools
-            # install.py also put there
-            for name in ("madtrex", "pyrex", "lib"):
-                if (_MADTREX_INSTALL_DIR / name).is_dir():
-                    shutil.copytree(
-                        _MADTREX_INSTALL_DIR / name,
-                        os.path.join(gridpack_path, "madtrex", "install", name),
-                        ignore=shutil.ignore_patterns("__pycache__"),
-                    )
-        elif self.run_card["gridpack"]["include_madtrex"]:
-            logger.info(
-                "madtrex is not installed (python madtrex/install.py), so it is "
-                "not included in the gridpack%s",
-                "; bin/reweight builds it from the included sources on first use"
-                if self.run_card["gridpack"]["include_madtrex_source"] else "")
-        # bin/reweight (below) with an installed madtrex, or with its sources,
-        # which bin/reweight builds when the gridpack has no (usable) install
-        with_reweight = include_madtrex or self.run_card["gridpack"]["include_madtrex_source"]
-        if with_reweight:
-            # the standalone reweighting driver finds the matrix elements
-            # through subprocesses.json, which the gridpack otherwise only has
-            # with include_source
-            gridpack_subprocesses_json = os.path.join(
-                gridpack_path, "SubProcesses", "subprocesses.json")
-            if not os.path.exists(gridpack_subprocesses_json):
-                os.makedirs(os.path.dirname(gridpack_subprocesses_json), exist_ok=True)
-                shutil.copy(os.path.join("SubProcesses", "subprocesses.json"),
-                            gridpack_subprocesses_json)
-
-        # the AmpliCol artifacts are read at run time; the ratio library finds
-        # them next to its own, otherwise empty, reweight directory
-        for artifact_dir in sorted({
-            os.path.dirname(meta["artifact"])
-            for meta in self.subprocess_data if is_amplicol(meta)
-        }):
-            for name in ("lc", "full"):
-                shutil.copytree(
-                    os.path.join(artifact_dir, name),
-                    os.path.join(gridpack_path, artifact_dir, name),
-                )
-            os.makedirs(os.path.join(gridpack_path, artifact_dir, "reweight"))
-
-        cards_path = os.path.join(gridpack_path, "Cards")
-        os.mkdir(cards_path)
-        shutil.copy(os.path.join("Cards", "param_card.dat"), cards_path)
-        # Full run card with a header noting it is read-only in gridpack context.
-        import io as _io
-        _buf = _io.StringIO()
-        self.run_card.write(_buf)
-        _header = (
-            "# This is the run card used to generate this gridpack.\n"
-            "# Modifying this file will have no effect on gridpack execution.\n"
-            "# To change event-generation settings, edit grid_run_card.toml.\n\n"
-        )
-        with open(os.path.join(cards_path, "run_card.toml"), 'w') as _f:
-            _f.write(_header + _buf.getvalue())
-        # Minimal card containing only the settings used by generate_events.
-        # The gridpack ships the libraries that were actually built, and their
-        # names carry the resolved backend, so the card it runs from has to name
-        # that backend as well: a cpu_mode of 'auto' would send the gridpack
-        # looking for a ..._auto.so that was never built. The full run_card.toml
-        # written just above keeps 'auto', since that is what was asked for.
-        device_names = self.run_card["run"]["device"]
-        if not isinstance(device_names, list):
-            device_names = [device_names]
-        resolved_cpu_mode = None
-        for name, backend in zip(device_names, getattr(self, "backends", [])):
-            if name.split(":")[0] == "cpu":
-                resolved_cpu_mode = backend
-                break
-        previous_cpu_mode = self.run_card["run"]["cpu_mode"]
-        if resolved_cpu_mode is not None:
-            self.run_card["run"]["cpu_mode"] = resolved_cpu_mode
-        # A gridpack is run to feed a shower or detector chain, which reads
-        # LHE, so it writes LHE by default whatever format this run used
-        # (bin/generate_events --output_format still selects an npy output).
-        previous_output_format = self.run_card["run"]["output_format"]
-        self.run_card["run"]["output_format"] = "lhe"
-        # the directories of this run mean nothing on the machine running the gridpack
-        previous_dirs = (self.run_card["gridpack"]["temp_output_dir"],
-                         self.run_card["gridpack"]["output_dir"])
-        self.run_card["gridpack"]["temp_output_dir"] = ""
-        self.run_card["gridpack"]["output_dir"] = ""
-        try:
-            self.run_card.write_gridpack_card(
-                os.path.join(cards_path, "grid_run_card.toml"))
-        finally:
-            self.run_card["run"]["cpu_mode"] = previous_cpu_mode
-            self.run_card["run"]["output_format"] = previous_output_format
-            (self.run_card["gridpack"]["temp_output_dir"],
-             self.run_card["gridpack"]["output_dir"]) = previous_dirs
-
-        bin_path = os.path.join(gridpack_path, "bin")
-        os.mkdir(bin_path)
-        gen_events_file = os.path.join(bin_path, "generate_events")
-        template_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)),
-                                    "iolibs", "template_files", "mg7")
-        shutil.copy(os.path.join(template_dir, "gridpack.py"), gen_events_file)
-        shutil.copy(os.path.join(template_dir, "custom_function_loader.py"), bin_path)
-        os.chmod(gen_events_file, 0o755)
-        shutil.copy(os.path.join(template_dir, "gridpack_setup.py"), bin_path)
-        if with_reweight:
-            # MadtRex reweighting of the gridpack's events, with the modules
-            # parsing its reweight cards
-            reweight_file = os.path.join(bin_path, "reweight")
-            shutil.copy(os.path.join(template_dir, "madtrex_driver.py"), reweight_file)
-            os.chmod(reweight_file, 0o755)
-            for name in ("param_reweight_card.py", "pdf_reweight_card.py",
-                         "generic_reweight_card.py"):
-                shutil.copy(os.path.join(template_dir, name),
-                            os.path.join(bin_path, name))
-        # streaming needs the fixed maximum weights of this mode
-        if self.gridpack_run_mode == "fix_max_weight":
-            shutil.copy(os.path.join(template_dir, "event_stream.py"), bin_path)
+        # every matrix element in loading order, and the positions of the ones
+        # this run loaded; a selection of subprocesses leaves the others to
+        # the runs that integrate them, so they are listed as they would load
+        matrix_elements = list(self.loaded_matrix_elements)
+        if self.run_card["phasespace"]["subprocess_selection"]:
+            layout = self.me_layout()[0]
+            matrix_elements += [None] * (len(layout) - len(matrix_elements))
+            matrix_elements = [
+                entry if entry is not None else full
+                for full, entry in zip(layout, matrix_elements)
+            ]
+        matrix_element_indices = [
+            i for i, entry in enumerate(self.loaded_matrix_elements) if entry is not None]
 
         data = {
-            "matrix_elements": self.loaded_matrix_elements,
+            "matrix_elements": matrix_elements,
+            "matrix_element_indices": matrix_element_indices,
             # loaded before the matrix elements, as in the run
-            "custom_functions": gridpack_custom_paths,
+            "custom_functions": self.gridpack_custom_paths(self.custom_function_paths),
             "me_parameters": me_parameters(self.run_card),
             "source_hash": ms.SOURCE_HASH,
             # where the MLM shower of the non-jet particles starts (set in init_beam)
@@ -2833,19 +2959,203 @@ class MadgraphProcess:
                 systematics_data["nominal_info_file"] = os.path.join("data", name)
             with open(os.path.join(data_path, "systematics.json"), "w") as f:
                 json.dump(systematics_data, f)
-        if self.run_card["gridpack"]["compress"]:
+
+    @staticmethod
+    def write_gridpack_shell(
+        gridpack_path: str, run_card, backends: list, custom_function_paths: list,
+        subprocess_data: list, gridpack_run_mode: str,
+    ) -> None:
+        """Everything of a gridpack but data/: the libraries or sources, the
+        python packages, the cards and the executables. ``backends`` are the
+        resolved backends of the devices in the run card, which the gridpack
+        will run on."""
+        os.mkdir(os.path.join(gridpack_path, "Events"))
+        lib_path = os.path.join(gridpack_path, "lib")
+        if run_card["gridpack"]["include_source"]:
+            os.mkdir(lib_path)
+            shutil.copytree("src", os.path.join(gridpack_path, "src"))
+            shutil.copytree("SubProcesses", os.path.join(gridpack_path, "SubProcesses"))
+            shutil.copytree("backend", os.path.join(gridpack_path, "backend"))
+        else:
+            shutil.copytree("lib", lib_path)
+        # the gridpack refers to its own copies, by paths relative to it
+        gridpack_custom_paths = MadgraphProcess.gridpack_custom_paths(custom_function_paths)
+        for (_, path, _), (_, rel_path, _) in zip(
+                custom_function_paths, gridpack_custom_paths):
+            target = os.path.join(gridpack_path, rel_path)
+            if not os.path.exists(target):
+                os.makedirs(os.path.dirname(target), exist_ok=True)
+                shutil.copy(path, target)
+
+        if run_card["gridpack"]["include_madspace_source"]:
+            shutil.copytree(
+                _MADSPACE_DIR,
+                os.path.join(gridpack_path, "madspace"),
+                ignore=shutil.ignore_patterns("build", "install"),
+            )
+
+        if run_card["gridpack"]["include_madspace"]:
+            shutil.copytree(
+                _INSTALL_DIR / "madspace",
+                os.path.join(gridpack_path, "madspace", "install", "madspace"),
+                ignore=shutil.ignore_patterns("include"),
+            )
+
+        # MadtRex (event reweighting) is optional and installed separately on
+        # top of madspace (madtrex/install.py), so a missing install is
+        # skipped rather than an error.
+        if run_card["gridpack"]["include_madtrex_source"]:
+            shutil.copytree(
+                _MADTREX_DIR,
+                os.path.join(gridpack_path, "madtrex"),
+                ignore=shutil.ignore_patterns("build", "install", "__pycache__"),
+            )
+
+        # madspace/madtrex sources build with their pyproject.toml, which takes
+        # the version from the MadGraph VERSION file one level above them
+        if (run_card["gridpack"]["include_madspace_source"]
+                or run_card["gridpack"]["include_madtrex_source"]):
+            shutil.copy(_MG_ROOT / "VERSION", os.path.join(gridpack_path, "VERSION"))
+
+        include_madtrex = (
+            run_card["gridpack"]["include_madtrex"]
+            and (_MADTREX_INSTALL_DIR / "madtrex").is_dir()
+        )
+        if include_madtrex:
+            # only the runtime pieces: madtrex itself, the bundled Rex fork
+            # (pyrex, plus librex/libtearex in lib/), not the build tools
+            # install.py also put there
+            for name in ("madtrex", "pyrex", "lib"):
+                if (_MADTREX_INSTALL_DIR / name).is_dir():
+                    shutil.copytree(
+                        _MADTREX_INSTALL_DIR / name,
+                        os.path.join(gridpack_path, "madtrex", "install", name),
+                        ignore=shutil.ignore_patterns("__pycache__"),
+                    )
+        elif run_card["gridpack"]["include_madtrex"]:
+            logger.info(
+                "madtrex is not installed (python madtrex/install.py), so it is "
+                "not included in the gridpack%s",
+                "; bin/reweight builds it from the included sources on first use"
+                if run_card["gridpack"]["include_madtrex_source"] else "")
+        # bin/reweight (below) with an installed madtrex, or with its sources,
+        # which bin/reweight builds when the gridpack has no (usable) install
+        with_reweight = include_madtrex or run_card["gridpack"]["include_madtrex_source"]
+        if with_reweight:
+            # the standalone reweighting driver finds the matrix elements
+            # through subprocesses.json, which the gridpack otherwise only has
+            # with include_source
+            gridpack_subprocesses_json = os.path.join(
+                gridpack_path, "SubProcesses", "subprocesses.json")
+            if not os.path.exists(gridpack_subprocesses_json):
+                os.makedirs(os.path.dirname(gridpack_subprocesses_json), exist_ok=True)
+                shutil.copy(os.path.join("SubProcesses", "subprocesses.json"),
+                            gridpack_subprocesses_json)
+
+        # the AmpliCol artifacts are read at run time; the ratio library finds
+        # them next to its own, otherwise empty, reweight directory
+        for artifact_dir in sorted({
+            os.path.dirname(meta["artifact"])
+            for meta in subprocess_data if is_amplicol(meta)
+        }):
+            for name in ("lc", "full"):
+                shutil.copytree(
+                    os.path.join(artifact_dir, name),
+                    os.path.join(gridpack_path, artifact_dir, name),
+                )
+            os.makedirs(os.path.join(gridpack_path, artifact_dir, "reweight"))
+
+        cards_path = os.path.join(gridpack_path, "Cards")
+        os.mkdir(cards_path)
+        shutil.copy(os.path.join("Cards", "param_card.dat"), cards_path)
+        # Full run card with a header noting it is read-only in gridpack context.
+        import io as _io
+        _buf = _io.StringIO()
+        run_card.write(_buf)
+        _header = (
+            "# This is the run card used to generate this gridpack.\n"
+            "# Modifying this file will have no effect on gridpack execution.\n"
+            "# To change event-generation settings, edit grid_run_card.toml.\n\n"
+        )
+        with open(os.path.join(cards_path, "run_card.toml"), 'w') as _f:
+            _f.write(_header + _buf.getvalue())
+        # Minimal card containing only the settings used by generate_events.
+        # The gridpack ships the libraries that were actually built, and their
+        # names carry the resolved backend, so the card it runs from has to name
+        # that backend as well: a cpu_mode of 'auto' would send the gridpack
+        # looking for a ..._auto.so that was never built. The full run_card.toml
+        # written just above keeps 'auto', since that is what was asked for.
+        device_names = run_card["run"]["device"]
+        if not isinstance(device_names, list):
+            device_names = [device_names]
+        resolved_cpu_mode = None
+        for name, backend in zip(device_names, backends):
+            if name.split(":")[0] == "cpu":
+                resolved_cpu_mode = backend
+                break
+        previous_cpu_mode = run_card["run"]["cpu_mode"]
+        if resolved_cpu_mode is not None:
+            run_card["run"]["cpu_mode"] = resolved_cpu_mode
+        # A gridpack is run to feed a shower or detector chain, which reads
+        # LHE, so it writes LHE by default whatever format this run used
+        # (bin/generate_events --output_format still selects an npy output).
+        previous_output_format = run_card["run"]["output_format"]
+        run_card["run"]["output_format"] = "lhe"
+        # the directories of this run mean nothing on the machine running the gridpack
+        previous_dirs = (run_card["gridpack"]["temp_output_dir"],
+                         run_card["gridpack"]["output_dir"])
+        run_card["gridpack"]["temp_output_dir"] = ""
+        run_card["gridpack"]["output_dir"] = ""
+        try:
+            run_card.write_gridpack_card(
+                os.path.join(cards_path, "grid_run_card.toml"))
+        finally:
+            run_card["run"]["cpu_mode"] = previous_cpu_mode
+            run_card["run"]["output_format"] = previous_output_format
+            (run_card["gridpack"]["temp_output_dir"],
+             run_card["gridpack"]["output_dir"]) = previous_dirs
+
+        bin_path = os.path.join(gridpack_path, "bin")
+        os.mkdir(bin_path)
+        gen_events_file = os.path.join(bin_path, "generate_events")
+        template_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                                    "iolibs", "template_files", "mg7")
+        shutil.copy(os.path.join(template_dir, "gridpack.py"), gen_events_file)
+        shutil.copy(os.path.join(template_dir, "custom_function_loader.py"), bin_path)
+        os.chmod(gen_events_file, 0o755)
+        shutil.copy(os.path.join(template_dir, "gridpack_setup.py"), bin_path)
+        if with_reweight:
+            # MadtRex reweighting of the gridpack's events, with the modules
+            # parsing its reweight cards
+            reweight_file = os.path.join(bin_path, "reweight")
+            shutil.copy(os.path.join(template_dir, "madtrex_driver.py"), reweight_file)
+            os.chmod(reweight_file, 0o755)
+            for name in ("param_reweight_card.py", "pdf_reweight_card.py",
+                         "generic_reweight_card.py"):
+                shutil.copy(os.path.join(template_dir, name),
+                            os.path.join(bin_path, name))
+        # streaming needs the fixed maximum weights of this mode
+        if gridpack_run_mode == "fix_max_weight":
+            shutil.copy(os.path.join(template_dir, "event_stream.py"), bin_path)
+
+    @staticmethod
+    def compress_gridpack(gridpack_path: str, run_card) -> None:
+        """Replace the gridpack directory by <gridpack_path>.tar.gz when the
+        run card asks for it."""
+        parent, name = os.path.split(gridpack_path)
+        if run_card["gridpack"]["compress"]:
             archive_path = gridpack_path + ".tar.gz"
-            use_pigz = self.run_card["run"]["use_pigz"]
+            use_pigz = run_card["run"]["use_pigz"]
             pigz = (shutil.which("pigz") if use_pigz is not False else None)
             if pigz:
                 # multi-threaded gzip
                 with open(archive_path, "wb") as f:
                     tar = subprocess.Popen(
-                        ["tar", "-cf", "-", "-C", self.run_path, "gridpack"],
+                        ["tar", "-cf", "-", "-C", parent, name],
                         stdout=subprocess.PIPE,
                     )
                     gz_command = [pigz, "-c"]
-                    cpu_threads = self.run_card["run"]["cpu_thread_pool_size"]
+                    cpu_threads = run_card["run"]["cpu_thread_pool_size"]
                     if cpu_threads > 0:
                         gz_command += ["-p", str(cpu_threads)]
                     gz = subprocess.run(gz_command, stdin=tar.stdout, stdout=f)
@@ -2853,7 +3163,7 @@ class MadgraphProcess:
                     if tar.wait() != 0 or gz.returncode != 0:
                         raise RuntimeError("compressing the gridpack failed")
             else:
-                shutil.make_archive(gridpack_path, "gztar", self.run_path, "gridpack")
+                shutil.make_archive(gridpack_path, "gztar", parent, name)
             shutil.rmtree(gridpack_path)
 
     def save_gridpack_lhe_meta(self, path) -> None:

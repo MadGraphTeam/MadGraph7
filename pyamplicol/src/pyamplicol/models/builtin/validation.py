@@ -58,22 +58,40 @@ def generic_validation_point(
     sqrt_s: float | None = None,
     seed: int = 101,
 ) -> tuple[ExternalMomentum, ...]:
-    """Return deterministic two-beam kinematics for a built-in-SM process."""
+    """Return deterministic kinematics for a built-in-SM process: two beams,
+    or a decaying particle at rest (``sqrt_s`` its mass)."""
 
     model = model or BuiltinSMModel()
     ir = build_process_ir(process)
     initial_pdgs = tuple(int(pdg) for pdg in ir.initial_pdgs)
     final_pdgs = tuple(int(pdg) for pdg in ir.final_pdgs)
-    if len(initial_pdgs) != 2:
-        raise NativeEvaluationError(
-            "generic validation momenta currently require a two-body initial state"
-        )
     if not final_pdgs:
         raise NativeEvaluationError(
             "generic validation momenta require at least one final-state particle"
         )
     final_masses = tuple(float(model.mass(pdg)) for pdg in final_pdgs)
     threshold = sum(final_masses)
+    if len(initial_pdgs) == 1:
+        parent = float(model.mass(initial_pdgs[0]))
+        if parent <= threshold or sqrt_s not in (None, parent):
+            raise NativeEvaluationError(
+                "a decay's validation point is the decaying particle's rest "
+                f"frame: sqrt(s) is its mass {parent}, which must exceed the "
+                f"final-state masses {threshold}"
+            )
+        return (
+            ExternalMomentum(initial_pdgs[0], (parent, 0.0, 0.0, 0.0)),
+            *(
+                ExternalMomentum(pdg, momentum)
+                for pdg, momentum in zip(
+                    final_pdgs,
+                    massive_rambo_final_state(
+                        len(final_pdgs), sqrt_s=parent, masses=final_masses, seed=seed
+                    ),
+                    strict=True,
+                )
+            ),
+        )
     if sqrt_s is None:
         sqrt_s = threshold if len(final_pdgs) == 1 else max(1000.0, threshold + 100.0)
     if sqrt_s < threshold:

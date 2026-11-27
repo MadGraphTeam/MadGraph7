@@ -6,7 +6,8 @@ The implementation deliberately uses only the Python standard library. Linux
 RSS data comes from ``/proc``; macOS uses the platform ``ps`` command and
 ``proc_pid_rusage`` physical-footprint data. The child starts in a new process
 session so the watchdog can terminate both its process group and descendants
-that create another process group.
+that create another process group; its environment announces the limit
+(``LIMIT_ENVIRONMENT_VARIABLE``).
 """
 
 from __future__ import annotations
@@ -54,6 +55,10 @@ DARWIN_PHYSICAL_FOOTPRINT_PROBE_REASON = (
 WATCHDOG_REPORT_KIND = "pyamplicol-memory-watchdog-execution-report"
 WATCHDOG_REPORT_SCHEMA = 2
 WATCHDOG_SCOPE = "complete-orchestrator-process-tree-v1"
+# The guarded command's environment announces the enforced limit in bytes, so
+# the command can fit its own concurrency into it (the loop tests' bounded
+# child processes, tests/unit/loop_nc_scan.run_bounded).
+LIMIT_ENVIRONMENT_VARIABLE = "PYAMPLICOL_MEMORY_WATCHDOG_LIMIT_BYTES"
 _RUSAGE_INFO_V0 = 0
 _RUSAGE_INFO_V0_BYTES = 96
 _RUSAGE_INFO_PHYS_FOOTPRINT_OFFSET = 72
@@ -602,6 +607,23 @@ class ProcessTreeSampler:
         )
 
 
+def guarded_environment(
+    limit_bytes: int, environment: Mapping[str, str] | None = None
+) -> dict[str, str]:
+    """``environment`` (default: this process's) with the limit announced in
+    ``LIMIT_ENVIRONMENT_VARIABLE``: the tighter of an enclosing watchdog's
+    announcement and ``limit_bytes``."""
+
+    child = dict(os.environ if environment is None else environment)
+    try:
+        enclosing = int(child.get(LIMIT_ENVIRONMENT_VARIABLE, "").strip())
+    except ValueError:
+        enclosing = 0
+    announced = min(enclosing, limit_bytes) if enclosing > 0 else limit_bytes
+    child[LIMIT_ENVIRONMENT_VARIABLE] = str(announced)
+    return child
+
+
 def _format_bytes(value: int) -> str:
     return f"{value / GIB:.3f} GiB"
 
@@ -866,7 +888,11 @@ def run_guarded(
         )
 
     try:
-        process = subprocess.Popen(tuple(command), start_new_session=True)
+        process = subprocess.Popen(
+            tuple(command),
+            start_new_session=True,
+            env=guarded_environment(limit_bytes),
+        )
     except FileNotFoundError:
         print(f"memory-watchdog: command not found: {command[0]}", file=stderr)
         return finish(

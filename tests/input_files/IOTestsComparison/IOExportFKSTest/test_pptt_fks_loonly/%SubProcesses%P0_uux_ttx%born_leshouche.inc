@@ -1,3 +1,1 @@
-      INTEGER IPROC_BORN
-      COMMON/MC_NATIVE_BORN_LH/IDUP,MOTHUP,ICOLUP
-      COMMON/MC_NATIVE_BORN_COUNT/IPROC_BORN
+../../_shared/IOExportEWSudTest%test_ppzz_ewsudakov%%SubProcesses%P0_bbx_zz%born_leshouche.inc

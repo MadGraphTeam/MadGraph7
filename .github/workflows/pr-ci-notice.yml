@@ -1,0 +1,37 @@
+name: CI notice on new PRs
+
+# Posts one comment explaining how CI reacts to this PR when it is opened.
+
+on:
+  pull_request:
+    types: [opened]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  notice:
+    runs-on: ubuntu-24.04
+    # Fork PRs get a read-only token, so the comment cannot be posted there.
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    steps:
+      - name: Post the CI notice
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          cat > notice.md <<'NOTICE'
+          ### How CI reacts to this PR
+
+          - **Not a draft:** the full CI runs automatically when the PR is opened and on every push.
+          - **Draft:** only the `unittest` and `IOtest` workflows run. Mark the PR "Ready for review" to start the full CI.
+          - **`run-ci` label:** while this label is on the PR, every job keeps running after a failure, so you see all failures. Without it, the first failing job cancels the other runs of that commit.
+          - **Closing or merging:** the unfinished CI runs of this PR are cancelled. A merge gets its own run on `main`.
+          - **Pushes to `main`:** the full CI runs after each merge.
+          - **Other branches:** run CI only through `workflow_dispatch`.
+          - **Forks:** the runs use a read-only token, so they cannot cancel each other.
+          - **Merge:** a green CI and one approval are required to merge.
+          NOTICE
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body-file notice.md

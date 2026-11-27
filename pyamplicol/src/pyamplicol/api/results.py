@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from types import MappingProxyType
-from typing import Literal, TypeAlias, cast
+from typing import Any, Literal, TypeAlias, cast
 
 from pyamplicol.config import (
     BenchmarkConfig,
@@ -16,6 +16,10 @@ from pyamplicol.config import (
     GenerationConfig,
     RunConfig,
 )
+from pyamplicol.loops.orders import canonical_order, squared_order
+from pyamplicol.loops.physical_orders import BornSquaredSector
+from pyamplicol.models.base import CouplingOrders
+from pyamplicol.reporting.resources import PeakMemory
 
 from .requests import ProcessRequest, ProcessSet
 
@@ -61,6 +65,11 @@ def _exact_decimal_sum(values: tuple[Decimal, ...]) -> Decimal:
         return Decimal(0)
     digits = tuple(int(character) for character in str(abs(total)))
     return Decimal((int(total < 0), digits, common_exponent))
+
+
+# The colour accuracies an artifact can declare: the inherited LC/NLC
+# approximation, full colour and the strict (formal-N_c) truncations.
+_COLOR_ACCURACIES = ("lc", "nlc", "full", "strict-lc", "strict-nlc")
 
 
 @dataclass(frozen=True, slots=True)
@@ -140,12 +149,45 @@ class ContractedColorComponent:
     id: str
     index: int
     description: str
+    # The N_c degree whose contribution this component reports, in an
+    # artifact graded by power of N_c (strict colour, graded full colour).
+    nc_degree: int | None = None
 
     def __post_init__(self) -> None:
         if not self.id or not self.description:
             raise ValueError("contracted-color metadata must not be empty")
         if isinstance(self.index, bool) or self.index < 0:
             raise ValueError("contracted-color index must be non-negative")
+        if self.nc_degree is not None and (
+            isinstance(self.nc_degree, bool) or not isinstance(self.nc_degree, int)
+        ):
+            raise ValueError("contracted-color N_c degree must be an integer")
+
+
+@dataclass(frozen=True, slots=True)
+class BornAnchoredColorComponent:
+    """Signed component anchored to a canonical group of Born colour tensors.
+
+    These groups may be overcomplete. They are neither positive flow weights
+    nor a claim of a minimal independent colour basis.
+    """
+
+    id: str
+    index: int
+    born_term_indices: tuple[int, ...]
+    description: str
+
+    def __post_init__(self) -> None:
+        if not self.id or not self.description:
+            raise ValueError("Born-anchored colour metadata must not be empty")
+        if type(self.index) is not int or self.index < 0:
+            raise ValueError("Born-anchored colour index must be nonnegative")
+        members = tuple(self.born_term_indices)
+        if not members or any(type(i) is not int or i < 0 for i in members):
+            raise ValueError("Born anchor requires nonnegative Born-term indices")
+        if len(set(members)) != len(members):
+            raise ValueError("Born anchor term indices must be unique")
+        object.__setattr__(self, "born_term_indices", members)
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,7 +207,9 @@ class ModelParameter:
             raise ValueError("model parameter defaults must be finite")
 
 
-ColorComponent: TypeAlias = ColorFlow | ContractedColorComponent
+ColorComponent: TypeAlias = (
+    ColorFlow | ContractedColorComponent | BornAnchoredColorComponent
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,11 +241,15 @@ class ReductionGroup:
 
 @dataclass(frozen=True, slots=True)
 class PhysicsReduction:
-    kind: Literal["lc-diagonal", "contracted-color"]
+    kind: Literal["lc-diagonal", "contracted-color", "born-anchored-interference"]
     groups: tuple[ReductionGroup, ...]
 
     def __post_init__(self) -> None:
-        if self.kind not in ("lc-diagonal", "contracted-color"):
+        if self.kind not in (
+            "lc-diagonal",
+            "contracted-color",
+            "born-anchored-interference",
+        ):
             raise ValueError("unsupported physics reduction kind")
         groups = tuple(self.groups)
         if not all(isinstance(group, ReductionGroup) for group in groups):
@@ -247,6 +295,111 @@ class GenerationPlan:
         object.__setattr__(self, "unsupported_features", unsupported_features)
 
 
+_PEAK_BOUNDS = ("exact", "upper bound", "lower bound", "approximate", "unknown")
+
+
+@dataclass(frozen=True, slots=True)
+class GenerationStatistics:
+    """Wall time and peak memory of one generation: the ``Generator.generate``
+    call that last wrote the artifact (``pyamplicol generate`` once the card
+    is read), stored in ``artifact.json`` under
+    ``extensions.generation.statistics``.
+
+    ``wall_seconds``: the call's wall-clock time (monotonic clock), from its
+    start to the end of its last step (validation, process-group analysis).
+    ``phases``: the generation phases of the call in order, (name,
+    seconds) pairs (the phases of the progress display; disjoint), and
+    ``unattributed_seconds``
+    the rest of ``wall_seconds`` (set-up between phases, the call's own
+    checks), so that the phases and the rest add up to ``wall_seconds``.
+
+    ``peak_rss_bytes``: the peak resident memory of the generation, of the
+    generating process and every process it started (compilers, workers);
+    threads share the process's memory, so thread pools, native ones
+    included, are counted. ``peak_rss_bound`` says what it is ("exact",
+    "upper bound", "lower bound", "approximate" or "unknown":
+    ``reporting.resources.ProcessTreePeakMemory``), ``peak_rss_method`` how
+    it was measured. ``process_peak_rss_bytes`` is the generating process's
+    own peak, ``child_processes`` whether it started a process (None: not
+    observable), ``child_peak_rss_bytes`` the largest peak of one such
+    process when it is known and above the generating process's own (the
+    kernel credits a started process with the resident size of the process
+    that starts it)."""
+
+    wall_seconds: float
+    phases: tuple[tuple[str, float], ...]
+    unattributed_seconds: float
+    peak_rss_bytes: int | None
+    peak_rss_bound: str
+    peak_rss_method: str
+    process_peak_rss_bytes: int | None = None
+    child_processes: bool | None = None
+    child_peak_rss_bytes: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.peak_rss_bound not in _PEAK_BOUNDS:
+            raise ValueError(f"invalid peak RAM bound {self.peak_rss_bound!r}")
+        object.__setattr__(
+            self,
+            "phases",
+            tuple((str(name), float(seconds)) for name, seconds in self.phases),
+        )
+
+    def to_json(self) -> dict[str, object]:
+        """The stored record (``extensions.generation.statistics``), also
+        the ``statistics`` of ``pyamplicol generate --json``."""
+
+        return {
+            "schema_version": 1,
+            "wall_seconds": self.wall_seconds,
+            "phases": [
+                {"phase": name, "seconds": seconds} for name, seconds in self.phases
+            ],
+            "unattributed_seconds": self.unattributed_seconds,
+            "peak_rss_bytes": self.peak_rss_bytes,
+            "peak_rss_bound": self.peak_rss_bound,
+            "peak_rss_method": self.peak_rss_method,
+            "process_peak_rss_bytes": self.process_peak_rss_bytes,
+            "child_processes": self.child_processes,
+            "child_peak_rss_bytes": self.child_peak_rss_bytes,
+        }
+
+    @classmethod
+    def from_json(cls, value: object) -> GenerationStatistics | None:
+        """The statistics of a stored record; None when there is none or it
+        is not one this version reads (an artifact written before they were
+        recorded, or a newer record schema)."""
+
+        if not isinstance(value, Mapping) or value.get("schema_version") != 1:
+            return None
+
+        def size(name: str) -> int | None:
+            item = value.get(name)
+            return (
+                item if isinstance(item, int) and not isinstance(item, bool) else None
+            )
+
+        try:
+            phases = value.get("phases")
+            child = value.get("child_processes")
+            return cls(
+                wall_seconds=float(value["wall_seconds"]),
+                phases=tuple(
+                    (str(item["phase"]), float(item["seconds"]))
+                    for item in (phases if isinstance(phases, list) else ())
+                ),
+                unattributed_seconds=float(value["unattributed_seconds"]),
+                peak_rss_bytes=size("peak_rss_bytes"),
+                peak_rss_bound=str(value.get("peak_rss_bound", "unknown")),
+                peak_rss_method=str(value.get("peak_rss_method", "")),
+                process_peak_rss_bytes=size("process_peak_rss_bytes"),
+                child_processes=child if isinstance(child, bool) else None,
+                child_peak_rss_bytes=size("child_peak_rss_bytes"),
+            )
+        except (KeyError, TypeError, ValueError):
+            return None
+
+
 @dataclass(frozen=True, slots=True)
 class GenerationResult:
     """Location and process inventory of a successfully written artifact."""
@@ -256,6 +409,12 @@ class GenerationResult:
     mode: Literal["error", "append", "replace"]
     schema_version: int = 3
     files: tuple[Path, ...] = ()
+    # Known, benign dependency log events of the generation, returned
+    # instead of printed (``ResultWarning``; m-lit ux-besteffort).
+    warnings: tuple[Any, ...] = ()
+    # Wall time and peak memory of the generation (also stored in the
+    # artifact); None from a backend that does not measure them.
+    statistics: GenerationStatistics | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -324,14 +483,14 @@ class WarmUpResult:
 class ProcessPhysics:
     """Physical axes, reduction metadata, and selectors for one process.
 
-    LC processes expose physical color flows; NLC/full processes expose one
-    contracted color component. ``selector_capabilities`` states which axes may
-    be restricted without changing the generated artifact.
+    Tree LC processes expose physical colour flows. Virtual LC instead exposes
+    signed Born-anchored components; NLC/full expose one contracted component.
+    ``selector_capabilities`` states which axes can actually be restricted.
     """
 
     process_id: str
     process: str
-    color_accuracy: Literal["lc", "nlc", "full"]
+    color_accuracy: Literal["lc", "nlc", "full", "strict-lc", "strict-nlc"]
     helicity_coverage: str
     color_coverage: str
     color_kind: str
@@ -343,12 +502,19 @@ class ProcessPhysics:
     reduction: PhysicsReduction
     model_parameters: tuple[ModelParameter, ...]
     selector_capabilities: tuple[str, ...]
+    # "loop-induced": |A_loop|^2 of a process without a Born (m-lit Q36), with
+    # a virtual's colour metadata (full colour, contracted).
+    contribution_kind: Literal["tree", "virtual", "loop-induced"] = "tree"
+    born_anchored_color_components: tuple[BornAnchoredColorComponent, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.process_id or not self.process:
             raise ValueError("process ID and expression must not be empty")
-        if self.color_accuracy not in ("lc", "nlc", "full"):
-            raise ValueError("color accuracy must be 'lc', 'nlc', or 'full'")
+        if self.color_accuracy not in _COLOR_ACCURACIES:
+            raise ValueError(
+                "color accuracy must be 'lc', 'nlc', 'full', 'strict-lc' or "
+                "'strict-nlc'"
+            )
         for name in ("helicity_coverage", "color_coverage", "color_kind"):
             if not getattr(self, name):
                 raise ValueError(f"{name} must not be empty")
@@ -361,6 +527,7 @@ class ProcessPhysics:
         helicities = tuple(self.helicities)
         color_flows = tuple(self.color_flows)
         contracted = tuple(self.contracted_color_components)
+        anchors = tuple(self.born_anchored_color_components)
         reduction = self.reduction
         parameters = tuple(self.model_parameters)
         selector_capabilities = tuple(self.selector_capabilities)
@@ -369,6 +536,7 @@ class ProcessPhysics:
             ("helicities", helicities, HelicityConfiguration),
             ("color_flows", color_flows, ColorFlow),
             ("contracted_color_components", contracted, ContractedColorComponent),
+            ("born_anchored_color_components", anchors, BornAnchoredColorComponent),
             ("model_parameters", parameters, ModelParameter),
         )
         for name, values, expected_type in expected:
@@ -382,6 +550,7 @@ class ProcessPhysics:
         for name, identifiers in (
             ("helicities", tuple(value.id for value in helicities)),
             ("color_flows", tuple(value.id for value in color_flows)),
+            ("born_anchored_color_components", tuple(value.id for value in anchors)),
             (
                 "contracted_color_components",
                 tuple(value.id for value in contracted),
@@ -392,21 +561,59 @@ class ProcessPhysics:
         parameter_names = tuple(parameter.name for parameter in parameters)
         if len(set(parameter_names)) != len(parameter_names):
             raise ValueError("model parameter names must be unique")
-        if self.color_accuracy == "lc" and not color_flows:
+        if self.contribution_kind not in ("tree", "virtual", "loop-induced"):
+            raise ValueError("contribution kind must be tree, virtual or loop-induced")
+        loop = self.contribution_kind != "tree"
+        virtual_lc = loop and self.color_accuracy == "lc"
+        if virtual_lc:
+            if self.color_kind == "contracted-color":
+                if len(contracted) != 1 or anchors or color_flows:
+                    raise ValueError(
+                        "contracted virtual LC requires one inclusive color component"
+                    )
+            else:
+                if not anchors or color_flows or contracted:
+                    raise ValueError(
+                        "virtual LC requires signed Born anchors, not colour flows"
+                    )
+                if self.color_kind != "born-anchored-interference":
+                    raise ValueError(
+                        "virtual LC colour kind must describe Born anchors"
+                    )
+        elif anchors:
+            raise ValueError("Born anchors apply only to virtual LC metadata")
+        elif self.color_accuracy == "lc" and not color_flows:
             raise ValueError("LC physics metadata requires physical color flows")
-        if self.color_accuracy != "lc" and len(contracted) != 1:
+        graded = bool(contracted) and all(
+            component.nc_degree is not None for component in contracted
+        )
+        if self.color_accuracy != "lc" and len(contracted) != 1 and not graded:
             raise ValueError("NLC/full physics metadata requires one color component")
+        if self.color_accuracy in ("strict-lc", "strict-nlc") and not graded:
+            raise ValueError(
+                "strict colour metadata reports one component per N_c degree"
+            )
+        if loop and color_flows:
+            raise ValueError(
+                "virtual colour contributions are not positive colour flows"
+            )
         if not isinstance(reduction, PhysicsReduction):
             raise TypeError("reduction must be PhysicsReduction metadata")
         expected_reduction = (
-            "lc-diagonal" if self.color_accuracy == "lc" else "contracted-color"
+            self.color_kind
+            if virtual_lc
+            else "lc-diagonal"
+            if self.color_accuracy == "lc"
+            else "contracted-color"
         )
         if reduction.kind != expected_reduction:
             raise ValueError("reduction kind does not match color accuracy")
         physical_helicity_ids = {value.id for value in helicities}
-        physical_color_ids = {value.id for value in color_flows} | {
-            value.id for value in contracted
-        }
+        physical_color_ids = (
+            {value.id for value in color_flows}
+            | {value.id for value in contracted}
+            | {value.id for value in anchors}
+        )
         for group in reduction.groups:
             if not set(group.physical_helicity_ids) <= physical_helicity_ids:
                 raise ValueError("reduction references unknown physical helicities")
@@ -420,6 +627,7 @@ class ProcessPhysics:
         object.__setattr__(self, "helicities", helicities)
         object.__setattr__(self, "color_flows", color_flows)
         object.__setattr__(self, "contracted_color_components", contracted)
+        object.__setattr__(self, "born_anchored_color_components", anchors)
         object.__setattr__(self, "model_parameters", parameters)
         object.__setattr__(self, "selector_capabilities", selector_capabilities)
 
@@ -434,7 +642,12 @@ class ProcessPhysics:
     @property
     def color_ids(self) -> tuple[str, ...]:
         components: tuple[ColorComponent, ...] = (
-            self.color_flows
+            self.born_anchored_color_components
+            if self.contribution_kind != "tree"
+            and self.color_kind == "born-anchored-interference"
+            else self.contracted_color_components
+            if self.contribution_kind != "tree"
+            else self.color_flows
             if self.color_accuracy == "lc"
             else self.contracted_color_components
         )
@@ -452,7 +665,7 @@ class ResolvedEvaluation:
     values: tuple[tuple[tuple[complex | Decimal, ...], ...], ...]
     helicity_ids: tuple[str, ...]
     color_ids: tuple[str, ...]
-    color_accuracy: Literal["lc", "nlc", "full"] = "lc"
+    color_accuracy: Literal["lc", "nlc", "full", "strict-lc", "strict-nlc"] = "lc"
 
     def __post_init__(self) -> None:
         values = tuple(
@@ -468,8 +681,11 @@ class ResolvedEvaluation:
         helicity_ids = tuple(self.helicity_ids)
         color_ids = tuple(self.color_ids)
         expected_colors = len(color_ids)
-        if self.color_accuracy != "lc" and expected_colors != 1:
-            raise ValueError("NLC/full resolved output has one contracted color axis")
+        if self.color_accuracy != "lc" and expected_colors < 1:
+            raise ValueError(
+                "NLC/full resolved output has one contracted color axis (one per "
+                "N_c degree when graded)"
+            )
         for point in values:
             if len(point) != len(helicity_ids):
                 raise ValueError(
@@ -479,8 +695,11 @@ class ResolvedEvaluation:
                 raise ValueError(
                     "resolved values do not match the contracted color dimension"
                 )
-        if self.color_accuracy not in ("lc", "nlc", "full"):
-            raise ValueError("color_accuracy must be 'lc', 'nlc', or 'full'")
+        if self.color_accuracy not in _COLOR_ACCURACIES:
+            raise ValueError(
+                "color_accuracy must be 'lc', 'nlc', 'full', 'strict-lc' or "
+                "'strict-nlc'"
+            )
         object.__setattr__(self, "values", values)
         object.__setattr__(self, "helicity_ids", helicity_ids)
         object.__setattr__(self, "color_ids", color_ids)
@@ -490,7 +709,7 @@ class ResolvedEvaluation:
         return self.color_ids if self.color_accuracy == "lc" else ()
 
     @property
-    def accuracy(self) -> Literal["lc", "nlc", "full"]:
+    def accuracy(self) -> Literal["lc", "nlc", "full", "strict-lc", "strict-nlc"]:
         """Compatibility alias for :attr:`color_accuracy`."""
 
         return self.color_accuracy
@@ -514,6 +733,178 @@ class ResolvedEvaluation:
             else:
                 totals.append(sum((complex(entry) for entry in entries), start=0j))
         return tuple(totals)
+
+
+@dataclass(frozen=True, slots=True)
+class TreeOrderEvaluation:
+    """Tree values split by squared coupling order: ``values[point][order]``.
+
+    ``sectors`` follow the Born order axis of the virtual results: canonical
+    squared orders in ascending order, each with its contributing ordered
+    amplitude-order pairs, including structurally vanishing interference.
+    Powers count fundamental couplings. ``total`` is exactly the
+    :meth:`pyamplicol.Runtime.evaluate` value; :meth:`sum_orders` sums the
+    partials explicitly and agrees with it up to rounding.
+    """
+
+    values: tuple[tuple[complex | Decimal, ...], ...]
+    total: tuple[complex | Decimal, ...]
+    sectors: tuple[BornSquaredSector, ...]
+    amplitude_orders: tuple[CouplingOrders, ...]
+
+    def __post_init__(self) -> None:
+        sectors = tuple(self.sectors)
+        amplitude_orders = tuple(
+            canonical_order(order) for order in self.amplitude_orders
+        )
+        if not sectors or not amplitude_orders:
+            raise ValueError("tree order results require order catalogues")
+        if len(set(amplitude_orders)) != len(amplitude_orders):
+            raise ValueError("duplicate amplitude coupling orders")
+        orders = tuple(sector.order for sector in sectors)
+        if list(orders) != sorted(set(orders)):
+            raise ValueError("squared coupling orders must be unique and ascending")
+        for sector in sectors:
+            if canonical_order(sector.order) != sector.order or not sector.pairs:
+                raise ValueError("squared coupling orders must be canonical")
+            if any(
+                left not in amplitude_orders
+                or right not in amplitude_orders
+                or squared_order(left, right) != sector.order
+                for left, right in sector.pairs
+            ):
+                raise ValueError(
+                    "amplitude-order pair does not match its squared order"
+                )
+        values = tuple(
+            tuple(
+                entry if isinstance(entry, Decimal) else complex(entry)
+                for entry in point
+            )
+            for point in self.values
+        )
+        total = tuple(
+            entry if isinstance(entry, Decimal) else complex(entry)
+            for entry in self.total
+        )
+        if len(values) != len(total):
+            raise ValueError("tree order values and totals differ in point count")
+        if any(len(point) != len(sectors) for point in values):
+            raise ValueError("tree order values do not match the squared-order axis")
+        object.__setattr__(self, "values", values)
+        object.__setattr__(self, "total", total)
+        object.__setattr__(self, "sectors", sectors)
+        object.__setattr__(self, "amplitude_orders", amplitude_orders)
+
+    @property
+    def orders(self) -> tuple[CouplingOrders, ...]:
+        return tuple(sector.order for sector in self.sectors)
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        return len(self.values), len(self.sectors)
+
+    def for_order(self, order: CouplingOrders) -> tuple[complex | Decimal, ...]:
+        """Per-point partial of one squared coupling order."""
+
+        wanted = canonical_order(order)
+        try:
+            index = self.orders.index(wanted)
+        except ValueError as error:
+            raise ValueError(
+                f"squared coupling order {wanted!r} is absent from the catalogue"
+            ) from error
+        return tuple(point[index] for point in self.values)
+
+    def sum_orders(self) -> tuple[complex | Decimal, ...]:
+        """Explicitly sum the squared-order axis, preserving decimal precision."""
+
+        totals: list[complex | Decimal] = []
+        for point in self.values:
+            if point and isinstance(point[0], Decimal):
+                totals.append(_exact_decimal_sum(cast(tuple[Decimal, ...], point)))
+            else:
+                totals.append(
+                    complex(
+                        math.fsum(complex(entry).real for entry in point),
+                        math.fsum(complex(entry).imag for entry in point),
+                    )
+                )
+        return tuple(totals)
+
+
+def _sum_entries(entries: tuple[complex | Decimal, ...]) -> complex | Decimal:
+    """Sum one result axis: exactly for decimals, with ``math.fsum`` else."""
+
+    if entries and isinstance(entries[0], Decimal):
+        return _exact_decimal_sum(cast(tuple[Decimal, ...], entries))
+    return complex(
+        math.fsum(complex(entry).real for entry in entries),
+        math.fsum(complex(entry).imag for entry in entries),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class TreeGradedEvaluation:
+    """Tree values split by power of N_c: ``values[point][degree]``.
+
+    For an artifact graded by power of N_c (``color.accuracy = "strict-lc"``
+    or ``"strict-nlc"``, or full colour with ``color.graded``), the entry of
+    ``degrees[d]`` is the N_c^degree term of the formal 1/N_c expansion of the
+    squared tree, evaluated at N_c = 3 and summed over the selected
+    helicities. ``color_ids[d]`` is that degree's contracted colour component
+    in :meth:`pyamplicol.Runtime.evaluate_resolved`. ``total`` sums the
+    degrees of each point (the truncated, or for graded full colour the
+    complete, colour sum); ``reference_degree`` is the leading degree P.
+    """
+
+    values: tuple[tuple[complex | Decimal, ...], ...]
+    total: tuple[complex | Decimal, ...]
+    degrees: tuple[int, ...]
+    color_ids: tuple[str, ...]
+    color_accuracy: Literal["full", "strict-lc", "strict-nlc"]
+    reference_degree: int
+
+    def __post_init__(self) -> None:
+        degrees = tuple(int(degree) for degree in self.degrees)
+        if not degrees or list(degrees) != sorted(set(degrees), reverse=True):
+            raise ValueError("N_c degrees must be unique and decreasing")
+        if len(tuple(self.color_ids)) != len(degrees):
+            raise ValueError("graded results need one colour component per degree")
+        if self.color_accuracy not in ("full", "strict-lc", "strict-nlc"):
+            raise ValueError("graded results come from strict or full colour")
+        values = tuple(
+            tuple(
+                entry if isinstance(entry, Decimal) else complex(entry)
+                for entry in point
+            )
+            for point in self.values
+        )
+        total = tuple(
+            entry if isinstance(entry, Decimal) else complex(entry)
+            for entry in self.total
+        )
+        if len(values) != len(total):
+            raise ValueError("graded values and totals differ in point count")
+        if any(len(point) != len(degrees) for point in values):
+            raise ValueError("graded values do not match the N_c degree axis")
+        object.__setattr__(self, "values", values)
+        object.__setattr__(self, "total", total)
+        object.__setattr__(self, "degrees", degrees)
+        object.__setattr__(self, "color_ids", tuple(self.color_ids))
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        return len(self.values), len(self.degrees)
+
+    def for_degree(self, degree: int) -> tuple[complex | Decimal, ...]:
+        """Per-point contribution of one N_c degree."""
+
+        try:
+            index = self.degrees.index(int(degree))
+        except ValueError as error:
+            raise ValueError(f"N_c degree {degree} is not reported") from error
+        return tuple(point[index] for point in self.values)
 
 
 @dataclass(frozen=True, slots=True)
@@ -922,6 +1313,10 @@ class BenchmarkResult:
     timing_breakdown: BenchmarkTimingBreakdown | None = None
     interrupted: bool = False
     evaluator_total_time_per_point: float | None = None
+    # The peak resident set size of this process over the profiled region
+    # (warm-ups, calibration and timed blocks; ``reporting.resources.
+    # peak_memory``), None where it is not measured.
+    peak_memory: PeakMemory | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -990,17 +1385,20 @@ __all__ = [
     "BenchmarkStageTiming",
     "BenchmarkStatistics",
     "BenchmarkTimingBreakdown",
+    "BornAnchoredColorComponent",
     "ColorComponent",
     "ColorFlow",
     "ContractedColorComponent",
     "ExternalParticle",
     "GenerationPlan",
     "GenerationResult",
+    "GenerationStatistics",
     "HelicityConfiguration",
     "ModelParameter",
     "PhysicsReduction",
     "ProcessPhysics",
     "ReductionGroup",
     "ResolvedEvaluation",
+    "TreeOrderEvaluation",
     "WarmUpResult",
 ]

@@ -98,6 +98,10 @@ C     in Source/MODEL/couplings.f. The values are stored in common blocks that a
 C     in coupl.inc .
 C first call to set up the parameters
       call setpara('param_card.dat')
+## if(Onia) {
+C the LDMEs of the bound states (Cards/onia_card.dat)
+      call setonia('onia_card.dat')
+## }
 C set up masses
       include "pmass.inc"             
 

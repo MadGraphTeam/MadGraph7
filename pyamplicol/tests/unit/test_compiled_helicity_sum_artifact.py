@@ -642,7 +642,10 @@ def test_childless_nested_helicity_selector_is_written_with_owned_payloads(
 def test_compiled_symmetric_group_is_rejected_before_generation() -> None:
     with pytest.raises(
         ConfigurationError,
-        match=r"requires evaluator\.execution_mode='recurrence' or 'on-the-fly'",
+        match=(
+            r"requires evaluator\.execution_mode='recurrence', 'on-the-fly' "
+            r"or 'loop_recurrence'"
+        ),
     ):
         RunConfig(
             action="generate",

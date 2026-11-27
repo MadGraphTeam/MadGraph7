@@ -23,18 +23,27 @@ RUSTICOL_CONFIG_PATH := $(shell \
 		done; \
 	fi)
 ifeq ($(strip $(RUSTICOL_CONFIG_PATH)),)
+ifeq ($(strip $(LOOP_SDK_LIBS)),)
 $(error rusticol-config is unavailable; activate the pyAmpliCol environment or set RUSTICOL_CONFIG=/absolute/path)
 endif
-
+else
 RUSTICOL_CFLAGS := $(shell "$(RUSTICOL_CONFIG_PATH)" --cflags)
 RUSTICOL_LIBS := $(shell "$(RUSTICOL_CONFIG_PATH)" --libs)
 RUSTICOL_FORTRAN := $(shell "$(RUSTICOL_CONFIG_PATH)" --fortran-source)
 RUSTICOL_RUST := $(shell "$(RUSTICOL_CONFIG_PATH)" --rust-source)
 RUSTICOL_RUSTFLAGS := $(shell "$(RUSTICOL_CONFIG_PATH)" --rustflags)
+endif
+# The one-loop client links the installed SDK's loop C ABI (rusticol_virtual.h).
+# A source checkout without the wheel's SDK passes the loop SDK instead:
+#   make loop LOOP_SDK_CFLAGS=-I<checkout>/rust/loop-reduction/sdk/include \
+#     LOOP_SDK_LIBS="-L<native build> -lrusticol_loop_sdk -Wl,-rpath,<native build>"
+LOOP_SDK_CFLAGS ?= $(RUSTICOL_CFLAGS)
+LOOP_SDK_LIBS ?= $(RUSTICOL_LIBS)
 
-.PHONY: all correlated
+.PHONY: all correlated loop
 all: runtime_cpp runtime_fortran
 correlated: correlated_c correlated_cpp correlated_fortran correlated_rust
+loop: loop_client
 
 runtime_cpp: runtime.cpp
 	$(CXX) $(CXXFLAGS) -std=c++17 $< $(RUSTICOL_CFLAGS) \
@@ -56,3 +65,6 @@ correlated_fortran: correlated.f90
 correlated_rust: correlated.rs
 	RUSTICOL_RUST_SOURCE="$(RUSTICOL_RUST)" $(RUSTC) --edition=2021 \
 		-C opt-level=2 $< $(RUSTICOL_RUSTFLAGS) -o $@
+
+loop_client: loop_client.c
+	$(CC) $(CFLAGS) -std=c11 $< $(LOOP_SDK_CFLAGS) $(LOOP_SDK_LIBS) -lm -o $@

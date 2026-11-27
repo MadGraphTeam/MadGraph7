@@ -165,6 +165,29 @@ jobs:
           find validated -name 'pyamplicol-*.whl' -exec cp {} dist/ \;
           find validated -name 'pyamplicol-*.tar.gz' -exec cp {} dist/ \;
           ls -l dist
+      # Ported from pyAmpliCol's publish-pypi.yml: exactly the three platform
+      # wheels and the one sdist, and no candidate build.
+      - name: Verify the pyamplicol package inventory
+        shell: python
+        run: |
+          from pathlib import Path
+
+          files = sorted(path for path in Path("dist").iterdir() if path.is_file())
+          wheels = [path for path in files if path.suffix == ".whl"]
+          sdists = [path for path in files if path.name.endswith(".tar.gz")]
+          if len(wheels) != 3 or len(sdists) != 1 or len(files) != 4:
+              raise SystemExit(
+                  f"expected three wheels and one sdist, found {len(wheels)} wheels "
+                  f"and {len(sdists)} sdists"
+              )
+          expected = {"macosx_11_0_arm64", "macosx_11_0_x86_64", "manylinux_2_28_x86_64"}
+          found = {
+              next((tag for tag in expected if tag in path.name), None) for path in wheels
+          }
+          if found != expected:
+              raise SystemExit(f"unexpected wheel platform inventory: {found}")
+          if any("candidate" in path.name or "dev0" in path.name for path in files):
+              raise SystemExit("candidate artifacts cannot be published")
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 

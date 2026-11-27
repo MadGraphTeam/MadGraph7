@@ -270,8 +270,18 @@ def process_uses_inclusive_labels(process: str) -> bool:
 
 
 def request_allows_charged_current(request: ParsedProcess) -> bool:
-    """Return whether built-in request quantum numbers imply charged-current flow."""
+    """Return whether built-in request quantum numbers imply charged-current flow.
 
+    A concrete request names every flavour: whether a W exchange connects
+    them (u d~ > c s~, u s > d c) is a question for its tree amplitudes, not
+    for this inclusive-enumeration pre-filter, which keeps a quark-flavour
+    changing jet subprocess only when the request implies a W.
+    """
+
+    if request.jet_count == 0 and not any(
+        particle in {"p", "j"} for particle in request.initial_state
+    ):
+        return True
     if "w+" in request.rest or "w-" in request.rest:
         return True
     non_qcd_rest = [
@@ -286,15 +296,18 @@ def concrete_processes_from_inclusive_enumeration(
     enumeration: ProcessEnumeration,
 ) -> tuple[str, ...]:
     processes: dict[str, None] = {}
+    initial_count = len(enumeration.request.initial_state)
     for group in enumeration.groups:
         for record in group.records:
-            processes.setdefault(_record_to_physical_process(record), None)
+            processes.setdefault(
+                _record_to_physical_process(record, initial_count), None
+            )
     return tuple(sorted(processes, key=_concrete_process_sort_key))
 
 
-def _record_to_physical_process(record: SubprocessRecord) -> str:
-    initial = tuple(ANTI_PARTICLE[p] for p in record.process[:2])
-    final = record.process[2:]
+def _record_to_physical_process(record: SubprocessRecord, initial_count: int) -> str:
+    initial = tuple(ANTI_PARTICLE[p] for p in record.process[:initial_count])
+    final = record.process[initial_count:]
     return f"{' '.join(initial)} > {' '.join(final)}"
 
 

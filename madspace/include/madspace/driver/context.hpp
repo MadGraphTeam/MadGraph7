@@ -46,7 +46,7 @@ struct UmamiFunctions {
  * Loaded UMAMI shared library for one matrix element.
  *
  * UMAMI (Unified MAtrix eleMent Interface) is madspace's uniform way of
- * calling matrix-element code, currently the cudacpp plugin [1]; see @ref
+ * calling matrix-element code, currently the madmatrix backend [1]; see @ref
  * MatrixElement for the compute-graph function built on top of it. A
  * `MatrixElementApi` dynamically loads the library, resolves its exported
  * UMAMI entry points, and exposes the metadata queries and the raw @ref call.
@@ -203,7 +203,8 @@ private:
         ThreadPool& thread_pool,
         DevicePtr device,
         std::size_t index = 0,
-        const std::unordered_map<std::string, double>& parameters = {}
+        const std::unordered_map<std::string, double>& parameters = {},
+        const std::vector<int>& helicity_choice = {}
     );
     MatrixElementApi(
         UmamiFunctions functions,
@@ -219,7 +220,8 @@ private:
         ThreadPool& thread_pool,
         DevicePtr device,
         const std::string& param_card,
-        const std::unordered_map<std::string, double>& parameters
+        const std::unordered_map<std::string, double>& parameters,
+        const std::vector<int>& helicity_choice = {}
     );
 
     void check_umami_status(UmamiStatus status) const;
@@ -271,12 +273,24 @@ public:
     /// `param_card`. Every entry of `parameters` is then passed to each
     /// process instance through `umami_set_parameter` (real value, e.g.
     /// `{"bwcutoff": 15.}`, the window of the `$`-excluded propagators);
-    /// a library that rejects one of them is an error. Each call loads the
-    /// library again and appends a new @ref MatrixElementApi.
+    /// a library that rejects one of them is an error. A non-empty
+    /// `helicity_choice` is then given to each instance through the MadMatrix
+    /// extension `madmatrix_set_helicity_choice`: the good helicities, as
+    /// `madmatrix_get_helicity_choice` wrote them for an instance of a CPU build
+    /// of the same process that chose them from the cards
+    /// (`madmatrix_choose_good_helicities`), so that every thread and device
+    /// evaluates the same helicities. Without it, each instance chooses on the
+    /// first events it evaluates. The matrix element is placed at position
+    /// `index` (default: after the last loaded one), which is what the compiled
+    /// functions refer to it by; positions left empty below `index` can be
+    /// filled later, and an empty one is an error to access. Loading into an
+    /// occupied position is an error.
     const MatrixElementApi& load_matrix_element(
         const std::string& file,
         const std::string& param_card,
-        const std::unordered_map<std::string, double>& parameters = {}
+        const std::unordered_map<std::string, double>& parameters = {},
+        const std::vector<int>& helicity_choice = {},
+        int index = -1
     );
     /// Add a matrix element from the UMAMI entry points in `functions`,
     /// without a shared library. `name` identifies it in error messages, and

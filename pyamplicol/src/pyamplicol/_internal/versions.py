@@ -22,7 +22,7 @@ C_ABI_VERSION = 1
 
 # These are project-owned wire-format identifiers. Dependency source revisions
 # live in the release and contributor locks, outside serialized artifacts.
-SYMBOLICA_SERIALIZATION_ABI = "symbolica-bincode2-v1"
+SYMBOLICA_SERIALIZATION_ABI = "symbolica-bincode2-v2"
 SYMJIT_APPLICATION_ABI = "symjit-application-storage-v4"
 SYMJIT_PLANE_APPLICATION_ABI = "pyamplicol-symjit-plane-application-v2"
 NATIVE_COMPILED_DIRECT_APPLICATION_ABI = (
@@ -109,8 +109,35 @@ EVALUATOR_RUNTIME_CAPABILITIES = frozenset(
         SYMBOLICA_ASM_RUNTIME_CAPABILITY,
     }
 )
+# Plan v4 virtual processes of the shared-recursion engine (loops/v2), the
+# only one-loop engine.
+LOOP_V2_RUNTIME_CAPABILITY = "rusticol.loop-runtime.v4"
+# Loop-induced (|A_loop|^2, amplitude-mode plan schema 5) processes of the
+# same engine (M-LIT RULED Q42 = (a)): seeded processes keep the v4
+# capability and their bytes (rusticol-core
+# ``engine::LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY``).
+LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY = "rusticol.loop-runtime.v5"
+# Every runtime capability the v2 virtual runtime serves.
+LOOP_V2_RUNTIME_CAPABILITIES = frozenset(
+    {LOOP_V2_RUNTIME_CAPABILITY, LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY}
+)
+# The format of the removed per-diagram legacy loop engine (user ruling
+# 2026-10-28, M-QCD Q3): recognised only to refuse it with this reason.
+RETIRED_LOOP_RUNTIME_CAPABILITY = "rusticol.loop-runtime.v3"
+LEGACY_LOOP_ENGINE_REMOVED = (
+    "the legacy one-loop engine was removed; v2 (the shared-recursion engine) "
+    "is the only one-loop engine"
+)
+LEGACY_LOOP_ARTIFACT_REMOVED = (
+    f"this artifact holds legacy-engine virtual processes "
+    f"({RETIRED_LOOP_RUNTIME_CAPABILITY}): {LEGACY_LOOP_ENGINE_REMOVED}; "
+    "regenerate the artifact"
+)
 KNOWN_EVALUATOR_RUNTIME_CAPABILITIES = EVALUATOR_RUNTIME_CAPABILITIES | frozenset(
     {
+        # Parse/serialize these lanes, without admitting them to scalar Runtime.
+        LOOP_V2_RUNTIME_CAPABILITY,
+        LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY,
         # Historical eager plan-v2 artifacts remain parseable for inspection
         # and actionable migration errors, but are not executable capabilities.
         EAGER_DAG_F64_RUNTIME_CAPABILITY,
@@ -200,7 +227,10 @@ _NATIVE_BUILD_IGNORED_TREE_PARTS = frozenset({".artifacts", "__pycache__", "targ
 _NON_NATIVE_RUST_PATHS = frozenset(
     {
         Path("rust/crates/rusticol-capi/tests/eager_artifact.rs"),
+        Path("rust/crates/rusticol-core/tests/compiled_binary64_with_symbolica.rs"),
         Path("rust/crates/rusticol-capi/tests/runtime_selectors.rs"),
+        Path("rust/crates/rusticol-core/benches/loop_v2_kernels.rs"),
+        Path("rust/crates/rusticol-core/benches/loop_v2_schedules.rs"),
         Path("rust/crates/rusticol-core/src/artifact_tests.rs"),
         Path("rust/crates/rusticol-core/src/eager_layout_tests.rs"),
         Path("rust/crates/rusticol-core/src/eager_lowering_v3_tests.rs"),
@@ -213,6 +243,8 @@ _NON_NATIVE_RUST_PATHS = frozenset(
         Path("rust/crates/rusticol-core/src/engine/recurrence_integration_tests.rs"),
         Path("rust/crates/rusticol-core/src/engine/source_metadata_tests.rs"),
         Path("rust/crates/rusticol-core/src/engine_tests.rs"),
+        Path("rust/crates/rusticol-core/src/loop_v2/kernels_tests.rs"),
+        Path("rust/crates/rusticol-core/src/loop_v2/trees_tests.rs"),
         Path("rust/crates/rusticol-core/src/metadata_tests.rs"),
         Path("rust/crates/rusticol-core/src/pacbin_tests.rs"),
         Path("rust/crates/rusticol-core/src/recurrence/direct_backend_tests.rs"),
@@ -614,6 +646,21 @@ def _is_native_build_tree_input(root: Path, tree: Path, path: Path) -> bool:
         return False
     tree_relative = path.relative_to(tree)
     root_relative = path.relative_to(root)
+    if root_relative.is_relative_to("rust/loop-reduction"):
+        # These three crates compile only their manifests/build scripts and src
+        # trees. Python controls, SDK clients/headers and docs are packaged or
+        # tested separately and cannot change the extension or native archive.
+        crates = (
+            Path("rust/loop-reduction"),
+            Path("rust/loop-reduction/python"),
+            Path("rust/loop-reduction/sdk"),
+        )
+        if not any(
+            root_relative in (crate / "Cargo.toml", crate / "build.rs")
+            or root_relative.is_relative_to(crate / "src")
+            for crate in crates
+        ):
+            return False
     return (
         not _NATIVE_BUILD_IGNORED_TREE_PARTS.intersection(tree_relative.parts)
         and root_relative not in _NON_NATIVE_RUST_PATHS
@@ -734,6 +781,20 @@ def _is_source_checkout(package_root: Path, source_root: Path) -> bool:
     )
 
 
+def _non_publishable_release_marker(payload: Mapping[str, Any]) -> bool:
+    """Recognize the release-version wheels that are never publishable.
+
+    The release prepared-model bootstrap and a wheel built from a dirty checkout
+    with ``just dev-install --allow-dirty`` keep the release version and the
+    release native-input projection, but record no source revision.
+    """
+
+    return (
+        payload.get("release_prepared_model_bootstrap") is True
+        or payload.get("dirty_source_checkout") is True
+    )
+
+
 def _verify_source_runtime(
     payload: dict[str, Any],
     *,
@@ -764,7 +825,7 @@ def _verify_source_runtime(
             payload.get("publishable") is True
             or (
                 payload.get("publishable") is False
-                and payload.get("release_prepared_model_bootstrap") is True
+                and _non_publishable_release_marker(payload)
             )
         )
     )
@@ -832,13 +893,15 @@ def _verify_candidate_install(payload: dict[str, Any]) -> None:
     if (
         _native_build_inputs_digest(
             source_root,
-            normalize_release_cargo_lock=release_prepared_model_bootstrap,
+            normalize_release_cargo_lock=_non_publishable_release_marker(payload),
         )
         != native_digest
     ):
         install_kind = (
             "release prepared-model bootstrap"
             if release_prepared_model_bootstrap
+            else "dirty-checkout wheel"
+            if payload.get("dirty_source_checkout") is True
             else "candidate wheel"
         )
         raise RuntimeError(
@@ -989,6 +1052,31 @@ def verify_native_module(module: Any, *, expected_version: str | None = None) ->
         )
 
 
+_VERIFIED_SOURCE_RUNTIME: dict[tuple[object, ...], bool] = {}
+
+
+def _source_runtime_key(payload: Mapping[str, Any]) -> tuple[object, ...] | None:
+    """What a successful source-runtime verification depends on that can
+    change in a running process without a new build-info record: the
+    record itself, the source paths and each extension file's identity
+    (size, modification time, inode, of the file a link resolves to)."""
+
+    try:
+        extensions = tuple(
+            (str(path), stat.st_size, stat.st_mtime_ns, stat.st_ino)
+            for path in _native_extensions(_SOURCE_PACKAGE_ROOT)
+            for stat in (path.stat(),)
+        )
+    except OSError:
+        return None
+    return (
+        str(_SOURCE_BUILD_INFO_PATH),
+        str(_SOURCE_ROOT),
+        json.dumps(payload, sort_keys=True, default=str),
+        extensions,
+    )
+
+
 def package_version(default: str = "0.2.1") -> str:
     """Return the wheel/source-runtime version without importing heavy modules."""
 
@@ -1007,7 +1095,15 @@ def package_version(default: str = "0.2.1") -> str:
                 _SOURCE_BUILD_INFO_PATH,
                 "source runtime provenance",
             )
-            _verify_source_runtime(payload)
+            # Verified once per process for the same provenance and
+            # extension files: the full check hashes the extension and the
+            # native build inputs (0.2 s), and generation asks for the
+            # version once per exported evaluator.
+            key = _source_runtime_key(payload)
+            if key is None or _VERIFIED_SOURCE_RUNTIME.get(key) is not True:
+                _verify_source_runtime(payload)
+                if key is not None:
+                    _VERIFIED_SOURCE_RUNTIME[key] = True
             value = payload.get("version")
             if not isinstance(value, str) or not value:
                 raise RuntimeError(
@@ -1055,6 +1151,9 @@ __all__ = [
     "EAGER_RUNTIME_LAYOUT_F64_CAPABILITY",
     "EVALUATOR_RUNTIME_CAPABILITIES",
     "KNOWN_EVALUATOR_RUNTIME_CAPABILITIES",
+    "LOOP_V2_AMPLITUDE_RUNTIME_CAPABILITY",
+    "LOOP_V2_RUNTIME_CAPABILITIES",
+    "LOOP_V2_RUNTIME_CAPABILITY",
     "ON_THE_FLY_CONTRACTED_COLOR_RUNTIME_CAPABILITY",
     "ON_THE_FLY_LC_COLOR_RUNTIME_CAPABILITY",
     "ON_THE_FLY_RUNTIME_CAPABILITY",

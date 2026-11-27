@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import replace
+from typing import Any
 
 from .._internal.physics.symbols import ModelSymbolRegistry, symbols
 from . import compiler_symbolica as _sym
@@ -14,6 +16,9 @@ from .compiler_auxiliary_components import reduce_contact_auxiliary_components
 from .compiler_color_flow import (
     compile_lc_color_transition_terms,
     synthesize_fundamental_fierz_auxiliaries,
+    synthesize_u1_projections,
+    synthesize_u1_singlet_identities,
+    u1_singlet_identity_vertices,
 )
 from .compiler_contact_trees import (
     _compile_color_singlet_contact_trees,
@@ -24,22 +29,24 @@ from .compiler_contact_trees import (
 from .compiler_contacts import (
     _build_contact_decomposition_proof,
     _contact_final_component_expressions,
-    _contact_partial_component_expressions,
     _contact_term_has_literal_color_singlet,
     _fuse_contact_finals,
     _record_contact_decomposition_proofs,
     _validated_contact_decomposition_proof,
+    contact_pair_symmetry,
+    projected_contact_partial_components,
 )
 from .compiler_contractions import compile_contraction_records
-from .compiler_gauge import compile_goldstone_partner_records
+from .compiler_gauge import close_goldstone_flags, compile_goldstone_partner_records
 from .compiler_kernels import (
-    _canonicalize_oriented_kernel_component,
+    _canonical_product_text,
     _fuse_oriented_kernels,
     _is_compile_time_zero_parameter,
     _is_single_structure_constant,
     _lc_color_normalization_power,
     _oriented_component_expressions,
     _remap_kernel_symbols,
+    _renamed_kernel_text,
     _replace_expression_symbols,
     _spin_axis_labels,
 )
@@ -62,12 +69,15 @@ from .contact_decomposition import (
     compiled_contact_orbit_step,
 )
 from .contracts import (
+    TREE_KERNEL_VARIANTS,
     CompiledModelIR,
     CompiledOrientedKernel,
     CompiledParameterRecord,
     CompiledParticleRecord,
     CompiledPropagatorRecord,
     CompiledVertexTerm,
+    ModelGauge,
+    TreeKernelVariant,
     compiled_particle_component_dimension,
 )
 from .tensors import (
@@ -85,13 +95,46 @@ _SUPPORTED_TRILINEAR_COLOR_PROJECTIONS = frozenset(
         "adjoint-structure-constant",
     }
 )
+# The d-symbol couples to the U(1) part of a colour-flow gluon, which only
+# fermion lines subtract: it is lowered only on the vertices whose gluon legs
+# are projected onto SU(N) (``u1_projected_vertices``, the counterterm
+# vertices of the counterterm closure), never on an ordinary model vertex.
+_U1_PROJECTED_TRILINEAR_COLOR_PROJECTIONS = frozenset({"adjoint-symmetric-invariant"})
 
 
-def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
+def compile_ufo_model_ir(
+    model: Mapping[str, object],
+    *,
+    tree_kernel_variant: TreeKernelVariant = "transverse",
+    u1_projected_vertices: frozenset[str] = frozenset(),
+    gauge: ModelGauge = "unitary",
+) -> CompiledModelIR:
+    """Compile one UFO payload; ``tree_kernel_variant`` selects YM lowering.
+
+    The variant changes only the component expressions of oriented kernels
+    proven eligible for the transverse massless Yang-Mills replacement. Kernel
+    kinds, particles and every other record are identical in both variants.
+
+    ``gauge`` is the gauge of the massive vectors (``contracts.ModelGauge``):
+    it decides the Goldstone partner records (``compiler_gauge``) and is
+    recorded in the IR; every other record is the same in both gauges (the
+    oriented kernels of Goldstone vertices exist in both; a unitary-gauge tree
+    model leaves out those of absorbed Goldstones).
+
+    ``u1_projected_vertices`` names vertex rules whose colour-flow stages get
+    the U(1) projection of their gluon legs
+    (``compiler_color_flow.synthesize_u1_projections``; the counterterm
+    vertices of the counterterm closure, ``models.loading``).
+    """
+
+    if tree_kernel_variant not in TREE_KERNEL_VARIANTS:
+        raise ValueError(f"unsupported tree kernel variant {tree_kernel_variant!r}")
     _sym._ensure_symbolica()
     model_name = str(model.get("name", "unnamed-model"))
     model_symbols = symbols.model(model_name)
-    particles = tuple(_particle(item) for item in _mappings(model.get("particles")))
+    particles = close_goldstone_flags(
+        tuple(_particle(item) for item in _mappings(model.get("particles")))
+    )
     particle_by_name = {particle.name: particle for particle in particles}
     lorentz_by_name = {
         str(item["name"]): item for item in _mappings(model.get("lorentz_structures"))
@@ -214,6 +257,7 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         parameter_records,
         propagators,
         model_symbols,
+        transverse_massless_yang_mills=tree_kernel_variant == "transverse",
     )
     contact_particles, contact_kernels = _compile_four_point_contact_kernels(
         terms,
@@ -275,13 +319,34 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         oriented_kernels,
         particles,
         terms,
+        u1_projected_vertices=frozenset(u1_projected_vertices),
     )
-    particles, oriented_kernels = synthesize_fundamental_fierz_auxiliaries(
+    particles, oriented_kernels, propagators = synthesize_fundamental_fierz_auxiliaries(
         particles,
         oriented_kernels,
         propagators,
         model_symbols=model_symbols,
     )
+    # Identity vertices between two gluons and colour singlets (the HEFT H g g
+    # vertex) carry the U(1) subtraction of the gluons through: nothing else
+    # subtracts it there at tree level. The vertices of
+    # ``u1_projected_vertices`` (e.g. the R2 G G H counterterm of loop_sm in
+    # the counterterm closure) have their gluon legs projected by
+    # ``synthesize_u1_projections`` instead, never by both.
+    particles, oriented_kernels = synthesize_u1_singlet_identities(
+        particles,
+        oriented_kernels,
+        vertices=u1_singlet_identity_vertices(particles, oriented_kernels)
+        - frozenset(u1_projected_vertices),
+        model_symbols=model_symbols,
+    )
+    if u1_projected_vertices:
+        particles, oriented_kernels = synthesize_u1_projections(
+            particles,
+            oriented_kernels,
+            projected_vertices=frozenset(u1_projected_vertices),
+            model_symbols=model_symbols,
+        )
     (
         annotated_terms,
         oriented_kernels,
@@ -310,6 +375,7 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         particles,
         parameter_records,
         propagators,
+        gauge=gauge,
     )
     return CompiledModelIR(
         name=model_name,
@@ -325,6 +391,8 @@ def compile_ufo_model_ir(model: Mapping[str, object]) -> CompiledModelIR:
         tensor_orderings=tensor_orderings,
         current_orderings=current_orderings,
         goldstone_partners=goldstone_partners,
+        tree_kernel_variant=tree_kernel_variant,
+        gauge=gauge,
     )
 
 
@@ -332,9 +400,12 @@ def _annotate_oriented_kernel_color_projections(
     kernels: Sequence[CompiledOrientedKernel],
     particles: Sequence[CompiledParticleRecord],
     terms: Sequence[CompiledVertexTerm],
+    *,
+    u1_projected_vertices: frozenset[str] = frozenset(),
 ) -> tuple[CompiledOrientedKernel, ...]:
     particle_by_name = {particle.name: particle for particle in particles}
     term_by_id = {term.id: term for term in terms}
+    catalog = _contact_split_catalog(term_by_id)
     annotated: list[CompiledOrientedKernel] = []
     for kernel in kernels:
         term = term_by_id.get(kernel.term_id)
@@ -349,7 +420,13 @@ def _annotate_oriented_kernel_color_projections(
                 term.color_expression,
                 representations,
             )
-            if certified_structure not in _SUPPORTED_TRILINEAR_COLOR_PROJECTIONS:
+            if (
+                certified_structure not in _SUPPORTED_TRILINEAR_COLOR_PROJECTIONS
+                and not (
+                    certified_structure in _U1_PROJECTED_TRILINEAR_COLOR_PROJECTIONS
+                    and term.vertex.split("::", 1)[0] in u1_projected_vertices
+                )
+            ):
                 raise ValueError(
                     f"vertex {term.vertex!r} has unsupported trilinear color "
                     f"tensor {term.color_source!r}; pyAmpliCol could not prove it "
@@ -373,6 +450,12 @@ def _annotate_oriented_kernel_color_projections(
                 # oriented recognizer.  The original trilinear term and the
                 # compiler-owned source-leg permutation already certify it.
                 structure = certified_structure
+            if structure == "adjoint-structure-constant":
+                # The projection is f in the term's leg order. An orientation
+                # permutes the legs and f is totally antisymmetric, so its
+                # colour-flow sign is the parity of the permutation (this
+                # matters only for vertices whose f legs are distinct species).
+                coefficient *= _permutation_parity(kernel.source_particle_legs)
             recurrence_structure = certified_structure
             recurrence_proof_source = "exact-trilinear-symbolica-projection-v1"
             recurrence_provenance = (("vertex-term-id", str(term.id)),)
@@ -398,6 +481,7 @@ def _annotate_oriented_kernel_color_projections(
             contact_contract = _contact_recurrence_color_contract(
                 kernel,
                 term_by_id,
+                catalog,
             )
             if contact_contract is None:
                 recurrence_structure = structure
@@ -414,40 +498,81 @@ def _annotate_oriented_kernel_color_projections(
                 oriented_representations[1],
                 _dual_color_representation(oriented_representations[2]),
             )
-        annotated_kernel = replace(
-            kernel,
-            color_projection_structure=structure,
-            color_projection_coefficient=(
+        projection = {
+            "color_projection_coefficient": (
                 float(coefficient.real),
                 float(coefficient.imag),
             ),
-            lc_recurrence_color_rule_kind=recurrence_structure,
-        )
+            "lc_recurrence_color_rule_kind": recurrence_structure,
+        }
         recurrence_kernel = replace(
-            annotated_kernel,
+            kernel,
             color_projection_structure=recurrence_structure,
+            **projection,
         )
-        annotated_kernel = replace(
-            annotated_kernel,
-            lc_color_transition_terms=compile_lc_color_transition_terms(
-                recurrence_kernel,
-                oriented_representations,
-                proof_source=recurrence_proof_source,
-                provenance=recurrence_provenance,
-                tensor_role_representations=tensor_role_representations,
-            ),
+        annotated.append(
+            replace(
+                kernel,
+                color_projection_structure=structure,
+                lc_color_transition_terms=compile_lc_color_transition_terms(
+                    recurrence_kernel,
+                    oriented_representations,
+                    proof_source=recurrence_proof_source,
+                    provenance=recurrence_provenance,
+                    tensor_role_representations=tensor_role_representations,
+                ),
+                **projection,
+            )
         )
-        annotated.append(annotated_kernel)
     return tuple(annotated)
+
+
+def _permutation_parity(permutation: Sequence[int]) -> int:
+    inversions = sum(
+        1
+        for index, value in enumerate(permutation)
+        for later in permutation[index + 1 :]
+        if value > later
+    )
+    return -1 if inversions % 2 else 1
 
 
 def _dual_color_representation(representation: int) -> int:
     return -representation if abs(representation) == 3 else representation
 
 
+# A contact split of the proof catalog: (catalog position, term, proof, split).
+_CatalogSplit = tuple[int, CompiledVertexTerm, Any, Any]
+
+
+def _contact_split_catalog(
+    term_by_id: Mapping[int, CompiledVertexTerm],
+) -> tuple[dict[str, list[_CatalogSplit]], dict[int, list[_CatalogSplit]]]:
+    """The splits of every proven contact decomposition of ``term_by_id``,
+    in catalog order (terms, then their splits), by the auxiliary each split
+    owns and by its term (``_contact_recurrence_color_contract``)."""
+
+    by_auxiliary: dict[str, list[_CatalogSplit]] = {}
+    by_term: dict[int, list[_CatalogSplit]] = {}
+    position = 0
+    for term in term_by_id.values():
+        proof = term.contact_decomposition_proof
+        if proof is None or proof.status != "proven":
+            continue
+        for split in proof.splits:
+            entry = (position, term, proof, split)
+            position += 1
+            auxiliary_name = f"__pyamplicol_contact_{term.id}_r{split.result_leg}"
+            by_auxiliary.setdefault(auxiliary_name, []).append(entry)
+            by_term.setdefault(term.id, []).append(entry)
+    return by_auxiliary, by_term
+
+
 def _contact_recurrence_color_contract(
     kernel: CompiledOrientedKernel,
     term_by_id: dict[int, CompiledVertexTerm],
+    catalog: tuple[dict[str, list[_CatalogSplit]], dict[int, list[_CatalogSplit]]]
+    | None = None,
 ) -> tuple[str, str, tuple[tuple[str, str], ...]] | None:
     is_partial = kernel.vertex.endswith("::contact-partial")
     is_final = kernel.vertex.endswith(("::contact-final", "::contact-final-fused"))
@@ -459,43 +584,44 @@ def _contact_recurrence_color_contract(
         return None
 
     stage = "partial" if is_partial else "final"
-    owner_matches = []
-    orientation_matches = []
+    by_auxiliary, by_term = (
+        _contact_split_catalog(term_by_id) if catalog is None else catalog
+    )
     fused_term_ids = set(kernel.term_ids or (kernel.term_id,))
     # Contact-partial deduplication and final fusion may retain an auxiliary
     # owned by a term that is no longer the fused kernel's primary term ID.
     # Match the authenticated auxiliary name and source-leg orientation against
     # the complete proof catalog instead of trusting that incidental owner.
-    for term in term_by_id.values():
-        if term.contact_decomposition_proof is None:
-            continue
-        proof = term.contact_decomposition_proof
-        if proof.status != "proven":
-            continue
-        for split in proof.splits:
-            auxiliary_name = f"__pyamplicol_contact_{term.id}_r{split.result_leg}"
-            owns_auxiliary = (
-                kernel.particles[2] == auxiliary_name
-                if stage == "partial"
-                else auxiliary_name in kernel.particles[:2]
-            )
-            if owns_auxiliary:
-                owner_matches.append((term, proof, split))
-            orientation_is_relevant = (
-                owns_auxiliary if stage == "partial" else term.id in fused_term_ids
-            )
-            if not orientation_is_relevant:
+    owned = {
+        entry[0]: entry
+        for name in (
+            (kernel.particles[2],) if stage == "partial" else kernel.particles[:2]
+        )
+        for entry in by_auxiliary.get(name, ())
+    }
+    owner_matches = [owned[position][1:] for position in sorted(owned)]
+    relevant = (
+        owned
+        if stage == "partial"
+        else {
+            entry[0]: entry
+            for term_id in fused_term_ids
+            for entry in by_term.get(term_id, ())
+        }
+    )
+    orientation_matches = []
+    for position in sorted(relevant):
+        _position, term, proof, split = relevant[position]
+        for orientation in split.orientations:
+            if orientation.stage != stage:
                 continue
-            for orientation in split.orientations:
-                if orientation.stage != stage:
-                    continue
-                expected_source_legs = (
-                    orientation.input_legs[0],
-                    orientation.input_legs[1],
-                    -1 if stage == "partial" else split.result_leg,
-                )
-                if kernel.source_particle_legs == expected_source_legs:
-                    orientation_matches.append((term, proof, split, orientation))
+            expected_source_legs = (
+                orientation.input_legs[0],
+                orientation.input_legs[1],
+                -1 if stage == "partial" else split.result_leg,
+            )
+            if kernel.source_particle_legs == expected_source_legs:
+                orientation_matches.append((term, proof, split, orientation))
     if len(owner_matches) != 1 or not orientation_matches:
         raise ValueError(
             f"compiler-generated contact kernel {kernel.vertex!r} has "
@@ -503,18 +629,22 @@ def _contact_recurrence_color_contract(
             f"{len(orientation_matches)} exact stage orientations"
         )
     term, proof, split = owner_matches[0]
+    # Deduplicated partials may serve splits of different kinds whose stage
+    # tensors agree (a closing identity of two adjoint legs, say); a final
+    # takes its structure from its own terms' splits, not the auxiliary's
+    # owner.
+    candidates = [match[2] for match in orientation_matches]
+    if stage == "partial":
+        candidates.append(split)
+    recurrence_structure = _contact_stage_structure(candidates[0], stage)
     if any(
-        candidate_split.decomposition_kind != split.decomposition_kind
-        for _term, _proof, candidate_split, _orientation in orientation_matches
+        _contact_stage_structure(candidate, stage) != recurrence_structure
+        for candidate in candidates
     ):
         raise ValueError(
             f"compiler-generated contact kernel {kernel.vertex!r} fuses "
             "incompatible recurrence color decompositions"
         )
-    recurrence_structure = {
-        "literal-color-singlet": "singlet",
-        "two-structure-constants": "adjoint-structure-constant",
-    }[split.decomposition_kind]
     return (
         recurrence_structure,
         f"{proof.algorithm}-recurrence-{stage}-v{proof.algorithm_version}",
@@ -525,6 +655,69 @@ def _contact_recurrence_color_contract(
             ("vertex-term-id", str(term.id)),
         ),
     )
+
+
+def _contact_stage_structure(split: Any, stage: str) -> str:
+    """The recurrence colour structure of one stage of a contact split."""
+
+    kind = split.decomposition_kind
+    if kind in (
+        "two-structure-constants",
+        "trilinear-identity",
+        "identity-singlets",
+        "identity-trilinear",
+    ):
+        # Each stage carries its own tensor: a structure constant or a
+        # d-symbol (counterterm contacts, ``ct_color_flow``), an identity, or
+        # nothing (a pair of colour singlets).
+        source = (
+            split.outer_color_source
+            if stage == "partial"
+            else (split.final_color_source)
+        )
+        if "Identity(" in source:
+            return "color-identity"
+        if "T(" in source:
+            return "fundamental-generator"
+        if "d(" in source:
+            return "adjoint-symmetric-invariant"
+        if "f(" in source:
+            return "adjoint-structure-constant"
+        return "singlet"
+    return {
+        "literal-color-singlet": "singlet",
+        "two-identities": "color-identity",
+    }[kind]
+
+
+# Kernel-equivalence proofs of this process by the sha256 of their key
+# (``_annotate_oriented_kernel_evaluation_equivalence``): a proof is a pure
+# function of its key, so a compile reuses the proofs of earlier compiles,
+# e.g. a counterterm-lowered model those of its base model's vertices and
+# of the lowered models of other processes. Cleared beyond the bound.
+_KERNEL_PROOFS: dict[str, tuple[Any, ...]] = {}
+_KERNEL_PROOF_BOUND = 1 << 16
+# The proof keys and the proofs a compile lacks are formed natively, in
+# parallel (``rusticol_core::model_proofs`` through the loop extension's
+# ``model_kernel_equivalence``; WP3.2 EWI-3R): byte-identical to the key loop
+# of ``_annotate_oriented_kernel_evaluation_equivalence`` and to
+# ``_kernel_equivalence_proof``, which stay the oracle
+# (``native_kernel_proofs(False)`` runs them).
+NATIVE_KERNEL_PROOFS = True
+
+
+@contextmanager
+def native_kernel_proofs(enabled: bool) -> Iterator[None]:
+    """``NATIVE_KERNEL_PROOFS`` set to ``enabled`` for the block and restored
+    after it: ``native_kernel_proofs(False)`` is the oracle lane."""
+
+    global NATIVE_KERNEL_PROOFS
+    before = NATIVE_KERNEL_PROOFS
+    NATIVE_KERNEL_PROOFS = bool(enabled)
+    try:
+        yield
+    finally:
+        NATIVE_KERNEL_PROOFS = before
 
 
 def _annotate_oriented_kernel_evaluation_equivalence(
@@ -544,16 +737,126 @@ def _annotate_oriented_kernel_evaluation_equivalence(
 
     particle_by_name = {particle.name: particle for particle in particles}
     term_by_id = {term.id: term for term in terms}
-    annotated: list[CompiledOrientedKernel] = []
-    for kernel in kernels:
-        derived_couplings = {
-            symbols.derived_coupling(model_symbols.model_name, term_id): _sym.E(
-                term_by_id[term_id].coupling_expression
-            )
+
+    def derived_terms(kernel: CompiledOrientedKernel) -> list[int]:
+        return [
+            term_id
             for name in kernel.runtime_parameters
             if name.startswith("derived_coupling_")
             for term_id in (int(name.rsplit("_", 1)[1]),)
             if term_id in term_by_id
+        ]
+
+    def dimensions_of(kernel: CompiledOrientedKernel) -> tuple[int, int, int]:
+        return tuple(
+            compiled_particle_component_dimension(particle_by_name[name])
+            for name in kernel.particles[:3]
+        )
+
+    if NATIVE_KERNEL_PROOFS:
+        from pyamplicol.loops.native import load_loop_native
+
+        derived_names: dict[int, str] = {}
+
+        def derived(term_id: int) -> tuple[str, str]:
+            if term_id not in derived_names:
+                derived_names[term_id] = symbols.derived_coupling(
+                    model_symbols.model_name, term_id
+                ).get_name()
+            return derived_names[term_id], term_by_id[term_id].coupling_expression
+
+        # The model's kernel symbol namespace (``kernel_component``).
+        prefix = model_symbols.kernel_component(0, "left", 0).get_name()
+        keys, found = load_loop_native().model_kernel_equivalence(
+            [
+                (
+                    kernel.kind,
+                    kernel.coupling_expression,
+                    int(kernel.lc_color_normalization_power or 0),
+                    list(kernel.component_expressions),
+                    # As the oracle's dict: one replacement per symbol.
+                    [
+                        derived(term_id)
+                        for term_id in dict.fromkeys(derived_terms(kernel))
+                    ],
+                    dimensions_of(kernel),
+                )
+                for kernel in kernels
+            ],
+            prefix.rsplit("::", 1)[0] + "::",
+            set(_KERNEL_PROOFS),
+        )
+        proofs = {
+            key: (
+                class_digest,
+                (float(sign), 0.0),
+                tuple(input_order),
+                None if exchange is None else (float(exchange), 0.0),
+            )
+            for key, (class_digest, sign, input_order, exchange) in found
+        }
+    else:
+        keys, proofs = _kernel_keys_and_proofs(
+            kernels, term_by_id, derived_terms, dimensions_of, model_symbols
+        )
+    needed = {key: _KERNEL_PROOFS.get(key) or proofs[key] for key in keys}
+    if len(_KERNEL_PROOFS) + len(proofs) > _KERNEL_PROOF_BOUND:
+        _KERNEL_PROOFS.clear()
+    _KERNEL_PROOFS.update(proofs)
+    # Each kernel's factor relative to the first factor of its class.
+    reference_factor_by_class: dict[str, complex] = {}
+    normalized: list[CompiledOrientedKernel] = []
+    for kernel, key in zip(kernels, keys, strict=True):
+        class_digest, factor, input_order, input_exchange_factor = needed[key]
+        evaluation_class = f"symbolica-sha256:{class_digest}"
+        class_factor_complex = complex(*factor)
+        reference_factor = reference_factor_by_class.setdefault(
+            evaluation_class,
+            class_factor_complex,
+        )
+        relative_factor = class_factor_complex / reference_factor
+        normalized.append(
+            replace(
+                kernel,
+                evaluation_class=evaluation_class,
+                evaluation_factor=(
+                    float(relative_factor.real),
+                    float(relative_factor.imag),
+                ),
+                evaluation_input_order=input_order,
+                evaluation_input_exchange_factor=input_exchange_factor,
+                evaluation_equivalence_verified=True,
+            )
+        )
+    return tuple(normalized)
+
+
+def _kernel_keys_and_proofs(
+    kernels: Sequence[CompiledOrientedKernel],
+    term_by_id: Mapping[int, CompiledVertexTerm],
+    derived_terms: Any,
+    dimensions_of: Any,
+    model_symbols: ModelSymbolRegistry,
+) -> tuple[list[str], dict[str, tuple[Any, ...]]]:
+    """The oracle of ``model_kernel_equivalence``: per kernel its proof key,
+    and the proofs (``_kernel_equivalence_proof``) of the distinct keys the
+    process's memo (``_KERNEL_PROOFS``) lacks."""
+
+    parsed: dict[int, _sym.Expression] = {}
+
+    def term_coupling(term_id: int) -> _sym.Expression:
+        if term_id not in parsed:
+            parsed[term_id] = _sym.E(term_by_id[term_id].coupling_expression)
+        return parsed[term_id]
+
+    keys: list[str] = []
+    proofs: dict[str, tuple[Any, ...]] = {}
+    for kernel in kernels:
+        derived_couplings = {
+            symbols.derived_coupling(model_symbols.model_name, term_id): term_coupling(
+                term_id
+            )
+            for term_id in derived_terms(kernel)
         }
         coupling = _replace_expression_symbols(
             _sym.E(kernel.coupling_expression),
@@ -563,118 +866,142 @@ def _annotate_oriented_kernel_evaluation_equivalence(
         # so it must also participate in proofs of shared kernel evaluations.
         if kernel.lc_color_normalization_power:
             coupling *= _sym.E(f"2^(-{kernel.lc_color_normalization_power}/2)")
-        dimensions = tuple(
-            compiled_particle_component_dimension(particle)
-            for particle in (
-                particle_by_name[kernel.particles[0]],
-                particle_by_name[kernel.particles[1]],
-                particle_by_name[kernel.particles[2]],
-            )
-        )
-        candidates: list[tuple[str, tuple[int, int], tuple[float, float], str]] = []
-        components_by_input_order: dict[
-            tuple[int, int], tuple[_sym.Expression, ...]
-        ] = {}
-        for input_order, swap_sides in (((0, 1), False), ((1, 0), True)):
-            oriented_components = tuple(
-                (
-                    _replace_expression_symbols(
-                        _remap_kernel_symbols(
-                            _sym.E(component),
-                            old_kind=kernel.kind,
-                            new_kind=0,
-                            model_symbols=model_symbols,
-                            swap_sides=swap_sides,
-                        ),
-                        derived_couplings,
-                    )
-                    * coupling
-                ).expand()
+        dimensions = dimensions_of(kernel)
+        # The kernel's components in the canonical kernel symbols, with the
+        # coupling aliases resolved, per input order: with the dimensions and
+        # the coupling they determine the proof below exactly, so kernels
+        # with equal ones (the vertex copies of counterterm clone lines,
+        # ``ct_line_insertions``) share one proof.
+        remapped = {
+            input_order: tuple(
+                _replace_expression_symbols(
+                    _remap_kernel_symbols(
+                        _sym.E(component),
+                        old_kind=kernel.kind,
+                        new_kind=0,
+                        model_symbols=model_symbols,
+                        swap_sides=swap_sides,
+                    ),
+                    derived_couplings,
+                )
                 for component in kernel.component_expressions
             )
-            components_by_input_order[input_order] = oriented_components
-            oriented_dimensions = (
-                dimensions[input_order[0]],
-                dimensions[input_order[1]],
-                dimensions[2],
+            for input_order, swap_sides in (((0, 1), False), ((1, 0), True))
+        }
+        key = hashlib.sha256(
+            json.dumps(
+                [
+                    dimensions,
+                    coupling.to_canonical_string(),
+                    *(
+                        [component.to_canonical_string() for component in components]
+                        for components in remapped.values()
+                    ),
+                ],
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        keys.append(key)
+        if key not in _KERNEL_PROOFS and key not in proofs:
+            proofs[key] = _kernel_equivalence_proof(remapped, coupling, dimensions)
+    return keys, proofs
+
+
+def _kernel_equivalence_proof(
+    remapped: Mapping[tuple[int, int], tuple[_sym.Expression, ...]],
+    coupling: _sym.Expression,
+    dimensions: tuple[int, int, int],
+) -> tuple[str, tuple[float, float], tuple[int, int], tuple[float, float] | None]:
+    """(class digest, factor, input order, input exchange factor) of one
+    oriented kernel (``_annotate_oriented_kernel_evaluation_equivalence``)
+    from its ``remapped`` components per input order, its ``coupling`` and
+    the component ``dimensions`` of its two inputs and its output.
+
+    The class is the least signature (input dimensions and canonical
+    component strings) over the input orders and overall signs. The
+    canonical strings of large expanded components dominate the cost, so
+    they are formed lazily: the signatures share their prefix up to the
+    first component, and a JSON string token is never a proper prefix of
+    another, so the first component whose tokens differ decides the order
+    of two signatures exactly. Only the candidates tied so far get their
+    next component's string, and the least signature is then formed whole,
+    with ties kept in candidate order as ``min`` keeps them: the result is
+    the eager comparison of every complete signature."""
+
+    oriented: dict[tuple[int, int], tuple[_sym.Expression, ...]] = {
+        input_order: tuple((component * coupling).expand() for component in components)
+        for input_order, components in remapped.items()
+    }
+    candidates = [(input_order, sign) for input_order in oriented for sign in (1, -1)]
+    strings: dict[tuple[tuple[int, int], int, int], str] = {}
+
+    def component_string(candidate: tuple[tuple[int, int], int], index: int) -> str:
+        input_order, sign = candidate
+        key = (input_order, sign, index)
+        if key not in strings:
+            # Horner/factor collection optimizes evaluation, but is not a
+            # unique algebraic normal form: mirrored kernels can retain
+            # different factorizations of the same coupling polynomial.
+            # Proof identities must use expanded expressions, while the
+            # stored runtime components remain optimized and unchanged.
+            strings[key] = (
+                (sign * oriented[input_order][index]).expand().to_canonical_string()
             )
-            for sign in (1, -1):
-                # Horner/factor collection optimizes evaluation, but is not a
-                # unique algebraic normal form: mirrored kernels can retain
-                # different factorizations of the same coupling polynomial.
-                # Proof identities must use expanded expressions, while the
-                # stored runtime components remain optimized and unchanged.
-                component_strings = tuple(
-                    (sign * component).expand().to_canonical_string()
-                    for component in oriented_components
+        return strings[key]
+
+    def signature(candidate: tuple[tuple[int, int], int]) -> str:
+        input_order, _sign = candidate
+        return json.dumps(
+            {
+                "input_dimensions": [
+                    dimensions[input_order[0]],
+                    dimensions[input_order[1]],
+                ],
+                "output_dimension": dimensions[2],
+                "components": [
+                    component_string(candidate, index)
+                    for index in range(len(oriented[input_order]))
+                ],
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    tied = candidates
+    counts = {len(components) for components in oriented.values()}
+    if len(counts) == 1:
+        for index in range(counts.pop()):
+            if len(tied) == 1:
+                break
+            tokens = {
+                candidate: json.dumps(component_string(candidate, index))
+                for candidate in tied
+            }
+            least = min(tokens.values())
+            tied = [candidate for candidate in tied if tokens[candidate] == least]
+    winner = min(tied, key=signature)
+    input_order, sign = winner
+    class_digest = hashlib.sha256(signature(winner).encode("utf-8")).hexdigest()
+    factor = (float(sign), 0.0)
+    input_exchange_factor: tuple[float, float] | None = None
+    if dimensions[0] == dimensions[1]:
+        direct_components = oriented[(0, 1)]
+        swapped_components = oriented[(1, 0)]
+        zero = _sym.E("0")
+        for exchange_sign in (1, -1):
+            # A structural zero test: no canonical string of a non-zero
+            # difference is formed.
+            if all(
+                (swapped - exchange_sign * direct).expand() == zero
+                for direct, swapped in zip(
+                    direct_components,
+                    swapped_components,
+                    strict=True,
                 )
-                signature = json.dumps(
-                    {
-                        "input_dimensions": list(oriented_dimensions[:2]),
-                        "output_dimension": oriented_dimensions[2],
-                        "components": list(component_strings),
-                    },
-                    sort_keys=True,
-                    separators=(",", ":"),
-                )
-                candidates.append(
-                    (
-                        signature,
-                        input_order,
-                        (float(sign), 0.0),
-                        hashlib.sha256(signature.encode("utf-8")).hexdigest(),
-                    )
-                )
-        _signature, input_order, factor, class_digest = min(
-            candidates,
-            key=lambda candidate: candidate[0],
-        )
-        input_exchange_factor: tuple[float, float] | None = None
-        if dimensions[0] == dimensions[1]:
-            direct_components = components_by_input_order[(0, 1)]
-            swapped_components = components_by_input_order[(1, 0)]
-            zero = _sym.E("0").to_canonical_string()
-            for exchange_sign in (1, -1):
-                if all(
-                    (swapped - exchange_sign * direct).expand().to_canonical_string()
-                    == zero
-                    for direct, swapped in zip(
-                        direct_components,
-                        swapped_components,
-                        strict=True,
-                    )
-                ):
-                    input_exchange_factor = (float(exchange_sign), 0.0)
-                    break
-        annotated.append(
-            replace(
-                kernel,
-                evaluation_class=f"symbolica-sha256:{class_digest}",
-                evaluation_factor=factor,
-                evaluation_input_order=input_order,
-                evaluation_input_exchange_factor=input_exchange_factor,
-                evaluation_equivalence_verified=True,
-            )
-        )
-    reference_factor_by_class: dict[str, complex] = {}
-    normalized: list[CompiledOrientedKernel] = []
-    for kernel in annotated:
-        class_factor_complex = complex(*kernel.evaluation_factor)
-        reference_factor = reference_factor_by_class.setdefault(
-            kernel.evaluation_class,
-            class_factor_complex,
-        )
-        relative_factor = class_factor_complex / reference_factor
-        normalized.append(
-            replace(
-                kernel,
-                evaluation_factor=(
-                    float(relative_factor.real),
-                    float(relative_factor.imag),
-                ),
-            )
-        )
-    return tuple(normalized)
+            ):
+                input_exchange_factor = (float(exchange_sign), 0.0)
+                break
+    return class_digest, factor, input_order, input_exchange_factor
 
 
 def _compile_oriented_kernels(
@@ -683,17 +1010,36 @@ def _compile_oriented_kernels(
     parameters: Sequence[CompiledParameterRecord],
     propagators: Sequence[CompiledPropagatorRecord],
     model_symbols: ModelSymbolRegistry,
+    *,
+    transverse_massless_yang_mills: bool,
 ) -> tuple[CompiledOrientedKernel, ...]:
     particle_by_name = {particle.name: particle for particle in particles}
     parameter_by_name = {parameter.name: parameter for parameter in parameters}
     propagator_by_name = {propagator.name: propagator for propagator in propagators}
-    external_parameters = {
-        parameter.name for parameter in parameters if parameter.nature == "external"
+    external_symbols = {
+        parameter.name: model_symbols.symbol(parameter.name)
+        for parameter in parameters
+        if parameter.nature == "external"
     }
     kernels: list[CompiledOrientedKernel] = []
+    # The components of an oriented Lorentz structure, by (structure, spins,
+    # legs, transverse variant), with the kernel kind they were formed for:
+    # the network runs on canonical symbols whose order does not depend on
+    # the kind (``_execute_dense_network``), so another kernel's components
+    # are these with the kernel symbols renamed (the vertex copies of
+    # counterterm clone lines and every repeated structure).
+    oriented_memo: dict[tuple[object, ...], tuple[int, Any]] = {}
     for term in terms:
         if term.valence != 3:
             continue
+        coupling_symbols = set(_sym.E(term.coupling_expression).get_all_symbols(False))
+        runtime_parameters = tuple(
+            sorted(
+                name
+                for name, symbol in external_symbols.items()
+                if symbol in coupling_symbols
+            )
+        )
         oriented_result_particles: set[str] = set()
         for result_leg in range(3):
             result_source_name = term.particles[result_leg]
@@ -715,33 +1061,50 @@ def _compile_oriented_kernels(
                         f"vertex {term.vertex} particle {result_source.name} refers to "
                         f"absent antiparticle {result_source.antiname}"
                     ) from exc
-                ordered_components = _oriented_component_expressions(
-                    term,
-                    particle_by_name,
-                    left_leg=left_leg,
-                    right_leg=right_leg,
-                    result_leg=result_leg,
-                    kind=len(kernels),
-                    model_symbols=model_symbols,
-                    use_transverse_massless_yang_mills=(
-                        _term_supports_transverse_massless_yang_mills(
-                            term,
-                            particle_by_name,
-                            parameter_by_name,
-                            propagator_by_name,
-                        )
-                    ),
-                )
-                coupling_symbols = set(
-                    _sym.E(term.coupling_expression).get_all_symbols(False)
-                )
-                runtime_parameters = tuple(
-                    sorted(
-                        name
-                        for name in external_parameters
-                        if model_symbols.symbol(name) in coupling_symbols
+                transverse = (
+                    transverse_massless_yang_mills
+                    and _term_supports_transverse_massless_yang_mills(
+                        term,
+                        particle_by_name,
+                        parameter_by_name,
+                        propagator_by_name,
                     )
                 )
+                memo_key = (
+                    term.lorentz_expression,
+                    tuple(particle_by_name[name].spin for name in term.particles),
+                    left_leg,
+                    right_leg,
+                    result_leg,
+                    transverse,
+                )
+                found = oriented_memo.get(memo_key)
+                if found is None:
+                    ordered_components = _oriented_component_expressions(
+                        term,
+                        particle_by_name,
+                        left_leg=left_leg,
+                        right_leg=right_leg,
+                        result_leg=result_leg,
+                        kind=len(kernels),
+                        model_symbols=model_symbols,
+                        use_transverse_massless_yang_mills=transverse,
+                    )
+                    oriented_memo[memo_key] = (len(kernels), ordered_components)
+                else:
+                    formed, ordered_components = found
+                    ordered_components = replace(
+                        ordered_components,
+                        values=tuple(
+                            _renamed_kernel_text(
+                                value,
+                                old_kind=formed,
+                                new_kind=len(kernels),
+                                model_symbols=model_symbols,
+                            )
+                            for value in ordered_components.values
+                        ),
+                    )
                 kernels.append(
                     CompiledOrientedKernel(
                         kind=len(kernels),
@@ -903,7 +1266,7 @@ def _compile_four_point_contact_kernels(
             for orientation in partial_orientations:
                 left_leg, right_leg = orientation.input_legs
                 kind = start_kind + len(kernels)
-                components = _contact_partial_component_expressions(
+                components = projected_contact_partial_components(
                     term,
                     particle_by_name,
                     left_leg=left_leg,
@@ -911,6 +1274,9 @@ def _compile_four_point_contact_kernels(
                     open_legs=open_legs,
                     kind=kind,
                     model_symbols=model_symbols,
+                    symmetry=contact_pair_symmetry(
+                        source_particles, split.pair_legs, split.outer_color_source
+                    ),
                 )
                 kernels.append(
                     CompiledOrientedKernel(
@@ -924,10 +1290,12 @@ def _compile_four_point_contact_kernels(
                         ),
                         source_particle_legs=(left_leg, right_leg, -1),
                         component_expressions=tuple(
-                            _canonicalize_oriented_kernel_component(
-                                _sym.E(components[index])
-                                * _sym.E(orientation.scalar_prefactor)
-                            ).to_canonical_string()
+                            _canonical_product_text(
+                                components[index],
+                                orientation.scalar_prefactor,
+                                kind=kind,
+                                model_symbols=model_symbols,
+                            )
                             for index in representative_indices
                         ),
                         coupling_expression="1",
@@ -967,6 +1335,19 @@ def _compile_four_point_contact_kernels(
                 combined_color_source = (
                     f"{split.outer_color_source}*{split.final_color_source}"
                     if split.decomposition_kind == "two-structure-constants"
+                    # The identity only passes the summed index on.
+                    else split.outer_color_source
+                    if split.decomposition_kind == "trilinear-identity"
+                    # The identity passes the pair's index to the summed one,
+                    # which the final trilinear takes.
+                    else split.final_color_source
+                    if split.decomposition_kind == "identity-trilinear"
+                    # The pair closed into a singlet; the result takes the
+                    # remaining leg's colour with weight 1 (recurrence:
+                    # ``_contact_recurrence_color_contract``).
+                    else "1"
+                    if split.decomposition_kind
+                    in ("two-identities", "identity-singlets")
                     else term.color_source
                 )
                 kernels.append(

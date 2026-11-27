@@ -18,7 +18,10 @@ from pyamplicol.models.contracts import CompiledParticleRecord
 from pyamplicol.models.external_catalog import ExternalModelCatalogMixin
 from pyamplicol.runtime.symbolica_exact import (
     _antiquark_weyl,
+    _massive_dirac,
     _massive_vector,
+    _massless_antiquark_dirac,
+    _massless_quark_dirac,
     _particle_mass,
     _quark_weyl,
     _source_wavefunction,
@@ -247,6 +250,72 @@ def test_massive_vector_is_transverse_for_both_energy_signs(helicity: int) -> No
         )
         assert abs(contraction[0]) < Decimal("1e-25")
         assert abs(contraction[1]) < Decimal("1e-25")
+
+
+@pytest.mark.parametrize("helicity", [-1, 1])
+@pytest.mark.parametrize("sign", [1, -1])
+def test_massless_dirac_sources_are_the_zero_mass_dirac_states(
+    sign: int, helicity: int
+) -> None:
+    """A massless fermion that is not a Weyl field has Dirac sources: the
+    massive Dirac state at zero mass, for both energy signs. A crossed
+    (initial-state, negative-energy) momentum used to give a vanishing
+    spinor (the chirality of a crossed massless state is minus its
+    helicity, as in the native ``ext_quark_dirac_generic``)."""
+
+    momentum = tuple(sign * Decimal(value) for value in ("13", "4", "-12", "3"))
+    for antiquark, massless in (
+        (False, _massless_quark_dirac),
+        (True, _massless_antiquark_dirac),
+    ):
+        wave = massless(momentum, helicity)
+        expected = _massive_dirac(momentum, helicity, Decimal(0), antiquark=antiquark)
+        assert any(abs(re) + abs(im) > 1 for re, im in wave)
+        assert all(
+            abs(a[0] - b[0]) + abs(a[1] - b[1]) < Decimal("1e-25")
+            for a, b in zip(wave, expected, strict=True)
+        )
+
+
+@pytest.mark.parametrize("helicity", [-1, 1])
+@pytest.mark.parametrize("sign", [1, -1])
+@pytest.mark.parametrize("antiquark", [False, True])
+def test_massive_dirac_sources_on_the_beam_axis_do_not_hang_on_rounding(
+    antiquark: bool, sign: int, helicity: int
+) -> None:
+    """A massive fermion along the z axis takes the spinor's pp3 = 0 branch
+    whatever the rounding of sqrt(pz^2): with 30-digit beam momenta at 50
+    digits (the binary64 carrier's Python inputs) the residue of |p| + pz
+    used to give a vanishing spinor for the leg along -z (b b~ > w+ w-,
+    MB = 4.5, at sqrt(s) = 800: a binary64 Born of 1e-49)."""
+
+    from decimal import localcontext
+
+    pz = Decimal("399.974686699045993514867962107")
+    mass = Decimal("4.5")
+    for direction in (1, -1):
+        # Negations are exact: no rounding to the ambient 28 digits.
+        momentum = tuple(
+            value.copy_negate() if sign < 0 else value
+            for value in (
+                Decimal(400),
+                Decimal(0),
+                Decimal(0),
+                pz if direction > 0 else pz.copy_negate(),
+            )
+        )
+        waves = []
+        for digits in (50, 80):
+            with localcontext(prec=digits):
+                waves.append(
+                    _massive_dirac(momentum, helicity, mass, antiquark=antiquark)
+                )
+        low, high = waves
+        assert sum(abs(re) + abs(im) for re, im in high) > 1
+        assert all(
+            abs(a[0] - b[0]) + abs(a[1] - b[1]) < Decimal("1e-40")
+            for a, b in zip(low, high, strict=True)
+        ), (direction, low)
 
 
 def test_source_ir_rejects_inconsistent_statistics() -> None:

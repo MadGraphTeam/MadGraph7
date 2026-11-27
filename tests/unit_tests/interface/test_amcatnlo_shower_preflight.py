@@ -1,6 +1,7 @@
 """Reject unsupported shower radiation before compilation or job submission."""
 
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
 from unittest import mock
@@ -81,8 +82,8 @@ class TestRadiationCharacteristics(unittest.TestCase):
                                      precmd=True, postcmd=True)
                 multiprocess = command._fks_multi_proc
                 matrix_elements = fks_helas_objects.FKSHelasMultiProcess(multiprocess)
-                for filename in matrix_elements['matrix_elements']:
-                    self.addCleanup(Path(filename).unlink, missing_ok=True)
+                # the files of the matrix elements, normally removed after the output
+                self.addCleanup(shutil.rmtree, matrix_elements['tmpdir'], True)
                 self.assertEqual(matrix_elements['has_isr'], isr)
                 self.assertEqual(matrix_elements['has_fsr'], fsr)
                 self.assertEqual(multiprocess['has_isr'], isr)

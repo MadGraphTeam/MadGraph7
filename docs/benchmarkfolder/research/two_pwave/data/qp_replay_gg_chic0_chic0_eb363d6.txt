@@ -1,0 +1,98 @@
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (512 bits): Unstable("ill-conditioned Gram matrix for [2, 3, 4, 5]: conditioning 0")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (512 bits): Unstable("ill-conditioned Gram matrix for [2, 3, 4, 5]: conditioning 0")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (512 bits): Unstable("ill-conditioned Gram matrix for [2, 3, 4, 5]: conditioning 0")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (512 bits): Unstable("ill-conditioned Gram matrix for [2, 3, 4, 5]: conditioning 0")
+call   1 n 5 r 6 pow 1 1 1 2 2    QP 0  DP 0  
+call   1 n 5 r 6 pow 1 1 1 2 2    QP 0  DP 0  
+call   1 n 5 r 6 pow 1 1 1 2 2    QP 0  DP 0  
+call   1 n 5 r 6 pow 1 1 1 2 2    QP 0  DP 0  
+call   1 n 4 r 6 pow 1 1 2 2      QP 0  DP 0  
+call   1 n 4 r 6 pow 1 1 2 2      QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (512 bits): Unstable("ill-conditioned Gram matrix for [0, 3, 4, 5]: conditioning 1.945625037540816088806835125124409781767636160607048590188452988792488966364906126551965173404066696394538315075102954374196328331142563203425719015269086e-156")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [2, 3, 4]: conditioning 0")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 5 r 6 pow 1 1 1 2 2    QP 0  DP 0  
+call   1 n 5 r 6 pow 1 1 1 2 2    QP 0  DP 0  
+call   1 n 5 r 6 pow 1 1 1 2 2    QP 0  DP 0  
+call   1 n 5 r 6 pow 1 1 1 2 2    QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (512 bits): Unstable("ill-conditioned Gram matrix for [0, 3, 4, 5]: conditioning 1.945625037540816088806835125124409781767636160607048590188452988792488966364906126551965173404066696394538315075102954374196328331142563203425719015269086e-156")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [2, 3, 4]: conditioning 0")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 4, 5]: conditioning 0")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 4, 5]: conditioning 0")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [1, 2, 3]: conditioning 0")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [1, 2, 3]: conditioning 0")
+call   1 n 5 r 4 pow 1 1 1 1 1    QP 0  DP 0  
+call   1 n 5 r 4 pow 1 1 1 1 1    QP 0  DP 0  
+call   1 n 5 r 4 pow 1 1 1 1 1    QP 0  DP 0  
+call   1 n 5 r 4 pow 1 1 1 1 1    QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 4, 5]: conditioning 0")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 4, 5]: conditioning 0")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 4, 5]: conditioning 0")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 4, 5]: conditioning 0")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 4, 5]: conditioning 0")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 4, 5]: conditioning 0")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 1  DP 0  TIRust QP (256 bits): Unstable("ill-conditioned Gram matrix for [0, 2, 3, 5]: conditioning 4.7456167896750562345969779267076460725306716316876662228052707187584685686241e-79")
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 6 r 4 pow 1 1 1 1 1 1  QP 0  DP 0  
+call   1 n 4 r 4 pow 1 1 1 1      QP 0  DP 0  
+call   1 n 4 r 4 pow 1 1 1 1      QP 0  DP 0  
+call   1 n 4 r 4 pow 1 1 1 1      QP 0  DP 0  
+ QP served          63  refused          34

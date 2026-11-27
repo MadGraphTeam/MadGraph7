@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: 0BSD
+# Loop example: generate g g > z g g, loop-induced |A_loop|^2, every quark loop (5 massless + top).
+# Walkthrough: python python/loop_walkthrough.py loop_gg_zgg_generate.toml (README, One-Loop Examples).
+
+schema_version = 1
+action = "generate"
+
+[model]
+source = "loop_sm"
+restriction = "no_b_mass"
+
+[process]
+entries = [{ expression = "g g > z g g", name = "gg_zgg" }]
+loop_coupling_orders = ["QCD"]
+
+[loop]
+r2_strategy = "model"
+
+[loop.preparation]
+# No particle_veto: every quark circulates (a top-only loop breaks the Z's
+# gauge invariance, the t-b doublet's anomaly). Massless tau and no fixed
+# widths in the tree propagators (the Z is an external state).
+fixed_parameters = { MTA = "0", ymtau = "0", WT = "0", WW = "0", WZ = "0", WH = "0" }
+
+[generation]
+output = "artifacts/loop_gg_zgg"

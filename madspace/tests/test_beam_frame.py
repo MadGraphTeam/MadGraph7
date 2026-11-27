@@ -9,6 +9,9 @@ from pytest import approx
 
 import madspace as ms
 
+# numpy inputs, which madspace runs on the CPU
+pytestmark = pytest.mark.cpu_only
+
 N = 2000
 
 

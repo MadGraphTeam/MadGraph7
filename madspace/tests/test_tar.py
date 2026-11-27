@@ -6,6 +6,9 @@ import pytest
 
 import madspace as ms
 
+# tar files written from a CPU context
+pytestmark = pytest.mark.cpu_only
+
 torch = pytest.importorskip("torch")
 
 

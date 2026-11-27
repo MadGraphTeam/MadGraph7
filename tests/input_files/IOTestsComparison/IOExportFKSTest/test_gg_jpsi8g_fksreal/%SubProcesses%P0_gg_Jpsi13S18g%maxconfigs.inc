@@ -1,2 +1,1 @@
-      INTEGER LMAXCONFIGS
-      PARAMETER(LMAXCONFIGS=105)
+../../_shared/IOExportFKSTest%test_gg_chic0g_fksreal%%SubProcesses%P0_gg_chic013P01g%maxconfigs.inc

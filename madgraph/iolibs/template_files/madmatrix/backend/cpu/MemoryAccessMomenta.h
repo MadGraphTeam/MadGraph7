@@ -7,13 +7,12 @@
 #ifndef MemoryAccessMomenta_H
 #define MemoryAccessMomenta_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "ProcessData.h"
 #include "MemoryAccessHelpers.h"
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   //----------------------------------------------------------------------------
@@ -41,7 +40,6 @@ namespace madmatrix
   private:
 
     friend class MemoryAccessHelper<MemoryAccessMomentaBase, fptype_momenta>;
-    friend class KernelAccessHelper<MemoryAccessMomentaBase, true, fptype_momenta>;
     friend class KernelAccessHelper<MemoryAccessMomentaBase, false, fptype_momenta>;
 
     // The number of components of a 4-momentum
@@ -200,7 +198,6 @@ namespace madmatrix
   //----------------------------------------------------------------------------
 
   typedef KernelAccessMomenta<false> HostAccessMomenta;
-  typedef KernelAccessMomenta<true> DeviceAccessMomenta;
 
   //----------------------------------------------------------------------------
 

@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: 0BSD
+# Loop example: generate u u~ > t t~ g g, NLO QCD virtual (Born-interfered), full colour.
+# Walkthrough: python python/loop_walkthrough.py loop_uux_ttxgg_generate.toml (README, One-Loop Examples).
+
+schema_version = 1
+action = "generate"
+
+[model]
+source = "loop_sm"
+restriction = "no_b_mass"
+
+[process]
+entries = [{ expression = "u u~ > t t~ g g", name = "uux_ttxgg" }]
+loop_coupling_orders = ["QCD"]
+
+[loop.preparation]
+# A coloured particle's width breaks gauge invariance in a fixed-width tree
+# propagator; the top is an on-shell external state here.
+fixed_parameters = { WT = "0" }
+
+[generation]
+output = "artifacts/loop_uux_ttxgg"

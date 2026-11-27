@@ -471,7 +471,8 @@ class LeptonicAlphaSTest(unittest.TestCase):
         return beam
 
     def init_beam(self, process, beam):
-        process.run_card = {'beam': beam}
+        process.run_card = mock.MagicMock()
+        process.run_card.__getitem__.side_effect = {'beam': beam}.__getitem__
         process.is_decay = False
         process.custom_functions = {}
         process.contexts = []

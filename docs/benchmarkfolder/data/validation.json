@@ -1,0 +1,435 @@
+[
+ {
+  "name": "aa_etac",
+  "label": "gamma gamma -> eta_c thin [\"\"^1 S_0^((1))]",
+  "process": "a a > etac(1|1S01) [virt=QCD]",
+  "source": "eta_c -> gamma gamma: C_F (pi^2/4 - 5) alpha_s/pi (Barbieri et al.)",
+  "reference": [
+   -6.753597065940427,
+   0.0,
+   0.0
+  ],
+  "ref_short": "Barbieri et al.",
+  "energy": 3.1,
+  "mu": null,
+  "lib": "9",
+  "npoints": 10,
+  "status": "ok",
+  "finite": -6.753597065940425,
+  "single": 7.12322531777658e-16,
+  "double": 0.0,
+  "max_deviation": 4.803089071415067e-14,
+  "max_pole_deviation": 4.803089071415067e-14,
+  "stable": 10,
+  "time_ms": 0.2444355,
+  "accuracy": 7.5028e-13,
+  "return_codes": [
+   213
+  ]
+ },
+ {
+  "name": "ee_etac_a",
+  "label": "e^+ e^- -> eta_c gamma",
+  "process": "e+ e- > etac(1|1S01) a / z t t~ b b~ [virt=QCD]",
+  "source": "Sang & Chen 0910.4071 C(r) at sqrt(s) = 10.58, m_c = 1.5 (literature.md C.1), b and t excluded from the loops",
+  "reference": [
+   -5.14606,
+   0.0,
+   0.0
+  ],
+  "ref_short": "Sang, Chen (C.1)",
+  "energy": 10.58,
+  "mu": null,
+  "lib": "9",
+  "npoints": 10,
+  "status": "ok",
+  "finite": -5.146058743173568,
+  "single": 3.202785976150157e-15,
+  "double": 0.0,
+  "max_deviation": 2.442308374335503e-07,
+  "max_pole_deviation": 2.8849114787230046e-14,
+  "stable": 10,
+  "time_ms": 0.45540200000000003,
+  "accuracy": 1.4054e-13,
+  "return_codes": [
+   213
+  ],
+  "relmom": {
+   "9": {
+    "intercept": -5.146063669319441,
+    "v0": -5.14605874317356,
+    "relative": 9.572657690860585e-07,
+    "coulomb": 1.3333333316655371,
+    "expected": 1.3333333333333333
+   },
+   "7": {
+    "intercept": -5.146063324417169,
+    "v0": -5.14605874317356,
+    "relative": 8.90243162388226e-07,
+    "coulomb": 1.333333332476056,
+    "expected": 1.3333333333333333
+   }
+  },
+  "velocities": [
+   0.001,
+   0.002,
+   0.003,
+   0.005,
+   0.0075,
+   0.01,
+   0.015,
+   0.02
+  ],
+  "relmom_libs_agree": 2.4464275111756344e-10
+ },
+ {
+  "name": "ee_jpsi",
+  "label": "e^+ e^- -> J\\/psi thin [\"\"^3 S_1^((1))]",
+  "process": "e+ e- > Jpsi(1|3S11) [virt=QCD]",
+  "source": "J/psi -> e+ e-: -16/3 alpha_s/pi (Barbieri et al., Celmaster)",
+  "reference": [
+   -10.666666666666666,
+   0.0,
+   0.0
+  ],
+  "ref_short": "Barbieri et al., Celmaster",
+  "energy": 3.1,
+  "mu": null,
+  "lib": "9",
+  "npoints": 10,
+  "status": "ok",
+  "finite": -10.666666666666663,
+  "single": 7.237326193692753e-16,
+  "double": 0.0,
+  "max_deviation": 1.7369582864862632e-14,
+  "max_pole_deviation": 1.7369582864862632e-14,
+  "stable": 10,
+  "time_ms": 0.055221,
+  "accuracy": 5.2923e-15,
+  "return_codes": [
+   213
+  ]
+ },
+ {
+  "name": "ee_psi_etac",
+  "label": "e^+ e^- -> J\\/psi thin eta_c",
+  "process": "e+ e- > Jpsi(1|3S11) etac(1|1S01) / z t t~ b b~ QED=2 [virt=QCD]",
+  "source": "Gong & Wang 0712.4220 K1, n_l = 3 decoupling scheme, mu = 2 m_c (literature.md C.4), b and t excluded from the loops",
+  "reference": [
+   24.53642,
+   0.0,
+   0.0
+  ],
+  "ref_short": "Gong, Wang (C.4), \u03bc = 2m_c",
+  "energy": 10.58,
+  "mu": 3.0,
+  "lib": "9",
+  "npoints": 10,
+  "status": "ok",
+  "finite": -12.736418511432348,
+  "single": -6.126730430008937,
+  "double": 0.0,
+  "max_deviation": 6.126730430008951,
+  "max_pole_deviation": 6.126730430008951,
+  "stable": 0,
+  "time_ms": 632.37345,
+  "accuracy": 1.0,
+  "return_codes": [
+   420
+  ]
+ },
+ {
+  "name": "ee_psi_etac",
+  "label": "e^+ e^- -> J\\/psi thin eta_c",
+  "process": "e+ e- > Jpsi(1|3S11) etac(1|1S01) / z t t~ b b~ QED=2 [virt=QCD]",
+  "source": "Gong & Wang 0712.4220 K1, n_l = 3 decoupling scheme, mu = 2 m_c (literature.md C.4), b and t excluded from the loops",
+  "reference": [
+   24.53642,
+   0.0,
+   0.0
+  ],
+  "ref_short": "Gong, Wang (C.4), \u03bc = 2m_c; TIRust 08cca00 (PR #58 on #56, candidate)",
+  "energy": 10.58,
+  "mu": 3.0,
+  "lib": "9",
+  "npoints": 10,
+  "status": "ok",
+  "finite": 24.536421098040236,
+  "single": -1.6297799560328937e-15,
+  "double": 0.0,
+  "max_deviation": 5.252961822726321e-08,
+  "max_pole_deviation": 1.6638631372057737e-13,
+  "stable": 10,
+  "time_ms": 10.058466000000001,
+  "accuracy": 3.7252e-08,
+  "return_codes": [
+   213
+  ],
+  "tirust": "08cca00 (PR #58 on #56, candidate)"
+ },
+ {
+  "name": "gg_etac1",
+  "label": "g g -> eta_c thin [\"\"^1 S_0^((1))]",
+  "process": "g g > etac(1|1S01) [virt=QCD]",
+  "source": "Petrelli et al. hep-ph/9707223 eq. (125), mu = M, n_l = 3",
+  "reference": [
+   14.050809535693613,
+   -9.0,
+   -6.0
+  ],
+  "ref_short": "Petrelli et al. (125)",
+  "energy": 3.1,
+  "mu": null,
+  "lib": "9",
+  "npoints": 10,
+  "status": "ok",
+  "finite": 14.05080953569361,
+  "single": -9.0,
+  "double": -6.000000000000002,
+  "max_deviation": 3.5349501104064984e-13,
+  "max_pole_deviation": 3.517186542012496e-13,
+  "stable": 10,
+  "time_ms": 0.9962134999999999,
+  "accuracy": 1.3792e-11,
+  "return_codes": [
+   213
+  ]
+ },
+ {
+  "name": "gg_etac8",
+  "label": "g g -> c overline(c) thin [\"\"^1 S_0^((8))]",
+  "process": "g g > etac(1|1S08) [virt=QCD]",
+  "source": "Petrelli et al. hep-ph/9707223 eq. (128), mu = M, n_l = 3",
+  "reference": [
+   12.648606234876592,
+   -12.0,
+   -6.0
+  ],
+  "ref_short": "Petrelli et al. (128)",
+  "energy": 3.1,
+  "mu": null,
+  "lib": "9",
+  "npoints": 10,
+  "status": "ok",
+  "finite": 12.648606234876464,
+  "single": -12.0,
+  "double": -5.999999999999999,
+  "max_deviation": 1.5276668818842154e-13,
+  "max_pole_deviation": 1.438849039914203e-13,
+  "stable": 10,
+  "time_ms": 1.004044,
+  "accuracy": 2.7605e-13,
+  "return_codes": [
+   213
+  ]
+ },
+ {
+  "name": "gg_etac8_g",
+  "label": "g g -> c overline(c) thin [\"\"^1 S_0^((8))] thin g",
+  "process": "g g > etac(1|1S08) g [virt=QCD]",
+  "source": "poles: arXiv:2402.19221 eq. (217)",
+  "reference": null,
+  "ref_short": "",
+  "energy": 20.0,
+  "mu": null,
+  "lib": "9",
+  "npoints": 10,
+  "status": "ok",
+  "finite": 75.45188508159772,
+  "single": -14.456880076926076,
+  "double": -9.000000000000002,
+  "max_deviation": null,
+  "max_pole_deviation": 1.2434497875801753e-12,
+  "stable": 10,
+  "time_ms": 54.513665,
+  "accuracy": 6.665e-14,
+  "return_codes": [
+   213
+  ],
+  "relmom": {
+   "9": {
+    "intercept": 76.30494787420469,
+    "v0": 76.30494674095878,
+    "relative": 1.4851539131515596e-08,
+    "coulomb": -0.16666666650971626,
+    "expected": -0.16666666666666674
+   },
+   "7": {
+    "intercept": 76.3049515926097,
+    "v0": 76.30494674095878,
+    "relative": 6.35823904101097e-08,
+    "coulomb": -0.16666666969780158,
+    "expected": -0.16666666666666674
+   }
+  },
+  "velocities": [
+   0.001,
+   0.002,
+   0.003,
+   0.005,
+   0.0075,
+   0.01,
+   0.015,
+   0.02
+  ],
+  "relmom_libs_agree": 8.319037568736732e-07
+ },
+ {
+  "name": "gg_psi8_g",
+  "label": "g g -> c overline(c) thin [\"\"^3 S_1^((8))] thin g",
+  "process": "g g > Jpsi(1|3S18) g [virt=QCD]",
+  "source": "poles: arXiv:2402.19221 eq. (217)",
+  "reference": null,
+  "ref_short": "",
+  "energy": 20.0,
+  "mu": null,
+  "lib": "9",
+  "npoints": 10,
+  "status": "ok",
+  "finite": 57.80341252736828,
+  "single": -13.798216362728146,
+  "double": -9.00000000000001,
+  "max_deviation": null,
+  "max_pole_deviation": 1.3269385590319871e-11,
+  "stable": 10,
+  "time_ms": 92.476735,
+  "accuracy": 2.1732e-09,
+  "return_codes": [
+   213
+  ],
+  "relmom": {
+   "9": {
+    "intercept": 58.750011318796126,
+    "v0": 58.75000296563218,
+    "relative": 1.4218150684806723e-07,
+    "coulomb": -0.16666667639580207,
+    "expected": -0.16666666666666674
+   },
+   "7": {
+    "intercept": 58.75000418883117,
+    "v0": 58.75000296563218,
+    "relative": 2.0820407336437177e-08,
+    "coulomb": -0.16666666633396018,
+    "expected": -0.16666666666666674
+   }
+  },
+  "velocities": [
+   0.001,
+   0.002,
+   0.003,
+   0.005,
+   0.0075,
+   0.01,
+   0.015,
+   0.02
+  ],
+  "relmom_libs_agree": 3.26070806992329e-08
+ },
+ {
+  "name": "gg_psi_g",
+  "label": "g g -> J\\/psi thin g",
+  "process": "g g > Jpsi(1|3S11) g [virt=QCD]",
+  "source": "poles: arXiv:2402.19221 eq. (216); TIRust onia_swave",
+  "reference": null,
+  "ref_short": "",
+  "energy": 20.0,
+  "mu": null,
+  "lib": "9",
+  "npoints": 10,
+  "status": "ok",
+  "finite": -4.188339576062138,
+  "single": -18.476465477282307,
+  "double": -8.999999999999993,
+  "max_deviation": null,
+  "max_pole_deviation": 2.616928895804449e-11,
+  "stable": 10,
+  "time_ms": 95.48664,
+  "accuracy": 7.2061e-11,
+  "return_codes": [
+   213
+  ],
+  "relmom": {
+   "9": {
+    "intercept": -3.801875628533311,
+    "v0": -3.801868327984374,
+    "relative": 1.920252966995791e-06,
+    "coulomb": 1.3333333309696287,
+    "expected": 1.3333333333333333
+   },
+   "7": {
+    "intercept": -3.801919216060653,
+    "v0": -3.801868327984374,
+    "relative": 1.3385018072428753e-05,
+    "coulomb": 1.3333333381333308,
+    "expected": 1.3333333333333333
+   }
+  },
+  "velocities": [
+   0.001,
+   0.002,
+   0.003,
+   0.005,
+   0.0075,
+   0.01,
+   0.015,
+   0.02
+  ],
+  "relmom_libs_agree": 1.919489580377399e-08
+ },
+ {
+  "name": "uu_ps",
+  "label": "u overline(u) -> \"Ps\" thin [\"\"^3 S_1^((1))]",
+  "process": "u u~ > Ps(1|3S1) [virt=QCD]",
+  "source": "q qbar -> gamma* vertex C_F (pi^2 - 8) (Altarelli, Ellis, Martinelli); leptonium as a colourless 3S1 final state",
+  "reference": [
+   2.492805868119144,
+   -4.0,
+   -2.6666666666666665
+  ],
+  "ref_short": "Drell\u2013Yan vertex",
+  "energy": 0.001022,
+  "mu": null,
+  "lib": "9",
+  "npoints": 10,
+  "status": "ok",
+  "finite": 2.492805868119144,
+  "single": -4.0,
+  "double": -2.6666666666666665,
+  "max_deviation": 3.019806626980426e-14,
+  "max_pole_deviation": 2.4868995751603507e-14,
+  "stable": 10,
+  "time_ms": 0.0513155,
+  "accuracy": 5.6984e-14,
+  "return_codes": [
+   213
+  ]
+ },
+ {
+  "name": "uu_psi8",
+  "label": "u overline(u) -> c overline(c) thin [\"\"^3 S_1^((8))]",
+  "process": "u u~ > Jpsi(1|3S18) [virt=QCD]",
+  "source": "Petrelli et al. eq. (133) + bound charm bubble (Hagiwara et al. 0804.1014) + massive b, t bubbles of the model (decoupling)",
+  "reference": [
+   7.955603598236256,
+   -7.0,
+   -2.6666666666666665
+  ],
+  "ref_short": "Petrelli et al. (133) + heavy-quark bubbles",
+  "energy": 3.1,
+  "mu": null,
+  "lib": "9",
+  "npoints": 10,
+  "status": "ok",
+  "finite": 7.955603598257004,
+  "single": -7.000000000000715,
+  "double": -2.666666666666665,
+  "max_deviation": 1.0900717464608735e-08,
+  "max_pole_deviation": 2.3989699116100383e-12,
+  "stable": 10,
+  "time_ms": 0.206456,
+  "accuracy": 5.0024e-08,
+  "return_codes": [
+   213
+  ]
+ }
+]

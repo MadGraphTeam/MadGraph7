@@ -18,6 +18,25 @@ else()
     option(ENABLE_OPENBLAS "Build OpenBLAS from source (default: OFF on Apple, ON elsewhere)" ON)
 endif()
 
+# The largest compile units, runtime.cpp of each CPU variant with all kernels,
+# the runtimes of the GPU backends and the Python bindings (madspace.cpp), need
+# 3 to 4 GB each with gcc -O3. Ninja compiles their targets in a pool of their
+# own, with one job per 4.5 GB of memory by default, so that a machine like the
+# macOS runners of GitHub (3 cores, 7 GB) does not run three of them at once
+# and swap. Other generators ignore the pool.
+cmake_host_system_information(RESULT MADSPACE_MEMORY_MB QUERY TOTAL_PHYSICAL_MEMORY)
+math(EXPR MADSPACE_HEAVY_JOBS_DEFAULT "${MADSPACE_MEMORY_MB} / 4608")
+if(MADSPACE_HEAVY_JOBS_DEFAULT LESS 1)
+    set(MADSPACE_HEAVY_JOBS_DEFAULT 1)
+endif()
+set(
+    MADSPACE_HEAVY_COMPILE_JOBS ${MADSPACE_HEAVY_JOBS_DEFAULT}
+    CACHE STRING "Parallel compile jobs of the targets with the largest compile units"
+)
+set_property(
+    GLOBAL APPEND PROPERTY JOB_POOLS madspace_heavy=${MADSPACE_HEAVY_COMPILE_JOBS}
+)
+
 if(ENABLE_CUDA)
     if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
         set(CMAKE_CUDA_ARCHITECTURES "75;80;86;87;89;90;100;120")
@@ -262,6 +281,7 @@ add_library(
     src/phasespace/pdf.cpp
     src/phasespace/matrix_element.cpp
     src/phasespace/mlm_clustering.cpp
+    src/phasespace/merging_scale.cpp
     src/phasespace/cross_section.cpp
     src/phasespace/scale.cpp
     src/phasespace/weighting_step.cpp
@@ -322,6 +342,7 @@ add_library(
     include/madspace/phasespace/pdf.hpp
     include/madspace/phasespace/matrix_element.hpp
     include/madspace/phasespace/mlm_clustering.hpp
+    include/madspace/phasespace/merging_scale.hpp
     include/madspace/phasespace/cross_section.hpp
     include/madspace/phasespace/scale.hpp
     include/madspace/phasespace/weighting_step.hpp
@@ -399,6 +420,7 @@ if(COMPILE_CUDA)
         SHARED
         src/gpu/runtime.cu
         src/gpu/device.cu
+        src/gpu/gzip.cu
         src/gpu/kernel_definitions.cuh
         src/gpu/runtime.hpp
         src/gpu/tensor.cuh
@@ -410,10 +432,19 @@ if(COMPILE_CUDA)
         ${KERNEL_SRC}
     )
     target_include_directories(madspace_cuda PUBLIC include)
+    set_property(TARGET madspace_cuda PROPERTY JOB_POOL_COMPILE madspace_heavy)
     target_include_directories(madspace_cuda PRIVATE ${MADSPACE_GENERATED_DIR}/gpu)
     set_property(TARGET madspace_cuda PROPERTY CUDA_STANDARD 20)
     target_link_libraries(madspace_cuda PRIVATE madspace)
     target_link_libraries(madspace_cuda PRIVATE CUDA::cublas)
+    # Optional GPU gzip of the LHE output (src/gpu/gpucomp.cuh), nvCOMP 5 found via nvcomp_ROOT.
+    find_package(nvcomp 5 CONFIG QUIET)
+    if(nvcomp_FOUND)
+        message(STATUS "nvCOMP ${nvcomp_VERSION} found: GPU gzip of LHE output enabled")
+        target_compile_definitions(madspace_cuda PRIVATE MADSPACE_GPUCOMP)
+        target_link_libraries(madspace_cuda PRIVATE nvcomp::nvcomp)
+        set_property(TARGET madspace_cuda PROPERTY INSTALL_RPATH_USE_LINK_PATH TRUE)
+    endif()
     install(TARGETS madspace_cuda DESTINATION madspace/lib)
 endif()
 
@@ -423,6 +454,7 @@ if(COMPILE_HIP)
         SHARED
         src/gpu/runtime.hip
         src/gpu/device.hip
+        src/gpu/gzip.hip
         src/gpu/kernel_definitions.cuh
         src/gpu/runtime.hpp
         src/gpu/tensor.cuh
@@ -434,6 +466,7 @@ if(COMPILE_HIP)
         ${KERNEL_SRC}
     )
     target_include_directories(madspace_hip PUBLIC include)
+    set_property(TARGET madspace_hip PROPERTY JOB_POOL_COMPILE madspace_heavy)
     target_include_directories(madspace_hip PRIVATE ${MADSPACE_GENERATED_DIR}/gpu)
     set_property(TARGET madspace_hip PROPERTY HIP_STANDARD 20)
     set_property(TARGET madspace_hip PROPERTY HIP_EXTENSIONS OFF)
@@ -442,6 +475,8 @@ if(COMPILE_HIP)
     target_link_libraries(madspace_hip PRIVATE roc::rocblas)
     target_link_libraries(madspace_hip PRIVATE roc::rocthrust)
     target_link_libraries(madspace_hip PRIVATE hip::hipcub)
+    # No MADSPACE_GPUCOMP: hipCOMP only decompresses gzip, so LHE output is gzipped on
+    # the CPU. Once it compresses, map it in src/gpu/gpucomp.cuh and enable it like CUDA.
     install(TARGETS madspace_hip DESTINATION madspace/lib)
 endif()
 
@@ -500,6 +535,7 @@ foreach(
         ${KERNEL_SRC}
     )
     target_include_directories(${cpu_target} PUBLIC include)
+    set_property(TARGET ${cpu_target} PROPERTY JOB_POOL_COMPILE madspace_heavy)
     target_include_directories(${cpu_target} PRIVATE ${MADSPACE_GENERATED_DIR}/cpu)
     target_compile_features(${cpu_target} PUBLIC cxx_std_20)
     target_link_libraries(${cpu_target} PRIVATE madspace::blas)
@@ -571,6 +607,7 @@ python_add_library(
     WITH_SOABI
 )
 target_include_directories(_madspace_py PRIVATE ${MADSPACE_GENERATED_DIR}/python)
+set_property(TARGET _madspace_py PROPERTY JOB_POOL_COMPILE madspace_heavy)
 target_link_libraries(_madspace_py PRIVATE pybind11::headers)
 target_link_libraries(_madspace_py PUBLIC madspace)
 install(TARGETS _madspace_py DESTINATION madspace)

@@ -1,0 +1,15 @@
+{
+  "process": "u u~ > e- e+ / z",
+  "born_orders": {"QCD": 0, "QED": 2},
+  "loop_orders": {"QCD": 2, "QED": 2},
+  "squared_orders": {"QCD": 2, "QED": 4},
+  "parameters": {"alpha_s": 0.118, "mu": 1000.0, "aEWM1": 132.507, "mt": 173.0, "mb": 0.0},
+  "external_momenta": "positive-energy incoming legs 1,2; outgoing legs 3,4; E,px,py,pz in GeV",
+  "normalization": "initial spin/colour average, physical couplings, Cepsilon=(4pi)^epsilon/Gamma(1-epsilon)",
+  "scheme": "loop_sm-no_b_mass, Feynman gauge, lhv=1, massless external fermions",
+  "points": [
+    [[500,0,0,500], [500,0,0,-500], [500,300,0,400], [500,-300,0,-400]],
+    [[650,0,0,650], [650,0,0,-650], [650,600,0,250], [650,-600,0,-250]],
+    [[500,0,0,500], [500,0,0,-500], [500,0,400,-300], [500,0,-400,300]]
+  ]
+}

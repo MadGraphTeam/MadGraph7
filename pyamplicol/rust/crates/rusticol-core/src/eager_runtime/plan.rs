@@ -294,7 +294,8 @@ impl EagerExecutionPlan {
             .iter()
             .enumerate()
             .filter_map(|(slot_id, range)| {
-                (!stored_value_slots.contains(&(slot_id as u32))).then_some(*range)
+                (!u32::try_from(slot_id).is_ok_and(|id| stored_value_slots.contains(&id)))
+                    .then_some(*range)
             })
             .collect();
         let zero_amplitude_indices =
@@ -1342,7 +1343,7 @@ pub(super) fn mark_initial_amplitude_writes(
         closure.initializes_amplitude = written.insert(closure.row.amplitude_index);
     }
     (0..amplitude_count)
-        .filter(|index| !written.contains(&(*index as u32)))
+        .filter(|&index| !u32::try_from(index).is_ok_and(|id| written.contains(&id)))
         .collect()
 }
 

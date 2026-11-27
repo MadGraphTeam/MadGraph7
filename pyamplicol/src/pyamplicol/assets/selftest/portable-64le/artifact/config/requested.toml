@@ -5,11 +5,14 @@ schema_version = 1
 source = "built-in-sm"
 simplify = true
 cache = true
+loop_preparation_cache = true
 
 [process]
 entries = [{ expression = "d d~ > z" }]
 flavor_scheme = 5
 coupling_order_policy = "minimal"
+loop_induced = "auto"
+squared_coupling_orders = []
 reference_color_order = []
 selected_color_sector_ids = []
 flavor_blind = false
@@ -24,11 +27,25 @@ analyze_process_groups = "none"
 
 [process.selected_source_helicities]
 
+[loop]
+r2_strategy = "auto"
+reduction = "auto"
+external_widths = "model"
+external_photons = "final"
+alpha0_conversion_parameter = "eCoup_DGmua0_UV_EW"
+
+[loop.model]
+
+[loop.model.scheme]
+
 [color]
 accuracy = "lc"
 contraction = "direct"
 lc_flow_layout = "topology-replay"
 fft_basis = "adjoint"
+graded = false
+adjoint_dense_max_gluons = 12
+fused_selector_max_sectors = 128
 
 [generation]
 output = "."
@@ -36,6 +53,12 @@ mode = "replace"
 workers = 1
 emit_api_bundle = true
 pack_payloads = false
+particle_veto = []
+allow_anomalous_veto = false
+loop_induced_probes = false
+allow_failed_probes = false
+helicity_filter_failure_probability = 1e-12
+loop_induced_folding = true
 
 [generation.validation]
 enabled = true
@@ -44,6 +67,7 @@ seed = 12345
 relative_tolerance = 1e-12
 absolute_tolerance = 1e-300
 post_build_validation = false
+max_resolved_components = 1000000
 
 [generation.relation_discovery]
 mode = "off"
@@ -88,8 +112,25 @@ workspace_mib = 256
 [evaluation]
 precision = 16
 resolved = false
+orders = false
+poles = "all"
+reduction_unchecked = false
 helicity_ids = []
 color_flow_ids = []
+
+[evaluation.stability]
+higher = []
+verify_successful = false
+
+[evaluation.stability_checks]
+rotations = []
+rotation_count = 0
+reduction_direction = false
+rescaled = false
+
+[evaluation.phase_space]
+points = 2
+seed = 1
 
 [benchmark]
 target_runtime = 10.0
@@ -99,9 +140,17 @@ warmup_runs = 2
 minimum_samples = 5
 helicity_ids = []
 color_flow_ids = []
+runtime = false
+stability = false
+stability_points = 1000
+n_core = 10
+
+[check]
+points = 3
+precision = "auto"
 
 [output]
-format = "json"
+format = "human"
 color = "auto"
 progress = "off"
 log_level = "info"

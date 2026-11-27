@@ -187,6 +187,16 @@ public:
      *                                          evaluation rescaled by the alpha_s
      *                                          and PDF ratios instead of a second
      *                                          evaluation.
+     * @param lepton_luminosity                 Optional dressed-lepton
+     *                                          luminosity, replacing both
+     *                                          parton densities.
+     * @param tabulated_luminosity              Optional tabulated two-beam
+     *                                          luminosity (e.g. the gamma-UPC
+     *                                          two-photon luminosity),
+     *                                          replacing both parton
+     *                                          densities. Not together with
+     *                                          @p pdf_grid, @p pdf_grid2 or
+     *                                          @p lepton_luminosity.
      */
     Integrand(
         const PhaseSpaceMapping& mapping,
@@ -221,7 +231,8 @@ public:
         const std::optional<PdfGrid>& pdf_grid2 = std::nullopt,
         const std::optional<MappingChannelWeights>& mapping_chan_weights = std::nullopt,
         int mlm_history_qcd_power = -1,
-        const std::optional<EELuminosity>& lepton_luminosity = std::nullopt
+        const std::optional<EELuminosity>& lepton_luminosity = std::nullopt,
+        const std::optional<TabulatedLuminosity>& tabulated_luminosity = std::nullopt
     );
     /// Globals prefix under which the second beam's PDF grid is registered
     /// (PdfGrid::initialize_globals) when `pdf_grid2` is given.
@@ -328,6 +339,7 @@ private:
     nested_vector2<me_int_t> _pid_options;
     std::array<std::optional<PartonDensity>, 2> _pdfs;
     std::optional<EELuminosity> _lepton_luminosity;
+    std::optional<TabulatedLuminosity> _tabulated_luminosity;
     // with different PDFs per beam: each leg's density from the other beam,
     // for the events whose orientation is mirrored
     std::array<std::optional<PartonDensity>, 2> _pdfs_swapped;

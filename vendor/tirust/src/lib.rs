@@ -1,0 +1,2444 @@
+//! A dimensioned, ownership-preserving C boundary for MadLoop's Fortran adapter.
+//! Only this crate handles foreign pointers. TIRust's safe numerical API remains
+//! separate. Full and truncated results have independent stores/workspaces.
+use iregi_rust::{
+    Convention, DirectReductionPlan, DirectWorkspace, EmbedderOptions, InvariantInput,
+    KinematicsBatch, LaneRoute, LaneStatus, ReductionSettings, ScaleInput, TensorEngineExecution, TensorReductionPlan, TensorStore,
+    TensorStoreOptions, TensorWeights, TensorWorkspace,
+};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    panic::{AssertUnwindSafe, catch_unwind},
+    slice,
+    sync::Mutex,
+};
+use symbolica::domains::float::{Complex, Float, FloatLike};
+
+#[cfg(feature = "poles-only")]
+use iregi_rust::{DirectPoleWorkspace, PoleTensorStore};
+
+pub const ABI_VERSION: u32 = 1;
+const SUCCESS: i32 = 0;
+const UNSTABLE: i32 = 1;
+const ERROR: i32 = 2;
+const UNSUPPORTED: i32 = 3;
+const RECORD: usize = 64;
+const MP_BITS: u32 = 256;
+/// Working precision of the QP rescue: a lane that the 256-bit gate refuses
+/// on conditioning is evaluated once more at this precision.
+const MP_RESCUE_BITS: u32 = 512;
+/// A QP workspace of `bits` accepts conditioning down to
+/// `2^-(bits - MP_ACCURACY_BITS)`: rounding stays below 2^-120 of the result,
+/// above binary128's 113 bits. At 256 bits the limit is 2^-136.
+const MP_ACCURACY_BITS: u32 = 120;
+const DEFAULT_BUDGET: u64 = 268_435_456;
+const DP_ROUTE_FIELDS: usize = 10;
+const DP_ROUTE_STATS_COUNT: usize = 2 * DP_ROUTE_FIELDS;
+/// Relative shift of the invariants of MadLoop's binary64 check pass: 2^-52,
+/// the smallest relative factor that moves every binary64 value (by one or
+/// two units in its last place; see [`shift_check_invariants`]).
+const CHECK_INVARIANT_SHIFT: f64 = f64::EPSILON;
+/// (n, rank, powers). `powers` packs each propagator's power minus one in
+/// three bits, propagator i at bit 3i: zero is the unit-power integral of
+/// the original entry points, whose keys it keeps.
+type Key = (usize, u16, u32);
+type Result<T> = std::result::Result<T, String>;
+
+/// GNU/Linux Fortran COMPLEX(C_DOUBLE_COMPLEX) memory representation.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct C64 {
+    pub re: f64,
+    pub im: f64,
+}
+
+thread_local! { static LAST_ERROR: RefCell<String> = const { RefCell::new(String::new()) }; }
+
+struct State {
+    budget: u64,
+    plans: HashMap<Key, DirectReductionPlan>,
+    dp_plans: HashMap<Key, TensorReductionPlan>,
+    dp: HashMap<(Key, bool), TensorWorkspace<f64>>,
+    mp: HashMap<(Key, u32), DirectWorkspace<Float>>,
+    store: TensorStore,
+    /// Subintegral store of MadLoop's independent direction checks. It never
+    /// shares an entry with the primary store, so a check recomputes every
+    /// integral it compares; entries are exact pure functions of their keys,
+    /// so check values are bit-identical to an unshared evaluation.
+    check_store: TensorStore,
+    dp_cache: DpCache,
+    qp_cache: QpCache,
+    /// Complete QP tensors of MadLoop's independent direction checks. Like
+    /// `check_store` it never shares an entry with the primary pass, so a
+    /// check computes every tensor it compares; only its own repeats (one
+    /// per helicity in loop-induced processes) reuse them. It shares the QP
+    /// byte budget with `qp_cache`.
+    qp_check_cache: QpCache,
+    dp_routes: [u64; DP_ROUTE_STATS_COUNT],
+    last_dp_route: Option<usize>,
+    #[cfg(feature = "poles-only")]
+    pole_dp: HashMap<Key, DirectPoleWorkspace<f64>>,
+    #[cfg(feature = "poles-only")]
+    pole_mp: HashMap<(Key, u32), DirectPoleWorkspace<Float>>,
+    #[cfg(feature = "poles-only")]
+    pole_store: PoleTensorStore,
+}
+
+impl State {
+    fn new() -> Self {
+        Self {
+            budget: DEFAULT_BUDGET,
+            plans: HashMap::new(),
+            dp_plans: HashMap::new(),
+            dp: HashMap::new(),
+            mp: HashMap::new(),
+            qp_cache: QpCache::new(DEFAULT_BUDGET / 2),
+            qp_check_cache: QpCache::new(DEFAULT_BUDGET / 2),
+            dp_routes: [0; DP_ROUTE_STATS_COUNT],
+            last_dp_route: None,
+            store: TensorStore::with_options(TensorStoreOptions {
+                byte_budget: Some(budgets(DEFAULT_BUDGET).primary),
+                ..Default::default()
+            }),
+            check_store: TensorStore::with_options(TensorStoreOptions {
+                byte_budget: Some(budgets(DEFAULT_BUDGET).check),
+                ..Default::default()
+            }),
+            dp_cache: DpCache::new(budgets(DEFAULT_BUDGET).results),
+            #[cfg(feature = "poles-only")]
+            pole_dp: HashMap::new(),
+            #[cfg(feature = "poles-only")]
+            pole_mp: HashMap::new(),
+            #[cfg(feature = "poles-only")]
+            pole_store: PoleTensorStore::new(Some(budgets(DEFAULT_BUDGET).poles)),
+        }
+    }
+
+    fn register(&mut self, key: Key) -> Result<()> {
+        if !self.plans.contains_key(&key) {
+            let plan = DirectReductionPlan::new(settings(key)).map_err(|e| e.to_string())?;
+            // Raised powers evaluate without the subintegral stores (their
+            // shared entries carry no powers).
+            if key.2 == 0 {
+                self.store.register(&plan);
+                self.check_store.register(&plan);
+                #[cfg(feature = "poles-only")]
+                self.pole_store.register(&plan);
+            }
+            self.plans.insert(key, plan);
+        }
+        Ok(())
+    }
+
+    fn dp(&mut self, key: Key, batch: KinematicsBatch<f64>, mode: Mode) -> Result<(i32, Vec<C64>)> {
+        self.last_dp_route = None;
+        self.register(key)?;
+        if !mode.finite {
+            if key.2 != 0 {
+                set_error("pole-only evaluation has unit propagator powers only");
+                return Ok((UNSUPPORTED, Vec::new()));
+            }
+            #[cfg(feature = "poles-only")]
+            return self.dp_poles(key, batch, mode);
+            #[cfg(not(feature = "poles-only"))]
+            return Ok((UNSUPPORTED, Vec::new()));
+        }
+        // Keep each direction's structural variants and scratch buffers warm.
+        // Reusing one workspace makes alternating lightlike configurations
+        // repeatedly discard and rediscover their active geometry variants.
+        let workspace_key = (key, mode.check);
+        if !self.dp.contains_key(&workspace_key) {
+            let plan = match self.dp_plans.entry(key) {
+                std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+                std::collections::hash_map::Entry::Vacant(entry) => entry
+                    .insert(TensorReductionPlan::new(settings(key)).map_err(|e| e.to_string())?),
+            };
+            let workspace = TensorWorkspace::new_embedded(
+                plan, 0.0f64,
+                // A lane starts at the lowest tier whose own gate admits its
+                // binary64 estimate (no skipping margin): each tier's gate
+                // bounds the error amplification, so near-limit lanes get
+                // double-double instead of 256-bit evaluations. The double-double
+                // tier accepts conditioning down to 2^-80 (26 bits of headroom):
+                // on MadLoop's Zggg its results round to the 256-bit binary64
+                // values, at a fifth of their cost.
+                // Lanes the binary64 gates refuse go to the tiers, never to
+                // TIRust's a priori method choice. Its small-Gram expansions
+                // stop at a relative change of 2^-30 and are unchecked, and
+                // MadLoop's direction check cannot see their error: the form
+                // factors depend only on the invariants, so both directions
+                // repeat it. On Zggg such tensors were up to 7e-6 off; on
+                // forward e+e- > mu+mu- (scattering angle 5e-4) the matrix
+                // element was 2.8e-5 off while MadLoop reported 1e-15. The
+                // tiers' gates bound their error instead.
+                EmbedderOptions {
+                    method_choice: false,
+                    precision_tiers: true,
+                    tier_margin_bits: 0,
+                    double_double_headroom_bits: 26,
+                    ..EmbedderOptions::default()
+                },
+            ).map_err(|e| e.to_string())?;
+            self.dp.insert(workspace_key, workspace);
+        }
+        // check_view() may alias the primary when no master provider exists.
+        // MadLoop's independent direction checks must recompute every entry
+        // of the primary pass: they share subintegrals only with each other.
+        let store = (mode.cache && key.2 == 0)
+            .then(|| if mode.check { self.check_store.clone() } else { self.store.clone() });
+        let workspace = self.dp.get_mut(&workspace_key).unwrap();
+        workspace.set_tensor_store(store.as_ref());
+        let result = workspace.reduce_batch(&batch).map_err(|e| e.to_string())?;
+        self.last_dp_route = workspace.last_lane_routes().and_then(|routes| routes.first()).map(|route| {
+            match route {
+                LaneRoute::Direct => 0,
+                LaneRoute::MethodChoice => 1,
+                LaneRoute::Tier(106) => 2,
+                LaneRoute::Tier(256) => 3,
+                LaneRoute::Tier(512) => 4,
+                LaneRoute::Refused => 5,
+                LaneRoute::Tier(_) => 6,
+            }
+        });
+        // Attempts include work whose rounded DP output is later rejected.
+        if let TensorEngineExecution::Direct(execution) = workspace.engine_execution() {
+            let offset = usize::from(mode.check) * DP_ROUTE_FIELDS;
+            for tier in execution.precision_rescue {
+                let index = match tier.bits { 106 => 7, 256 => 8, 512 => 9, _ => continue };
+                self.dp_routes[offset + index] += tier.rows as u64;
+            }
+        }
+        match result.lane(0) {
+            Ok(values) => Ok((SUCCESS, pack_dp(values, mode.poles, 4))),
+            Err(status) => {
+                set_error(&format!("TIRust DP: {status:?}"));
+                Ok((lane_status(status), Vec::new()))
+            }
+        }
+    }
+
+    fn dp_checked(
+        &mut self,
+        key: Key,
+        batch: KinematicsBatch<f64>,
+        mode: Mode,
+    ) -> Result<(i32, Vec<C64>)> {
+        // MadLoop requests the same tensor integral once per helicity while it
+        // learns its filters. A primary result is a pure function of its exact
+        // inputs (bit-identical with or without store sharing), so an exact
+        // repeat within the phase-space point returns the stored tensor.
+        let cache_key = (mode.finite && mode.cache && !mode.check).then(|| dp_cache_key(key, &batch, mode.poles));
+        if let Some(cache_key) = &cache_key {
+            if let Some(values) = self.dp_cache.entries.get(cache_key) {
+                self.dp_cache.hits += 1;
+                self.last_dp_route = None;
+                return Ok((SUCCESS, values.to_vec()));
+            }
+            self.dp_cache.misses += 1;
+        }
+        let mut result = self.dp(key, batch, mode);
+        if let Ok((SUCCESS, values)) = &result {
+            if values
+                .iter()
+                .any(|z| !z.re.is_finite() || !z.im.is_finite())
+            {
+                set_error("nonfinite DP tensor result");
+                result = Ok((UNSTABLE, Vec::new()));
+            }
+        }
+        let failed = !matches!(&result, Ok((SUCCESS, _)));
+        if mode.finite {
+            let offset = usize::from(mode.check) * DP_ROUTE_FIELDS;
+            let final_route = match &result {
+                Ok((SUCCESS, _)) => self.last_dp_route.unwrap_or(6),
+                Ok(_) => 5,
+                Err(_) => 6,
+            };
+            self.dp_routes[offset + final_route] += 1;
+            // Store entries are exact pure functions of their keys (method,
+            // settings and input bits), so entries computed on any route stay
+            // valid for every later integral. Only a failure discards them.
+            if failed {
+                self.store.clear();
+                self.check_store.clear();
+                self.dp_cache.clear();
+            } else if let (Some(cache_key), Ok((SUCCESS, values))) = (cache_key, &result) {
+                self.dp_cache.insert(cache_key, values);
+            }
+            // Retain structural preparation after ordinary numerical refusals.
+            if failed && !matches!(&result, Ok((UNSTABLE, _))) {
+                self.dp.remove(&(key, false));
+                self.dp.remove(&(key, true));
+            }
+        } else if failed {
+            #[cfg(feature = "poles-only")]
+            {
+                self.pole_store.clear();
+                self.pole_dp.remove(&key);
+            }
+        }
+        result
+    }
+
+    fn mp(
+        &mut self,
+        key: Key,
+        batch: KinematicsBatch<Float>,
+        mode: Mode,
+    ) -> Result<(i32, Vec<u8>)> {
+        self.register(key)?;
+        if !mode.finite {
+            if key.2 != 0 {
+                set_error("pole-only evaluation has unit propagator powers only");
+                return Ok((UNSUPPORTED, Vec::new()));
+            }
+            #[cfg(feature = "poles-only")]
+            return self.mp_poles(key, batch, mode);
+            #[cfg(not(feature = "poles-only"))]
+            return Ok((UNSUPPORTED, Vec::new()));
+        }
+        // 256 bits first; a lane refused on conditioning that the rescue
+        // precision admits is evaluated once more at MP_RESCUE_BITS.
+        let (mut bits, mut batch) = (MP_BITS, batch);
+        loop {
+            if !self.mp.contains_key(&(key, bits)) {
+                let mut workspace = self.plans[&key]
+                    .workspace(Float::new(bits))
+                    .map_err(|e| e.to_string())?;
+                workspace.set_input_precision(113);
+                // The external MadLoop check still decides numerical acceptance.
+                workspace.set_stability_threshold(mp_threshold(bits));
+                self.mp.insert((key, bits), workspace);
+            }
+            // MPFR store reuse is not supported by TIRust; do not claim DP hits as QP reuse.
+            let workspace = self.mp.get_mut(&(key, bits)).unwrap();
+            let result = workspace.reduce_batch(&batch).map_err(|e| e.to_string())?;
+            match result.lane(0) {
+                Ok(values) => return Ok((SUCCESS, pack_mp(values, mode.poles, 4)?)),
+                Err(LaneStatus::Unstable(_)) if bits == MP_BITS && mp_rescuable(workspace.last_conditions()[0]) => {
+                    bits = MP_RESCUE_BITS;
+                    batch = at_precision(batch, bits);
+                }
+                Err(status) => {
+                    set_error(&format!("TIRust QP ({bits} bits): {status:?}"));
+                    return Ok((lane_status(status), Vec::new()));
+                }
+            }
+        }
+    }
+
+    fn mp_records(&mut self, key: Key, records: [&[u8]; 4], mode: Mode) -> Result<(i32, Vec<u8>)> {
+        // Each pass reads only its own results: the check pass still computes
+        // every tensor it compares, and its repeats reuse that computation.
+        let cache_key = if mode.cache {
+            let key_bytes = qp_cache_key(key, records, mode);
+            let cache = if mode.check { &mut self.qp_check_cache } else { &mut self.qp_cache };
+            if let Some(values) = cache.entries.get(&key_bytes) {
+                cache.hits += 1;
+                return Ok((SUCCESS, values.to_vec()));
+            }
+            cache.misses += 1;
+            Some(key_bytes)
+        } else {
+            self.qp_cache.bypassed += 1;
+            None
+        };
+        let batch = mp_batch(key.0, records[0], records[1], records[2], records[3])?;
+        let (status, values) = self.mp(key, batch, mode)?;
+        if status == SUCCESS {
+            if let Some(cache_key) = cache_key {
+                if mode.check {
+                    let held = self.qp_cache.bytes;
+                    self.qp_check_cache.insert(cache_key, &values, held);
+                } else {
+                    let held = self.qp_check_cache.bytes;
+                    self.qp_cache.insert(cache_key, &values, held);
+                }
+            }
+        }
+        Ok((status, values))
+    }
+
+    /// QP whole-tensor counters summed over both passes; `bypassed` counts
+    /// calls with caching disabled.
+    fn qp_statistics(&self) -> [u64; 6] {
+        let (p, c) = (self.qp_cache.statistics(), self.qp_check_cache.statistics());
+        std::array::from_fn(|i| p[i] + c[i])
+    }
+
+    #[cfg(feature = "poles-only")]
+    fn dp_poles(
+        &mut self,
+        key: Key,
+        batch: KinematicsBatch<f64>,
+        mode: Mode,
+    ) -> Result<(i32, Vec<C64>)> {
+        if !self.pole_dp.contains_key(&key) {
+            self.pole_dp.insert(
+                key,
+                self.plans[&key]
+                    .pole_workspace(0.0f64)
+                    .map_err(|e| e.to_string())?,
+            );
+        }
+        let workspace = self.pole_dp.get_mut(&key).unwrap();
+        // Independent check passes must not read primary cached values.
+        workspace.set_tensor_store((mode.cache && !mode.check).then_some(&self.pole_store));
+        let result = workspace.reduce_batch(&batch).map_err(|e| e.to_string())?;
+        match result.lane(0) {
+            Ok(values) => Ok((SUCCESS, pack_dp(values, mode.poles, 3))),
+            Err(status) => {
+                set_error(&format!("TIRust poles DP: {status:?}"));
+                Ok((lane_status(status), Vec::new()))
+            }
+        }
+    }
+
+    #[cfg(feature = "poles-only")]
+    fn mp_poles(
+        &mut self,
+        key: Key,
+        batch: KinematicsBatch<Float>,
+        mode: Mode,
+    ) -> Result<(i32, Vec<u8>)> {
+        // Same precision ladder as the finite QP path.
+        let (mut bits, mut batch) = (MP_BITS, batch);
+        loop {
+            if !self.pole_mp.contains_key(&(key, bits)) {
+                let mut workspace = self.plans[&key]
+                    .pole_workspace(Float::new(bits))
+                    .map_err(|e| e.to_string())?;
+                workspace.set_input_precision(113);
+                workspace.set_stability_threshold(mp_threshold(bits));
+                self.pole_mp.insert((key, bits), workspace);
+            }
+            let workspace = self.pole_mp.get_mut(&(key, bits)).unwrap();
+            let result = workspace.reduce_batch(&batch).map_err(|e| e.to_string())?;
+            match result.lane(0) {
+                Ok(values) => return Ok((SUCCESS, pack_mp(values, mode.poles, 3)?)),
+                Err(LaneStatus::Unstable(_)) if bits == MP_BITS && mp_rescuable(workspace.last_conditions()[0]) => {
+                    bits = MP_RESCUE_BITS;
+                    batch = at_precision(batch, bits);
+                }
+                Err(status) => {
+                    set_error(&format!("TIRust poles QP ({bits} bits): {status:?}"));
+                    return Ok((lane_status(status), Vec::new()));
+                }
+            }
+        }
+    }
+}
+
+/// Byte budgets of the numerical stores for a total budget. Half belongs to
+/// QP tensor results ([`QpCache`]); of the binary64 half, the primary
+/// subintegral store keeps a quarter of the total and the rest goes to the
+/// pole-only store (when built), the check-pass store and the exact-result
+/// cache.
+struct Budgets {
+    primary: u64,
+    check: u64,
+    results: u64,
+    #[cfg_attr(not(feature = "poles-only"), allow(dead_code))]
+    poles: u64,
+}
+fn budgets(total: u64) -> Budgets {
+    if cfg!(feature = "poles-only") {
+        Budgets { primary: total / 4, poles: total / 8, check: total / 16, results: total / 16 }
+    } else {
+        Budgets { primary: total / 4, poles: 0, check: total / 8, results: total / 8 }
+    }
+}
+
+/// Exact full-tensor QP results, including the original decimal records.
+/// This is separate from upstream's binary64 subintegral cache. Full and
+/// truncated tensors have different keys, as do every pole selection and
+/// precision. Failed results are never retained. The primary pass and the
+/// independent check each have their own cache; the two share one budget.
+struct QpCache {
+    entries: HashMap<Vec<u8>, Box<[u8]>>,
+    budget: u64,
+    bytes: u64,
+    hits: u64,
+    misses: u64,
+    not_stored: u64,
+    bypassed: u64,
+}
+impl QpCache {
+    fn new(budget: u64) -> Self {
+        Self {
+            entries: HashMap::new(),
+            budget,
+            bytes: 0,
+            hits: 0,
+            misses: 0,
+            not_stored: 0,
+            bypassed: 0,
+        }
+    }
+    fn clear(&mut self) {
+        *self = Self::new(self.budget);
+    }
+    /// `held` is the bytes the other pass's cache holds under the same budget.
+    fn insert(&mut self, key: Vec<u8>, values: &[u8], held: u64) {
+        // Account for owned payloads plus a conservative allowance for the
+        // hash table and entry metadata. No eviction makes timing predictable.
+        let cost = (key.capacity() + values.len() + 256) as u64;
+        if cost > self.budget.saturating_sub(self.bytes + held) {
+            self.not_stored += 1;
+            return;
+        }
+        self.entries.insert(key, values.into());
+        self.bytes += cost;
+    }
+    fn statistics(&self) -> [u64; 6] {
+        [
+            self.hits,
+            self.misses,
+            self.entries.len() as u64,
+            self.bytes,
+            self.not_stored,
+            self.bypassed,
+        ]
+    }
+}
+/// Exact-input full-tensor binary64 results of the current phase-space point
+/// (primary passes only). Keys hold the bits of every input value, the
+/// dimensions and the pole selection of the packed output.
+struct DpCache {
+    entries: HashMap<Box<[u64]>, Box<[C64]>>,
+    budget: u64,
+    bytes: u64,
+    hits: u64,
+    misses: u64,
+    not_stored: u64,
+}
+impl DpCache {
+    fn new(budget: u64) -> Self {
+        Self { entries: HashMap::new(), budget, bytes: 0, hits: 0, misses: 0, not_stored: 0 }
+    }
+    fn clear(&mut self) {
+        *self = Self::new(self.budget);
+    }
+    fn insert(&mut self, key: Box<[u64]>, values: &[C64]) {
+        let cost = (8 * key.len() + std::mem::size_of_val(values) + 64) as u64;
+        if cost > self.budget.saturating_sub(self.bytes) {
+            self.not_stored += 1;
+            return;
+        }
+        self.entries.insert(key, values.into());
+        self.bytes += cost;
+    }
+}
+fn dp_cache_key(key: Key, batch: &KinematicsBatch<f64>, poles: i32) -> Box<[u64]> {
+    let mut words = Vec::with_capacity(1 + 2 * batch.values.len());
+    words.push((key.0 as u64) | (u64::from(key.1) << 8) | ((poles as u64) << 24) | (u64::from(key.2) << 32));
+    for z in &batch.values {
+        words.push(z.re.to_bits());
+        words.push(z.im.to_bits());
+    }
+    words.into()
+}
+fn qp_cache_key(key: Key, records: [&[u8]; 4], mode: Mode) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(16 + records.iter().map(|x| x.len()).sum::<usize>());
+    bytes.extend_from_slice(&(key.0 as u32).to_le_bytes());
+    bytes.extend_from_slice(&key.1.to_le_bytes());
+    bytes.extend_from_slice(&key.2.to_le_bytes());
+    bytes.push(mode.poles as u8);
+    bytes.push(u8::from(mode.finite));
+    bytes.extend_from_slice(&113u32.to_le_bytes());
+    bytes.extend_from_slice(&MP_BITS.to_le_bytes());
+    for record in records {
+        bytes.extend_from_slice(record);
+    }
+    bytes
+}
+
+/// Opaque owner; callers destroy it after all calls have returned.
+pub struct Context {
+    state: Mutex<State>,
+}
+
+fn settings((n, rank, powers): Key) -> ReductionSettings {
+    let mut s = ReductionSettings::new(n, rank);
+    s.convention = Convention::MadLoop;
+    s.tensor_weights = TensorWeights::Components;
+    s.invariants = InvariantInput::SuppliedInvariants;
+    s.scale_input = ScaleInput::MuSquared;
+    for (i, power) in s.powers.iter_mut().enumerate() {
+        *power = 1 + ((powers >> (3 * i)) & 7) as u16;
+    }
+    s
+}
+/// The packed powers of `Key` from one power per propagator, each 1 to 8.
+/// # Safety
+/// `powers` has `count` readable entries.
+unsafe fn pack_powers(n: usize, powers: *const i32, count: usize) -> Result<u32> {
+    length("propagator powers", count, n)?;
+    let mut packed = 0u32;
+    for (i, &power) in unsafe { read(powers, count)? }.iter().enumerate() {
+        if !(1..=8).contains(&power) {
+            return Err(format!("propagator power {power} outside 1..=8"));
+        }
+        packed |= ((power - 1) as u32) << (3 * i);
+    }
+    Ok(packed)
+}
+fn dimensions(n: i32, rank: i32) -> Result<(Key, usize)> {
+    if !(1..=6).contains(&n) || !(0..=6).contains(&rank) {
+        return Err("qualified TIRust bridge domain is 1 <= N <= 6 and 0 <= rank <= 6".into());
+    }
+    let r = rank as usize;
+    Ok((
+        (n as usize, rank as u16, 0),
+        (r + 1) * (r + 2) * (r + 3) * (r + 4) / 24,
+    ))
+}
+#[derive(Clone, Copy)]
+struct Mode {
+    poles: i32,
+    finite: bool,
+    check: bool,
+    cache: bool,
+}
+impl Mode {
+    fn new(poles: i32, finite: i32, check: i32, cache: i32) -> Result<Self> {
+        if !(0..=3).contains(&poles) || [finite, check, cache].iter().any(|&v| v != 0 && v != 1) {
+            return Err("invalid TIRust pole mode or logical flag".into());
+        }
+        if finite == 0 && poles == 3 {
+            return Err("pole-only evaluation requires at least one pole origin".into());
+        }
+        Ok(Self {
+            poles,
+            finite: finite != 0,
+            check: check != 0,
+            cache: cache != 0,
+        })
+    }
+}
+fn selected(slot: usize, poles: i32) -> bool {
+    match slot {
+        0 => poles == 0 || poles == 1,
+        1 | 2 => poles == 0 || poles == 2,
+        _ => true,
+    }
+}
+fn lane_status(status: &LaneStatus) -> i32 {
+    match status {
+        LaneStatus::Success => SUCCESS,
+        LaneStatus::Unstable(_) | LaneStatus::MasterFailure(_) => UNSTABLE,
+        LaneStatus::InvalidInput(_) => ERROR,
+    }
+}
+fn set_error(message: &str) {
+    LAST_ERROR.with(|e| *e.borrow_mut() = message.into());
+}
+fn guard(f: impl FnOnce() -> Result<i32>) -> i32 {
+    set_error("");
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(Ok(status)) => status,
+        Ok(Err(error)) => {
+            set_error(&error);
+            ERROR
+        }
+        Err(_) => {
+            set_error("TIRust panic contained at the C boundary");
+            ERROR
+        }
+    }
+}
+// Successful diagnostic queries must not erase the reduction error that a
+// caller may still need. Keep ordinary guard semantics on a failed query.
+fn query_guard(f: impl FnOnce() -> Result<i32>) -> i32 {
+    match catch_unwind(AssertUnwindSafe(|| {
+        let previous = LAST_ERROR.with(|error| error.borrow().clone());
+        let status = guard(f);
+        if status == SUCCESS {
+            LAST_ERROR.with(|error| *error.borrow_mut() = previous);
+        }
+        status
+    })) {
+        Ok(status) => status,
+        Err(_) => {
+            set_error("TIRust panic contained at the C boundary");
+            ERROR
+        }
+    }
+}
+unsafe fn context<'a>(ptr: *mut Context) -> Result<&'a Context> {
+    if ptr.is_null() || !ptr.is_aligned() {
+        return Err("invalid TIRust context".into());
+    }
+    Ok(unsafe { &*ptr })
+}
+fn length(name: &str, actual: usize, expected: usize) -> Result<()> {
+    if actual != expected {
+        return Err(format!("{name} length {actual}, expected {expected}"));
+    }
+    Ok(())
+}
+unsafe fn read<'a, T>(ptr: *const T, count: usize) -> Result<&'a [T]> {
+    if ptr.is_null() || !ptr.is_aligned() {
+        return Err("null or misaligned input buffer".into());
+    }
+    Ok(unsafe { slice::from_raw_parts(ptr, count) })
+}
+fn validate_output<T>(ptr: *mut T) -> Result<()> {
+    if ptr.is_null() || !ptr.is_aligned() {
+        Err("null or misaligned output buffer".into())
+    } else {
+        Ok(())
+    }
+}
+unsafe fn write<T: Copy>(ptr: *mut T, values: &[T]) {
+    unsafe {
+        std::ptr::copy_nonoverlapping(values.as_ptr(), ptr, values.len());
+    }
+}
+
+fn dp_batch(n: usize, p: &[f64], s: &[f64], m: &[C64], mu2: f64) -> Result<KinematicsBatch<f64>> {
+    if !mu2.is_finite()
+        || mu2 <= 0.0
+        || p.iter().chain(s).any(|v| !v.is_finite())
+        || m.iter()
+            .any(|v| !v.re.is_finite() || !v.im.is_finite() || v.im > 0.0)
+    {
+        return Err("nonfinite kinematics, nonpositive mu squared, or positive mass width".into());
+    }
+    let mut values: Vec<_> = p.iter().map(|&x| Complex::new(x, 0.0)).collect();
+    for i in 0..n {
+        for j in i + 1..n {
+            if s[i + n * j] != s[j + n * i] {
+                return Err("supplied invariant matrix must be symmetric".into());
+            }
+            values.push(Complex::new(s[i + n * j], 0.0));
+        }
+    }
+    values.extend(m.iter().map(|z| Complex::new(z.re, z.im)));
+    values.push(Complex::new(mu2, 0.0));
+    Ok(KinematicsBatch {
+        rows: 1,
+        components: 1,
+        values,
+    })
+}
+/// The invariants of MadLoop's binary64 check pass (column-major `n` x `n`,
+/// symmetric), each multiplied by 1 +- [`CHECK_INVARIANT_SHIFT`]. The sign is
+/// a fixed function of the value's bits, so equal invariants of different
+/// integrals stay equal and still share subintegrals. Exact zeros and values
+/// within 2^-50 of a lane mass squared (MadLoop's on-shell projections) are
+/// kept: they define the integral's singularity structure.
+///
+/// The precision tiers evaluate the binary64 invariants exactly, so both loop
+/// directions agree even where those invariants do not determine the result.
+/// At the e+e- > t t~ a threshold of the stress set, s - 4 m_t^2 is only 46
+/// ulps of s: the Coulomb-enhanced vertex moves by 2.4% under this shift, and
+/// the matrix element was 1.1% off while MadLoop reported 6.5e-9. With the
+/// shift, MadLoop's check reports that dependence, and a point whose matrix
+/// element moves by more than MLStabThres goes to quadruple precision, where
+/// MadLoop's ImprovePSPoint restores the kinematics. The check also sees the
+/// binary64 rounding of form factors, which depends only on the invariants and
+/// so was identical in both directions. The check pass already recomputes
+/// every integral, so the shift costs nothing. MadLoop returns the midpoint of
+/// the two passes, which moves by half the difference the check reports.
+fn shift_check_invariants(n: usize, s: &[f64], m: &[C64]) -> Vec<f64> {
+    let mut out = s.to_vec();
+    for i in 0..n {
+        for j in i + 1..n {
+            let v = s[i + n * j];
+            let kept = v == 0.0 || m.iter().any(|z| (v - z.re).abs() <= 4.0 * f64::EPSILON * z.re.abs());
+            if !kept {
+                let sign = if v.to_bits().wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 63 == 0 { 1.0 } else { -1.0 };
+                let w = v * (1.0 + sign * CHECK_INVARIANT_SHIFT);
+                out[i + n * j] = w;
+                out[j + n * i] = w;
+            }
+        }
+    }
+    out
+}
+fn pack_dp(values: &[Complex<f64>], poles: i32, slots: usize) -> Vec<C64> {
+    let nc = values.len() / slots;
+    let mut out = vec![C64::default(); nc * 4];
+    for slot in 0..slots {
+        if selected(slot, poles) {
+            for m in 0..nc {
+                let z = &values[m * slots + slot];
+                out[slot * nc + m] = C64 { re: z.re, im: z.im };
+            }
+        }
+    }
+    out
+}
+fn parse_records(data: &[u8]) -> Result<Vec<Float>> {
+    data.chunks_exact(RECORD)
+        .map(|record| {
+            let text = std::str::from_utf8(record)
+                .map_err(|_| "QP input is not ASCII")?
+                .trim();
+            let mut value =
+                Float::parse(text, Some(113)).map_err(|e| format!("invalid QP value: {e}"))?;
+            if !value.is_finite() {
+                return Err("nonfinite QP input".into());
+            }
+            value.set_prec(MP_BITS); // preserves signed zero and exact binary128 value
+            Ok(value)
+        })
+        .collect()
+}
+/// Stability threshold of a QP workspace of `bits` (see [`MP_ACCURACY_BITS`]).
+fn mp_threshold(bits: u32) -> Float {
+    Float::with_val(bits, 2).pow(u64::from(bits - MP_ACCURACY_BITS)).inv()
+}
+/// Whether a lane the 256-bit QP gate refused, with conditioning estimate
+/// `condition` (`None`: not refused on conditioning; zero: an exactly
+/// singular pivot), may pass the [`MP_RESCUE_BITS`] gate.
+fn mp_rescuable(condition: Option<f64>) -> bool {
+    condition.is_some_and(|c| c > 0.0 && c >= 2f64.powi(-((MP_RESCUE_BITS - MP_ACCURACY_BITS) as i32)))
+}
+/// The same exact values at `bits` of precision.
+fn at_precision(mut batch: KinematicsBatch<Float>, bits: u32) -> KinematicsBatch<Float> {
+    for value in &mut batch.values {
+        value.re.set_prec(bits);
+        value.im.set_prec(bits);
+    }
+    batch
+}
+fn mp_batch(
+    n: usize,
+    p: &[u8],
+    s: &[u8],
+    m: &[u8],
+    scale: &[u8],
+) -> Result<KinematicsBatch<Float>> {
+    let p = parse_records(p)?;
+    let s = parse_records(s)?;
+    let m = parse_records(m)?;
+    let scale = parse_records(scale)?;
+    let z = || Float::new(MP_BITS);
+    if scale[0] <= z() || m.chunks_exact(2).any(|v| v[1] > z()) {
+        return Err("invalid QP scale or mass width".into());
+    }
+    let mut values: Vec<_> = p.into_iter().map(|v| Complex::new(v, z())).collect();
+    for i in 0..n {
+        for j in i + 1..n {
+            if s[i + n * j] != s[j + n * i] {
+                return Err("supplied QP invariant matrix must be symmetric".into());
+            }
+            values.push(Complex::new(s[i + n * j].clone(), z()));
+        }
+    }
+    values.extend(
+        m.chunks_exact(2)
+            .map(|v| Complex::new(v[0].clone(), v[1].clone())),
+    );
+    values.push(Complex::new(scale[0].clone(), z()));
+    Ok(KinematicsBatch {
+        rows: 1,
+        components: 1,
+        values,
+    })
+}
+fn pack_mp(values: &[Complex<Float>], poles: i32, slots: usize) -> Result<Vec<u8>> {
+    let nc = values.len() / slots;
+    let mut out = vec![b' '; 8 * nc * RECORD];
+    let zero = Float::new(MP_BITS);
+    for slot in 0..4 {
+        for m in 0..nc {
+            for component in 0..2 {
+                let value = if slot < slots && selected(slot, poles) {
+                    if component == 0 {
+                        &values[m * slots + slot].re
+                    } else {
+                        &values[m * slots + slot].im
+                    }
+                } else {
+                    &zero
+                };
+                if !value.is_finite() {
+                    return Err("nonfinite QP result".into());
+                }
+                let text = format!("{value:.39e}");
+                if text.len() > RECORD {
+                    return Err("QP result exceeds record width".into());
+                }
+                let offset = (2 * (slot * nc + m) + component) * RECORD;
+                out[offset..offset + text.len()].copy_from_slice(text.as_bytes());
+            }
+        }
+    }
+    Ok(out)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn ml_tirust_abi_version() -> u32 {
+    ABI_VERSION
+}
+
+/// # Safety
+/// `out` is a valid writable pointer slot.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_context_create(version: u32, out: *mut *mut Context) -> i32 {
+    guard(|| {
+        validate_output(out)?;
+        if version != ABI_VERSION {
+            return Err(format!("unsupported TIRust ABI {version}"));
+        }
+        unsafe {
+            out.write(Box::into_raw(Box::new(Context {
+                state: Mutex::new(State::new()),
+            })));
+        }
+        Ok(SUCCESS)
+    })
+}
+/// # Safety
+/// NULL or a live context owned by the caller, with no concurrent calls.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_context_destroy(handle: *mut Context) -> i32 {
+    guard(|| {
+        if !handle.is_null() {
+            unsafe {
+                context(handle)?;
+                drop(Box::from_raw(handle));
+            }
+        }
+        Ok(SUCCESS)
+    })
+}
+#[unsafe(no_mangle)]
+pub extern "C" fn ml_tirust_supports(n: i32, rank: i32, compute_finite: i32) -> i32 {
+    if dimensions(n, rank).is_err()
+        || !(0..=1).contains(&compute_finite)
+        || (compute_finite == 0 && !cfg!(feature = "poles-only"))
+    {
+        UNSUPPORTED
+    } else {
+        SUCCESS
+    }
+}
+/// Capability query for `ml_tirust_evaluate_{dp,mp}_powers`: `SUCCESS` when
+/// [`ml_tirust_supports`] admits `(n, rank, compute_finite)` and TIRust's
+/// direct engine reduces these powers (`powers[n]`, each 1 to 8). A raised
+/// power needs `compute_finite = 1`: the pole-only evaluation has unit
+/// powers only.
+/// # Safety
+/// `powers` has `powers_len` readable entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_supports_powers(
+    n: i32,
+    rank: i32,
+    powers: *const i32,
+    powers_len: usize,
+    compute_finite: i32,
+) -> i32 {
+    let Ok(((size, r, _), _)) = dimensions(n, rank) else {
+        return UNSUPPORTED;
+    };
+    let Ok(packed) = (unsafe { pack_powers(size, powers, powers_len) }) else {
+        return UNSUPPORTED;
+    };
+    if ml_tirust_supports(n, rank, compute_finite) != SUCCESS {
+        return UNSUPPORTED;
+    }
+    if packed != 0 && (compute_finite != 1 || !DirectReductionPlan::supports(&settings((size, r, packed)))) {
+        return UNSUPPORTED;
+    }
+    SUCCESS
+}
+/// # Safety
+/// `handle` is a live context.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_register_plan(handle: *mut Context, n: i32, rank: i32) -> i32 {
+    guard(|| {
+        let (key, _) = dimensions(n, rank)?;
+        unsafe { context(handle)? }
+            .state
+            .lock()
+            .map_err(|_| "TIRust context poisoned")?
+            .register(key)?;
+        Ok(SUCCESS)
+    })
+}
+/// # Safety
+/// `handle` is a live context.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_clear_cache(handle: *mut Context) -> i32 {
+    guard(|| {
+        let mut state = unsafe { context(handle)? }
+            .state
+            .lock()
+            .map_err(|_| "TIRust context poisoned")?;
+        state.store.clear();
+        state.check_store.clear();
+        state.dp_cache.clear();
+        state.qp_cache.clear();
+        state.qp_check_cache.clear();
+        #[cfg(feature = "poles-only")]
+        state.pole_store.clear();
+        Ok(SUCCESS)
+    })
+}
+/// # Safety
+/// `handle` is a live context.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_set_cache_budget(handle: *mut Context, bytes: i64) -> i32 {
+    guard(|| {
+        if bytes < 0 {
+            return Err("cache budget must be nonnegative".into());
+        }
+        let mut state = unsafe { context(handle)? }
+            .state
+            .lock()
+            .map_err(|_| "TIRust context poisoned")?;
+        let bytes = bytes as u64;
+        if state.budget != bytes {
+            let budget = budgets(bytes);
+            state.store.clear();
+            state.store.set_byte_budget(Some(budget.primary));
+            state.check_store.clear();
+            state.check_store.set_byte_budget(Some(budget.check));
+            state.dp_cache = DpCache::new(budget.results);
+            state.qp_cache = QpCache::new(bytes / 2);
+            state.qp_check_cache = QpCache::new(bytes / 2);
+            #[cfg(feature = "poles-only")]
+            {
+                state.pole_store.clear();
+                state.pole_store.set_byte_budget(Some(budget.poles));
+            }
+            state.budget = bytes;
+        }
+        Ok(SUCCESS)
+    })
+}
+/// # Safety
+/// `handle` is live and output has exactly nine writable u64 entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_cache_statistics(
+    handle: *mut Context,
+    out: *mut u64,
+    count: usize,
+) -> i32 {
+    guard(|| {
+        length("cache statistics", count, 9)?;
+        validate_output(out)?;
+        let state = unsafe { context(handle)? }
+            .state
+            .lock()
+            .map_err(|_| "TIRust context poisoned")?;
+        let s = state.store.statistics();
+        #[allow(unused_mut)] // The optional pole store adds to these counters.
+        let mut counts = [
+            s.subsets_reused,
+            s.subsets_computed,
+            s.masters_reused,
+            s.masters_computed,
+            s.moments_reused,
+            s.moments_computed,
+            s.entries,
+            s.bytes,
+            s.not_stored,
+        ];
+        let c = state.check_store.statistics();
+        for (a, b) in counts.iter_mut().zip([
+            c.subsets_reused, c.subsets_computed, c.masters_reused, c.masters_computed,
+            c.moments_reused, c.moments_computed, c.entries, c.bytes, c.not_stored,
+        ]) {
+            *a += b;
+        }
+        let qp = state.qp_statistics();
+        counts[4] += qp[0] + state.dp_cache.hits;
+        counts[5] += qp[1] + state.dp_cache.misses;
+        counts[6] += qp[2] + state.dp_cache.entries.len() as u64;
+        counts[7] += qp[3] + state.dp_cache.bytes;
+        counts[8] += qp[4] + state.dp_cache.not_stored;
+        #[cfg(feature = "poles-only")]
+        {
+            let p = state.pole_store.statistics();
+            let pc = [
+                p.subsets_reused,
+                p.subsets_computed,
+                p.masters_reused,
+                p.masters_computed,
+                p.moments_reused,
+                p.moments_computed,
+                p.entries,
+                p.bytes,
+                p.not_stored,
+            ];
+            for (a, b) in counts.iter_mut().zip(pc) {
+                *a += b;
+            }
+        }
+        unsafe {
+            write(out, &counts);
+        }
+        Ok(SUCCESS)
+    })
+}
+
+/// # Safety
+/// `handle` is live and output has exactly six writable u64 entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_qp_cache_statistics(
+    handle: *mut Context,
+    out: *mut u64,
+    count: usize,
+) -> i32 {
+    guard(|| {
+        length("QP cache statistics", count, 6)?;
+        validate_output(out)?;
+        let state = unsafe { context(handle)? }
+            .state
+            .lock()
+            .map_err(|_| "TIRust context poisoned")?;
+        unsafe {
+            write(out, &state.qp_statistics());
+        }
+        Ok(SUCCESS)
+    })
+}
+
+/// Cumulative full-DP final routes and actual tier attempts, primary then check.
+/// Each ten-counter block: Direct, MethodChoice, Tier106, Tier256, Tier512,
+/// Refused, unreported/reduction-error, attempt106, attempt256, attempt512.
+/// A finite SUCCESS is required for an accepted route. Tensor rescue with
+/// DP inputs is distinct from the genuine binary128-input evaluation path.
+/// Cache clears do not reset these context-lifetime diagnostic counters.
+/// # Safety
+/// Live handle and exactly twenty writable u64 entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_dp_route_statistics(
+    handle: *mut Context, out: *mut u64, count: usize,
+) -> i32 {
+    query_guard(|| {
+        length("DP route statistics", count, DP_ROUTE_STATS_COUNT)?;
+        validate_output(out)?;
+        let state = unsafe { context(handle)? }
+            .state.lock().map_err(|_| "TIRust context poisoned")?;
+        unsafe { write(out, &state.dp_routes); }
+        Ok(SUCCESS)
+    })
+}
+
+/// Evaluate binary64 tensor moments. Inputs use Fortran column-major matrices.
+/// # Safety
+/// Live context and aligned buffers of the stated lengths; output does not alias inputs.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_evaluate_dp(
+    handle: *mut Context,
+    n: i32,
+    rank: i32,
+    p: *const f64,
+    p_len: usize,
+    s: *const f64,
+    s_len: usize,
+    m: *const C64,
+    m_len: usize,
+    mu2: f64,
+    out: *mut C64,
+    out_len: usize,
+    poles: i32,
+    finite: i32,
+    check: i32,
+    cache: i32,
+) -> i32 {
+    guard(|| {
+        let (key, nc) = dimensions(n, rank)?;
+        let mode = Mode::new(poles, finite, check, cache)?;
+        if ml_tirust_supports(n, rank, finite) != SUCCESS {
+            set_error("pole-only build support is not installed");
+            return Ok(UNSUPPORTED);
+        }
+        unsafe { evaluate_dp_key(handle, key, nc, mode, p, p_len, s, s_len, m, m_len, mu2, out, out_len) }
+    })
+}
+
+/// [`ml_tirust_evaluate_dp`] with one power per propagator (`powers[n]`,
+/// each 1 to 8); unit powers give that call's result bit for bit. See
+/// [`ml_tirust_supports_powers`].
+/// # Safety
+/// As [`ml_tirust_evaluate_dp`], and `powers` has `powers_len` readable entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_evaluate_dp_powers(
+    handle: *mut Context,
+    n: i32,
+    rank: i32,
+    powers: *const i32,
+    powers_len: usize,
+    p: *const f64,
+    p_len: usize,
+    s: *const f64,
+    s_len: usize,
+    m: *const C64,
+    m_len: usize,
+    mu2: f64,
+    out: *mut C64,
+    out_len: usize,
+    poles: i32,
+    finite: i32,
+    check: i32,
+    cache: i32,
+) -> i32 {
+    guard(|| {
+        let ((size, r, _), nc) = dimensions(n, rank)?;
+        let key = (size, r, unsafe { pack_powers(size, powers, powers_len)? });
+        let mode = Mode::new(poles, finite, check, cache)?;
+        if unsafe { ml_tirust_supports_powers(n, rank, powers, powers_len, finite) } != SUCCESS {
+            set_error("TIRust: these propagator powers are unsupported for this integral or pole mode");
+            return Ok(UNSUPPORTED);
+        }
+        unsafe { evaluate_dp_key(handle, key, nc, mode, p, p_len, s, s_len, m, m_len, mu2, out, out_len) }
+    })
+}
+
+/// The body of the binary64 entry points, for a plan key.
+/// # Safety
+/// As [`ml_tirust_evaluate_dp`].
+#[allow(clippy::too_many_arguments)]
+unsafe fn evaluate_dp_key(
+    handle: *mut Context,
+    key: Key,
+    nc: usize,
+    mode: Mode,
+    p: *const f64,
+    p_len: usize,
+    s: *const f64,
+    s_len: usize,
+    m: *const C64,
+    m_len: usize,
+    mu2: f64,
+    out: *mut C64,
+    out_len: usize,
+) -> Result<i32> {
+    {
+        let n = key.0;
+        length("shifts", p_len, 4 * n)?;
+        length("invariants", s_len, n * n)?;
+        length("masses", m_len, n)?;
+        length("tensor output", out_len, 4 * nc)?;
+        validate_output(out)?;
+        let masses = unsafe { read(m, m_len)? };
+        let invariants = unsafe { read(s, s_len)? };
+        // MadLoop's check pass reads slightly shifted invariants, so that its
+        // comparison also measures how far the binary64 inputs determine the
+        // result (see `shift_check_invariants`).
+        let shifted;
+        let invariants = if mode.check {
+            shifted = shift_check_invariants(n, invariants, masses);
+            &shifted[..]
+        } else {
+            invariants
+        };
+        let batch = dp_batch(n, unsafe { read(p, p_len)? }, invariants, masses, mu2)?;
+        let (status, values) = unsafe { context(handle)? }
+            .state
+            .lock()
+            .map_err(|_| "TIRust context poisoned")?
+            .dp_checked(key, batch, mode)?;
+        if status == SUCCESS {
+            unsafe {
+                write(out, &values);
+            }
+        }
+        Ok(status)
+    }
+}
+
+/// Evaluate genuine binary128 inputs transported in 64-byte ASCII records.
+/// # Safety
+/// Live context and buffers of stated lengths; output does not alias input records.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_evaluate_mp(
+    handle: *mut Context,
+    n: i32,
+    rank: i32,
+    p: *const u8,
+    p_len: usize,
+    s: *const u8,
+    s_len: usize,
+    m: *const u8,
+    m_len: usize,
+    scale: *const u8,
+    scale_len: usize,
+    out: *mut u8,
+    out_len: usize,
+    poles: i32,
+    finite: i32,
+    check: i32,
+    cache: i32,
+) -> i32 {
+    guard(|| {
+        let (key, nc) = dimensions(n, rank)?;
+        let mode = Mode::new(poles, finite, check, cache)?;
+        if ml_tirust_supports(n, rank, finite) != SUCCESS {
+            set_error("pole-only build support is not installed");
+            return Ok(UNSUPPORTED);
+        }
+        unsafe { evaluate_mp_key(handle, key, nc, mode, p, p_len, s, s_len, m, m_len, scale, scale_len, out, out_len) }
+    })
+}
+
+/// [`ml_tirust_evaluate_mp`] with one power per propagator (`powers[n]`,
+/// each 1 to 8); unit powers give that call's result bit for bit. See
+/// [`ml_tirust_supports_powers`].
+/// # Safety
+/// As [`ml_tirust_evaluate_mp`], and `powers` has `powers_len` readable entries.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_evaluate_mp_powers(
+    handle: *mut Context,
+    n: i32,
+    rank: i32,
+    powers: *const i32,
+    powers_len: usize,
+    p: *const u8,
+    p_len: usize,
+    s: *const u8,
+    s_len: usize,
+    m: *const u8,
+    m_len: usize,
+    scale: *const u8,
+    scale_len: usize,
+    out: *mut u8,
+    out_len: usize,
+    poles: i32,
+    finite: i32,
+    check: i32,
+    cache: i32,
+) -> i32 {
+    guard(|| {
+        let ((size, r, _), nc) = dimensions(n, rank)?;
+        let key = (size, r, unsafe { pack_powers(size, powers, powers_len)? });
+        let mode = Mode::new(poles, finite, check, cache)?;
+        if unsafe { ml_tirust_supports_powers(n, rank, powers, powers_len, finite) } != SUCCESS {
+            set_error("TIRust: these propagator powers are unsupported for this integral or pole mode");
+            return Ok(UNSUPPORTED);
+        }
+        unsafe { evaluate_mp_key(handle, key, nc, mode, p, p_len, s, s_len, m, m_len, scale, scale_len, out, out_len) }
+    })
+}
+
+/// The body of the binary128-record entry points, for a plan key.
+/// # Safety
+/// As [`ml_tirust_evaluate_mp`].
+#[allow(clippy::too_many_arguments)]
+unsafe fn evaluate_mp_key(
+    handle: *mut Context,
+    key: Key,
+    nc: usize,
+    mode: Mode,
+    p: *const u8,
+    p_len: usize,
+    s: *const u8,
+    s_len: usize,
+    m: *const u8,
+    m_len: usize,
+    scale: *const u8,
+    scale_len: usize,
+    out: *mut u8,
+    out_len: usize,
+) -> Result<i32> {
+    {
+        let n = key.0;
+        length("QP shifts", p_len, 4 * n * RECORD)?;
+        length("QP invariants", s_len, n * n * RECORD)?;
+        length("QP masses", m_len, 2 * n * RECORD)?;
+        length("QP scale", scale_len, RECORD)?;
+        length("QP output", out_len, 8 * nc * RECORD)?;
+        validate_output(out)?;
+        let records = [
+            unsafe { read(p, p_len)? },
+            unsafe { read(s, s_len)? },
+            unsafe { read(m, m_len)? },
+            unsafe { read(scale, scale_len)? },
+        ];
+        let (status, values) = unsafe { context(handle)? }
+            .state
+            .lock()
+            .map_err(|_| "TIRust context poisoned")?
+            .mp_records(key, records, mode)?;
+        if status == SUCCESS {
+            unsafe {
+                write(out, &values);
+            }
+        }
+        Ok(status)
+    }
+}
+/// # Safety
+/// NULL/zero queries required size; otherwise `out` has `capacity` writable bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn ml_tirust_last_error(out: *mut u8, capacity: usize) -> usize {
+    LAST_ERROR.with(|e| {
+        let e = e.borrow();
+        if !out.is_null() && capacity > 0 {
+            let n = e.len().min(capacity - 1);
+            unsafe {
+                write(out, &e.as_bytes()[..n]);
+                out.add(n).write(0);
+            }
+        }
+        e.len() + 1
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn handle() -> *mut Context {
+        let mut c = std::ptr::null_mut();
+        assert_eq!(
+            unsafe { ml_tirust_context_create(ABI_VERSION, &mut c) },
+            SUCCESS
+        );
+        c
+    }
+    fn tadpole(c: *mut Context, poles: i32, mass: f64) -> (i32, [C64; 4]) {
+        let mut out = [C64 {
+            re: 999.0,
+            im: 999.0,
+        }; 4];
+        let m = [C64 { re: mass, im: 0.0 }];
+        let status = unsafe {
+            ml_tirust_evaluate_dp(
+                c,
+                1,
+                0,
+                [0.0; 4].as_ptr(),
+                4,
+                [0.0].as_ptr(),
+                1,
+                m.as_ptr(),
+                1,
+                4.0,
+                out.as_mut_ptr(),
+                4,
+                poles,
+                1,
+                0,
+                1,
+            )
+        };
+        (status, out)
+    }
+    fn qp_tadpole(
+        c: *mut Context,
+        mass: &str,
+        poles: i32,
+        finite: i32,
+        check: i32,
+        cache: i32,
+    ) -> Vec<u8> {
+        let records = |values: &[&str]| {
+            let mut bytes = vec![b' '; values.len() * RECORD];
+            for (i, value) in values.iter().enumerate() {
+                bytes[i * RECORD..i * RECORD + value.len()].copy_from_slice(value.as_bytes());
+            }
+            bytes
+        };
+        let p = records(&["0"; 4]);
+        let s = records(&["0"]);
+        let m = records(&[mass, "-0"]);
+        let scale = records(&[mass]);
+        let mut output = vec![0; 8 * RECORD];
+        let status = unsafe {
+            ml_tirust_evaluate_mp(
+                c,
+                1,
+                0,
+                p.as_ptr(),
+                p.len(),
+                s.as_ptr(),
+                s.len(),
+                m.as_ptr(),
+                m.len(),
+                scale.as_ptr(),
+                scale.len(),
+                output.as_mut_ptr(),
+                output.len(),
+                poles,
+                finite,
+                check,
+                cache,
+            )
+        };
+        assert_eq!(status, SUCCESS);
+        output
+    }
+    fn qp_counts(c: *mut Context) -> [u64; 6] {
+        let mut counts = [0; 6];
+        assert_eq!(
+            unsafe { ml_tirust_qp_cache_statistics(c, counts.as_mut_ptr(), 6) },
+            SUCCESS
+        );
+        counts
+    }
+    #[test]
+    fn qp_cache_exact_inputs_modes_bypass_and_budget() {
+        let c = handle();
+        let original = qp_tadpole(c, "4", 0, 1, 0, 1);
+        assert_eq!(qp_counts(c)[..3], [0, 1, 1]);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 0, 1), original);
+        assert_eq!(qp_counts(c)[..3], [1, 1, 1]);
+        // The independent check misses in its own cache; caching disabled
+        // bypasses both.
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 1, 1), original);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 0, 0), original);
+        assert_eq!(qp_counts(c)[..3], [1, 2, 2]);
+        assert_eq!(qp_counts(c)[5], 1);
+        let changed = qp_tadpole(c, "9", 0, 1, 0, 1);
+        assert_ne!(changed, original);
+        let ir = qp_tadpole(c, "4", 2, 1, 0, 1);
+        assert_ne!(ir, original);
+        assert_eq!(parse_records(&ir).unwrap()[0], Float::new(MP_BITS));
+        assert_eq!(qp_counts(c)[..3], [1, 4, 4]);
+        assert_eq!(
+            unsafe { ml_tirust_set_cache_budget(c, DEFAULT_BUDGET as i64) },
+            SUCCESS
+        );
+        assert_eq!(qp_counts(c)[..3], [1, 4, 4]);
+        // Neither the independent check nor cache-disabled path can consume
+        // retained primary values, even when a deliberately corrupted test
+        // entry exists.
+        {
+            let mut state = unsafe { context(c).unwrap() }.state.lock().unwrap();
+            for value in state.qp_cache.entries.values_mut() {
+                value.fill(b'x');
+            }
+        }
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 1, 1), original);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 0, 0), original);
+        assert_eq!(unsafe { ml_tirust_clear_cache(c) }, SUCCESS);
+        assert_eq!(qp_counts(c), [0; 6]);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 0, 1), original);
+        let used = qp_counts(c)[3];
+        assert!(used <= DEFAULT_BUDGET / 2);
+        assert_eq!(unsafe { ml_tirust_set_cache_budget(c, 0) }, SUCCESS);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 0, 1), original);
+        assert_eq!(qp_counts(c), [0, 1, 0, 0, 1, 0]);
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    #[test]
+    fn qp_check_pass_reuses_only_check_results_within_the_shared_budget() {
+        let c = handle();
+        let original = qp_tadpole(c, "4", 0, 1, 0, 1);
+        // The check computes its tensor although the primary pass holds it.
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 1, 1), original);
+        let counts = qp_counts(c);
+        assert_eq!((counts[0], counts[1], counts[2], counts[4], counts[5]), (0, 2, 2, 0, 0));
+        let entry = counts[3] / 2;
+        // Mark each pass's entry: a repeat is answered from its own pass only.
+        {
+            let mut state = unsafe { context(c).unwrap() }.state.lock().unwrap();
+            for value in state.qp_cache.entries.values_mut() {
+                value.fill(b'p');
+            }
+            for value in state.qp_check_cache.entries.values_mut() {
+                value.fill(b'c');
+            }
+        }
+        let primary = qp_tadpole(c, "4", 0, 1, 0, 1);
+        let check = qp_tadpole(c, "4", 0, 1, 1, 1);
+        assert!(primary.contains(&b'p') && !primary.contains(&b'c'));
+        assert!(check.contains(&b'c') && !check.contains(&b'p'));
+        assert_eq!(qp_counts(c)[..3], [2, 2, 2]);
+        // Both passes draw on one QP budget (half the total). With room for
+        // one entry, the pass that stores first keeps it; the other pass
+        // recomputes every request, with unchanged values.
+        assert_eq!(unsafe { ml_tirust_set_cache_budget(c, (2 * entry) as i64) }, SUCCESS);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 0, 1), original);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 1, 1), original);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 1, 1), original);
+        assert_eq!(qp_counts(c), [0, 3, 1, entry, 2, 0]);
+        assert_eq!(unsafe { ml_tirust_clear_cache(c) }, SUCCESS);
+        assert_eq!(qp_counts(c), [0; 6]);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 1, 1), original);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 1, 1), original);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 0, 1), original);
+        assert_eq!(qp_counts(c), [1, 2, 1, entry, 1, 0]);
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    #[cfg(feature = "poles-only")]
+    #[test]
+    fn qp_full_and_pole_only_results_never_alias() {
+        let c = handle();
+        let full = qp_tadpole(c, "4", 0, 1, 0, 1);
+        let partial = qp_tadpole(c, "4", 0, 0, 0, 1);
+        assert_ne!(full, partial);
+        assert_eq!(qp_counts(c)[..3], [0, 2, 2]);
+        assert_eq!(qp_tadpole(c, "4", 0, 1, 0, 1), full);
+        assert_eq!(qp_tadpole(c, "4", 0, 0, 0, 1), partial);
+        assert_eq!(qp_counts(c)[..3], [2, 2, 2]);
+        let values = parse_records(&partial).unwrap();
+        assert_eq!(values[0], Float::with_val(MP_BITS, 4));
+        assert_eq!(values[6], Float::new(MP_BITS));
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    /// A genuine-QP box (N=4, rank 4) whose Gram conditioning, about 1.9e-13,
+    /// the 256-bit gate refuses (1.9e-13^4 < 2^-136). Captured from MadLoop's
+    /// loop-induced g g > h h (loop_sm) at a small-Gram stress point
+    /// (pT = 4.8e-4 GeV), where CutTools, Ninja and NinjaRS in QP agree.
+    const SMALL_GRAM_BOX: [&[&str]; 4] = [
+        // shifts
+        &[
+            "0.000000000000000000000000000000000000000E+0000", "0.000000000000000000000000000000000000000E+0000",
+            "0.000000000000000000000000000000000000000E+0000", "0.000000000000000000000000000000000000000E+0000",
+            "4.999999999999999431565811391919851303101E+0002", "0.000000000000000000000000000000000000000E+0000",
+            "0.000000000000000000000000000000000000000E+0000", "4.999999999999999431565811391919851303101E+0002",
+            "9.999999999999998863131622783839702606201E+0002", "0.000000000000000000000000000000000000000E+0000",
+            "0.000000000000000000000000000000000000000E+0000", "0.000000000000000000000000000000000000000E+0000",
+            "4.999999999999999431565811391919851303101E+0002", "4.841229182758463914747204537292191162123E-0004",
+            "0.000000000000000000000000000000000000000E+0000", "4.841229182756849904806396744180584968736E+0002",
+        ],
+        // invariants
+        &[
+            "0.000000000000000000000000000000000000000E+0000", "0.000000000000000000000000000000000000000E+0000",
+            "9.999999999999997726263245567679534459373E+0005", "1.562500000000000000000000000000000000000E+0004",
+            "0.000000000000000000000000000000000000000E+0000", "0.000000000000000000000000000000000000000E+0000",
+            "0.000000000000000000000000000000000000000E+0000", "-2.520817243149508709262512888969985876317E+0002",
+            "9.999999999999997726263245567679534459373E+0005", "0.000000000000000000000000000000000000000E+0000",
+            "0.000000000000000000000000000000000000000E+0000", "1.562500000000000000000000000000000000000E+0004",
+            "1.562500000000000000000000000000000000000E+0004", "-2.520817243149508709262512888969985876317E+0002",
+            "1.562500000000000000000000000000000000000E+0004", "0.000000000000000000000000000000000000000E+0000",
+        ],
+        // masses
+        &[
+            "2.209000000000000341060513164848089218140E+0001", "0.000000000000000000000000000000000000000E+0000",
+            "2.209000000000000341060513164848089218140E+0001", "0.000000000000000000000000000000000000000E+0000",
+            "2.209000000000000341060513164848089218140E+0001", "0.000000000000000000000000000000000000000E+0000",
+            "2.209000000000000341060513164848089218140E+0001", "0.000000000000000000000000000000000000000E+0000",
+        ],
+        // scale
+        &[
+            "1.000000000000000000000000000000000000000E+0006",
+        ],
+    ];
+    fn small_gram_box(c: *mut Context, finite: i32, cache: i32) -> (i32, Vec<u8>) {
+        let [p, s, m, scale] = SMALL_GRAM_BOX.map(|values| {
+            let mut bytes = vec![b' '; values.len() * RECORD];
+            for (i, value) in values.iter().enumerate() {
+                bytes[i * RECORD..i * RECORD + value.len()].copy_from_slice(value.as_bytes());
+            }
+            bytes
+        });
+        let mut output = vec![0; 8 * 70 * RECORD];
+        let status = unsafe {
+            ml_tirust_evaluate_mp(
+                c,
+                4,
+                4,
+                p.as_ptr(),
+                p.len(),
+                s.as_ptr(),
+                s.len(),
+                m.as_ptr(),
+                m.len(),
+                scale.as_ptr(),
+                scale.len(),
+                output.as_mut_ptr(),
+                output.len(),
+                0,
+                finite,
+                0,
+                cache,
+            )
+        };
+        (status, output)
+    }
+    // Forward e+e- > mu+mu- at a scattering angle of 5e-4 (t/s = 6.25e-8,
+    // complex-mass scheme), as MadLoop supplies it: a box with one Z
+    // propagator that the binary64 gates refuse. TIRust's method choice would
+    // serve it unchecked, 5e-10 off.
+    const FORWARD_BOX_P: [u64; 16] = [
+        0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+        0x407f400000000000, 0x0000000000000000, 0x0000000000000000, 0x407f400000000000,
+        0x408f400000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+        0x407f400000000000, 0x3fcfffffe9a16084, 0x0000000000000000, 0x407f3fffbe76c8cb,
+    ];
+    const FORWARD_BOX_S: [u64; 16] = [
+        0x0000000000000000, 0x0000000000000000, 0x412e848000000000, 0x0000000000000000,
+        0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0xbfaffffff4d0b042,
+        0x412e848000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+        0x0000000000000000, 0xbfaffffff4d0b042, 0x0000000000000000, 0x0000000000000000,
+    ];
+    const FORWARD_BOX_M: [u64; 8] = [
+        0x40c03da02c0a4a06, 0xc06c7b736a456e1e, 0x0000000000000000, 0x0000000000000000,
+        0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+    ];
+    const FORWARD_BOX_MU2: u64 = 0x412e848000000000;
+    #[test]
+    fn gate_refused_forward_box_takes_a_precision_tier_not_the_method_choice() {
+        use symbolica::domains::float::RealLike;
+        let bits = |b: &[u64]| b.iter().map(|&x| f64::from_bits(x)).collect::<Vec<_>>();
+        let (p, s) = (bits(&FORWARD_BOX_P), bits(&FORWARD_BOX_S));
+        let m: Vec<C64> = bits(&FORWARD_BOX_M).chunks_exact(2).map(|z| C64 { re: z[0], im: z[1] }).collect();
+        let mu2 = f64::from_bits(FORWARD_BOX_MU2);
+        let (key, nc) = dimensions(4, 2).unwrap();
+        let c = handle();
+        assert_eq!(unsafe { ml_tirust_register_plan(c, 4, 2) }, SUCCESS);
+        let mut out = vec![C64::default(); 4 * nc];
+        let status = unsafe {
+            ml_tirust_evaluate_dp(
+                c, 4, 2, p.as_ptr(), p.len(), s.as_ptr(), s.len(), m.as_ptr(), m.len(), mu2,
+                out.as_mut_ptr(), out.len(), 0, 1, 0, 1,
+            )
+        };
+        assert_eq!(status, SUCCESS);
+        // Primary block: refused by the binary64 gates, served by the
+        // double-double tier at its first attempt, never by the method choice.
+        let mut routes = [0u64; DP_ROUTE_STATS_COUNT];
+        assert_eq!(unsafe { ml_tirust_dp_route_statistics(c, routes.as_mut_ptr(), DP_ROUTE_STATS_COUNT) }, SUCCESS);
+        assert_eq!(routes[..DP_ROUTE_FIELDS], [0, 0, 1, 0, 0, 0, 0, 1, 0, 0]);
+        // Every slot agrees with a 1024-bit evaluation of the same binary64
+        // inputs to binary64 accuracy.
+        let state = unsafe { context(c).unwrap() }.state.lock().unwrap();
+        let mut reference = state.plans[&key].workspace(Float::new(1024)).unwrap();
+        reference.set_input_precision(53);
+        reference.set_stability_threshold(mp_threshold(1024));
+        let lifted = dp_batch(4, &p, &s, &m, mu2).unwrap();
+        let batch = KinematicsBatch {
+            rows: 1,
+            components: 1,
+            values: lifted.values.iter().map(|z| Complex::new(Float::with_val(1024, z.re), Float::with_val(1024, z.im))).collect(),
+        };
+        let values = reference.reduce_batch(&batch).unwrap();
+        let exact = values.lane(0).unwrap();
+        for slot in 0..4 {
+            let at = |k: usize| (exact[k * 4 + slot].re.to_f64(), exact[k * 4 + slot].im.to_f64());
+            let scale = (0..nc).map(|k| at(k).0.hypot(at(k).1)).fold(0.0, f64::max);
+            for k in 0..nc {
+                let (re, im) = at(k);
+                let got = out[slot * nc + k];
+                let error = (got.re - re).hypot(got.im - im);
+                assert!(error <= 1e-13 * scale, "slot {slot}, coefficient {k}: error {error:e}, slot scale {scale:e}");
+            }
+        }
+        drop(state);
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    // The Coulomb vertex (top, photon, top) of e+e- > t t~ a at its threshold
+    // stress point, sqrt(s) = 2 m_t (1 + 1e-7), as MadLoop supplied it: s - 4 m_t^2
+    // is 46 ulps of s. The tiers evaluate these inputs exactly.
+    const COULOMB_VERTEX_P: [u64; 12] = [
+        0x0000000000000000, 0x0000000000000000, 0x0000000000000000, 0x3d15692f40000000,
+        0xc065a999999999e4, 0x3ef2b440f5517ccb, 0x3ef4242f861f91e8, 0x3edb20b1d08a5fdc,
+        0xc075a999999999c9, 0x3eff4ff39a75e1a6, 0x3ef26d0393420659, 0xbea3ae92954b6860,
+    ];
+    const COULOMB_VERTEX_S: [u64; 9] = [
+        0x0000000000000000, 0x40dd5438f5c28f5d, 0x40fd5438f5c28f8b,
+        0x40dd5438f5c28f5d, 0x0000000000000000, 0x40dd5438f5c28f5d,
+        0x40fd5438f5c28f8b, 0x40dd5438f5c28f5d, 0x0000000000000000,
+    ];
+    const COULOMB_VERTEX_M: [u64; 6] = [
+        0x40dd5438f5c28f5d, 0x0000000000000000, 0x0000000000000000, 0x0000000000000000,
+        0x40dd5438f5c28f5d, 0x0000000000000000,
+    ];
+    const COULOMB_VERTEX_MU2: u64 = 0x40fd5439582bf9b6;
+    fn evaluate_dp_bits(c: *mut Context, n: i32, rank: i32, p: &[u64], s: &[f64], m: &[u64], mu2: u64, check: i32) -> (i32, Vec<C64>) {
+        let p: Vec<f64> = p.iter().map(|&x| f64::from_bits(x)).collect();
+        let m: Vec<C64> = m.chunks_exact(2).map(|z| C64 { re: f64::from_bits(z[0]), im: f64::from_bits(z[1]) }).collect();
+        let nc = dimensions(n, rank).unwrap().1;
+        let mut out = vec![C64::default(); 4 * nc];
+        let status = unsafe {
+            ml_tirust_evaluate_dp(
+                c, n, rank, p.as_ptr(), p.len(), s.as_ptr(), s.len(), m.as_ptr(), m.len(), f64::from_bits(mu2),
+                out.as_mut_ptr(), out.len(), 0, 1, check, 1,
+            )
+        };
+        (status, out)
+    }
+    /// Largest |a - b| of a slot relative to the largest |b| of that slot
+    /// (absolute for a slot of zeros).
+    fn slot_difference(a: &[C64], b: &[C64], slot: usize) -> f64 {
+        let nc = b.len() / 4;
+        let range = slot * nc..(slot + 1) * nc;
+        let scale = b[range.clone()].iter().map(|z| z.re.hypot(z.im)).fold(0.0, f64::max);
+        let difference = range.map(|k| (a[k].re - b[k].re).hypot(a[k].im - b[k].im)).fold(0.0, f64::max);
+        if scale == 0.0 { difference } else { difference / scale }
+    }
+    #[test]
+    fn check_pass_shift_keeps_zeros_and_on_shell_masses() {
+        let m2 = 30032.89;
+        let masses = [C64 { re: m2, im: 0.0 }, C64::default(), C64 { re: 8315.25, im: -227.86 }];
+        // (0,1) zero, (0,2) MadLoop's projection of an on-shell leg, one ulp
+        // off m2 after its rounding; (1,2) a generic invariant.
+        let projected = f64::from_bits(m2.to_bits() + 1);
+        let s = [0.0, 0.0, projected, 0.0, 0.0, 1.2e5, projected, 1.2e5, 0.0];
+        let shifted = shift_check_invariants(3, &s, &masses);
+        assert_eq!(shifted[3], 0.0);
+        assert_eq!(shifted[6].to_bits(), projected.to_bits());
+        assert_eq!(shifted[5].to_bits(), shifted[7].to_bits());
+        let relative = (shifted[5] / 1.2e5 - 1.0).abs();
+        assert!((relative - CHECK_INVARIANT_SHIFT).abs() <= f64::EPSILON, "relative shift {relative:e}");
+        // A deterministic function of the value: equal inputs stay equal.
+        assert_eq!(shift_check_invariants(3, &s, &masses), shifted);
+    }
+    #[test]
+    fn check_pass_sees_the_input_dependence_of_a_coulomb_threshold() {
+        let c = handle();
+        assert_eq!(unsafe { ml_tirust_register_plan(c, 3, 2) }, SUCCESS);
+        let s: Vec<f64> = COULOMB_VERTEX_S.iter().map(|&x| f64::from_bits(x)).collect();
+        let masses: Vec<C64> =
+            COULOMB_VERTEX_M.chunks_exact(2).map(|z| C64 { re: f64::from_bits(z[0]), im: f64::from_bits(z[1]) }).collect();
+        let eval = |s: &[f64], check: i32| {
+            evaluate_dp_bits(c, 3, 2, &COULOMB_VERTEX_P, s, &COULOMB_VERTEX_M, COULOMB_VERTEX_MU2, check)
+        };
+        let (status, primary) = eval(&s, 0);
+        assert_eq!(status, SUCCESS);
+        let (status, check) = eval(&s, 1);
+        assert_eq!(status, SUCCESS);
+        // The check reads exactly the shifted invariants and nothing else.
+        let (status, shifted) = eval(&shift_check_invariants(3, &s, &masses), 0);
+        assert_eq!(status, SUCCESS);
+        assert_eq!(check, shifted);
+        // Two ulps of s move the Coulomb-enhanced finite part by percents, so
+        // MadLoop's check fails and the point goes to QP.
+        let moved = slot_difference(&check, &primary, 3);
+        assert!(moved > 1e-2, "finite part moved by {moved:e}");
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    #[test]
+    fn check_pass_shift_leaves_a_well_determined_box_unchanged() {
+        let c = handle();
+        assert_eq!(unsafe { ml_tirust_register_plan(c, 4, 2) }, SUCCESS);
+        let s: Vec<f64> = FORWARD_BOX_S.iter().map(|&x| f64::from_bits(x)).collect();
+        let eval = |check| evaluate_dp_bits(c, 4, 2, &FORWARD_BOX_P, &s, &FORWARD_BOX_M, FORWARD_BOX_MU2, check);
+        let ((status, primary), (check_status, check)) = (eval(0), eval(1));
+        assert_eq!((status, check_status), (SUCCESS, SUCCESS));
+        assert_ne!(check, primary);
+        for slot in 0..4 {
+            let moved = slot_difference(&check, &primary, slot);
+            assert!(moved < 1e-13, "slot {slot} moved by {moved:e}");
+        }
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    #[test]
+    fn qp_gram_refusal_is_evaluated_again_at_512_bits() {
+        use symbolica::domains::float::RealLike;
+        let key = dimensions(4, 4).unwrap().0;
+        let c = handle();
+        // A well-conditioned QP call never builds a rescue workspace.
+        qp_tadpole(c, "4", 0, 1, 0, 0);
+        assert!(unsafe { context(c).unwrap() }.state.lock().unwrap().mp.keys().all(|&(_, bits)| bits == MP_BITS));
+        let (status, output) = small_gram_box(c, 1, 0);
+        assert_eq!(status, SUCCESS);
+        let mut state = unsafe { context(c).unwrap() }.state.lock().unwrap();
+        assert!(state.mp.contains_key(&(key, MP_RESCUE_BITS)));
+        // The 256-bit workspace alone refuses the lane on its Gram conditioning.
+        let [p, s, m, scale] = SMALL_GRAM_BOX.map(|values| {
+            let mut bytes = vec![b' '; values.len() * RECORD];
+            for (i, value) in values.iter().enumerate() {
+                bytes[i * RECORD..i * RECORD + value.len()].copy_from_slice(value.as_bytes());
+            }
+            bytes
+        });
+        let batch = mp_batch(4, &p, &s, &m, &scale).unwrap();
+        let workspace = state.mp.get_mut(&(key, MP_BITS)).unwrap();
+        let refused = workspace.reduce_batch(&batch).unwrap();
+        assert!(matches!(refused.lane(0), Err(LaneStatus::Unstable(_))));
+        let condition = workspace.last_conditions()[0].unwrap();
+        assert!(condition > 0.0 && condition < 2f64.powi(-136) && mp_rescuable(Some(condition)));
+        // The accepted 512-bit tensor agrees with a 1024-bit evaluation of the
+        // same exact inputs far below binary128's resolution.
+        let mut reference = state.plans[&key].workspace(Float::new(1024)).unwrap();
+        reference.set_input_precision(113);
+        reference.set_stability_threshold(mp_threshold(1024));
+        let values = reference.reduce_batch(&at_precision(batch, 1024)).unwrap();
+        let expected = parse_records(&pack_mp(values.lane(0).unwrap(), 0, 4).unwrap()).unwrap();
+        let got = parse_records(&output).unwrap();
+        let scale = expected.iter().map(|v| v.to_f64().abs()).fold(0.0, f64::max);
+        assert!(scale > 0.0);
+        for (g, e) in got.iter().zip(&expected) {
+            assert!((g.clone() - e).to_f64().abs() <= 1e-30 * scale);
+        }
+        drop(state);
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    #[cfg(feature = "poles-only")]
+    #[test]
+    fn qp_pole_only_small_gram_box_matches_full_poles() {
+        use symbolica::domains::float::RealLike;
+        let c = handle();
+        let (full_status, full) = small_gram_box(c, 1, 0);
+        let (pole_status, poles) = small_gram_box(c, 0, 0);
+        assert_eq!((full_status, pole_status), (SUCCESS, SUCCESS));
+        // Same pole slots 0-2 (slot 3, the finite part, is not computed in pole-only mode).
+        let (full, poles) = (parse_records(&full).unwrap(), parse_records(&poles).unwrap());
+        let nc = full.len() / 8;
+        for slot in 0..3 {
+            for i in 2 * slot * nc..2 * (slot + 1) * nc {
+                let scale = full[2 * slot * nc..2 * (slot + 1) * nc].iter().map(|v| v.to_f64().abs()).fold(0.0, f64::max);
+                assert!((full[i].clone() - &poles[i]).to_f64().abs() <= 1e-30 * scale, "slot {slot}");
+            }
+        }
+        // The pole-only executor refuses at 256 bits too and is rescued at 512.
+        let key = dimensions(4, 4).unwrap().0;
+        assert!(unsafe { context(c).unwrap() }.state.lock().unwrap().pole_mp.contains_key(&(key, MP_RESCUE_BITS)));
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    #[test]
+    fn full_tadpole_selection_and_cache_lifecycle() {
+        let c = handle();
+        let (status, full) = tadpole(c, 0, 4.0);
+        assert_eq!(status, SUCCESS);
+        assert_eq!(full[0].re, 4.0);
+        assert!((full[3].re - 4.0).abs() < 1e-13);
+        let (status, ir) = tadpole(c, 2, 4.0);
+        assert_eq!(status, SUCCESS);
+        assert_eq!(ir[0], C64::default());
+        assert_eq!(ir[3], full[3]);
+        let (status, again) = tadpole(c, 0, 4.0);
+        assert_eq!(status, SUCCESS);
+        assert_eq!(again, full);
+        assert_eq!(unsafe { ml_tirust_clear_cache(c) }, SUCCESS);
+        let (status, changed) = tadpole(c, 0, 9.0);
+        assert_eq!(status, SUCCESS);
+        assert_eq!(changed[0].re, 9.0);
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    #[test]
+    fn route_query_preserves_existing_error_after_success() {
+        let c = handle();
+        assert_eq!(tadpole(c, 0, f64::NAN).0, ERROR);
+        let previous = LAST_ERROR.with(|error| error.borrow().clone());
+        assert!(!previous.is_empty());
+        let mut counts = [0; DP_ROUTE_STATS_COUNT];
+        assert_eq!(unsafe {
+            ml_tirust_dp_route_statistics(c, counts.as_mut_ptr(), DP_ROUTE_STATS_COUNT)
+        }, SUCCESS);
+        assert_eq!(LAST_ERROR.with(|error| error.borrow().clone()), previous);
+        assert_eq!(unsafe {
+            ml_tirust_dp_route_statistics(c, counts.as_mut_ptr(), DP_ROUTE_STATS_COUNT - 1)
+        }, ERROR);
+        let query_error = LAST_ERROR.with(|error| error.borrow().clone());
+        assert_ne!(query_error, previous);
+        assert_eq!(unsafe {
+            ml_tirust_dp_route_statistics(c, counts.as_mut_ptr(), DP_ROUTE_STATS_COUNT)
+        }, SUCCESS);
+        assert_eq!(LAST_ERROR.with(|error| error.borrow().clone()), query_error);
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    #[test]
+    fn invalid_requests_leave_output_untouched() {
+        let c = handle();
+        let (status, out) = tadpole(c, 0, f64::NAN);
+        assert_eq!(status, ERROR);
+        assert_eq!(
+            out,
+            [C64 {
+                re: 999.0,
+                im: 999.0
+            }; 4]
+        );
+        unsafe {
+            ml_tirust_context_destroy(c);
+        }
+    }
+    #[test]
+    fn exact_primary_repeats_reuse_the_tensor_and_checks_never_do() {
+        let key = (3, 2, 0);
+        let mass = 91.188;
+        let shifts = [0., 0., 0., 0., 300., 120., -40., 250., 520., -60., 110., 400.];
+        let batch = || {
+            let p: Vec<f64> = shifts.to_vec();
+            let mut s = vec![0.; 9];
+            for i in 0..3 {
+                for j in 0..3 {
+                    let d: Vec<f64> = (0..4).map(|a| p[4 * i + a] - p[4 * j + a]).collect();
+                    s[i + 3 * j] = d[0] * d[0] - d[1] * d[1] - d[2] * d[2] - d[3] * d[3];
+                }
+            }
+            let m = [C64 { re: mass * mass, im: -mass * 2.4 }; 3];
+            dp_batch(3, &p, &s, &m, 1e6).unwrap()
+        };
+        let mode = Mode { poles: 0, finite: true, check: false, cache: true };
+        let mut state = State::new();
+        let first = state.dp_checked(key, batch(), mode).unwrap();
+        assert_eq!(first.0, SUCCESS);
+        assert_eq!((state.dp_cache.hits, state.dp_cache.misses, state.dp_cache.entries.len()), (0, 1, 1));
+        let routes = state.dp_routes;
+        // An exact repeat returns the stored tensor without a reduction.
+        assert_eq!(state.dp_checked(key, batch(), mode).unwrap(), first);
+        assert_eq!((state.dp_cache.hits, state.dp_cache.misses), (1, 1));
+        assert_eq!(state.dp_routes, routes);
+        // It equals a fresh, unshared evaluation bit for bit.
+        assert_eq!(State::new().dp_checked(key, batch(), Mode { cache: false, ..mode }).unwrap(), first);
+        // Checks and cache-disabled calls neither read nor fill it.
+        let check = state.dp_checked(key, batch(), Mode { check: true, ..mode }).unwrap();
+        assert_eq!(check.0, SUCCESS);
+        assert_eq!(state.dp_checked(key, batch(), Mode { cache: false, ..mode }).unwrap(), first);
+        assert_eq!((state.dp_cache.hits, state.dp_cache.misses, state.dp_cache.entries.len()), (1, 1, 1));
+        // Checks share subintegrals in their own store, never the primary one.
+        assert!(state.check_store.statistics().entries > 0);
+        // Another pole selection is another entry; the point boundary empties it.
+        let ir = state.dp_checked(key, batch(), Mode { poles: 2, ..mode }).unwrap();
+        assert_eq!(ir.0, SUCCESS);
+        assert_eq!(state.dp_cache.entries.len(), 2);
+        let c = Box::into_raw(Box::new(Context { state: Mutex::new(state) }));
+        assert_eq!(unsafe { ml_tirust_clear_cache(c) }, SUCCESS);
+        let state = unsafe { Box::from_raw(c) }.state.into_inner().unwrap();
+        assert_eq!((state.dp_cache.hits, state.dp_cache.misses, state.dp_cache.entries.len()), (0, 0, 0));
+        assert_eq!(state.check_store.statistics().entries, 0);
+    }
+    #[test]
+    fn failed_dp_reduction_discards_intermediate_cache_values() {
+        let c = handle();
+        let (_, reference) = tadpole(c, 0, 4.0);
+        let (status, failed) = tadpole(c, 0, 1e308);
+        assert_ne!(status, SUCCESS);
+        assert_eq!(failed, [C64 { re: 999., im: 999. }; 4]);
+        let mut counts = [0; 9];
+        assert_eq!(
+            unsafe { ml_tirust_cache_statistics(c, counts.as_mut_ptr(), 9) },
+            SUCCESS
+        );
+        assert_eq!(counts[6], 0);
+        assert_eq!(tadpole(c, 0, 4.0), (SUCCESS, reference));
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+    #[test]
+    fn direction_workspaces_reuse_one_immutable_plan() {
+        let mut state = State::new();
+        let key = (3, 2, 0);
+        let mass = 91.188;
+        let forward = [
+            0.,
+            0.,
+            0.,
+            0.,
+            mass / 2.,
+            0.,
+            0.,
+            mass / 2.,
+            mass,
+            0.,
+            0.,
+            0.,
+        ];
+        let reverse = [
+            0.,
+            0.,
+            0.,
+            0.,
+            mass,
+            0.,
+            0.,
+            0.,
+            mass / 2.,
+            0.,
+            0.,
+            mass / 2.,
+        ];
+        let s_forward = [0., 0., mass * mass, 0., 0., 0., mass * mass, 0., 0.];
+        let s_reverse = [0., mass * mass, 0., mass * mass, 0., 0., 0., 0., 0.];
+        let evaluate = |state: &mut State, check: bool, cache: bool| {
+            state
+                .dp_checked(
+                    key,
+                    dp_batch(
+                        3,
+                        if check { &reverse } else { &forward },
+                        if check { &s_reverse } else { &s_forward },
+                        &[C64::default(); 3],
+                        mass * mass,
+                    )
+                    .unwrap(),
+                    Mode {
+                        poles: 0,
+                        finite: true,
+                        check,
+                        cache,
+                    },
+                )
+                .unwrap()
+        };
+        let forward_result = evaluate(&mut state, false, true);
+        let reverse_result = evaluate(&mut state, true, true);
+        assert_eq!(forward_result.0, SUCCESS);
+        assert_eq!(reverse_result.0, SUCCESS);
+        assert_eq!(state.dp.len(), 2);
+        assert_eq!(state.dp_plans.len(), 1);
+        let workspace_addresses = |state: &State| {
+            [false, true].map(|check| &state.dp[&(key, check)] as *const TensorWorkspace<f64>)
+        };
+        let original_workspaces = workspace_addresses(&state);
+        assert_ne!(original_workspaces[0], original_workspaces[1]);
+        let original_plan = &state.dp_plans[&key] as *const TensorReductionPlan;
+        for cache in [true, false, true] {
+            state.store.clear();
+            assert_eq!(evaluate(&mut state, false, cache), forward_result);
+            let before = state.store.statistics();
+            assert_eq!(evaluate(&mut state, true, cache), reverse_result);
+            let after = state.store.statistics();
+            assert_eq!(before.entries, after.entries);
+            assert_eq!(before.masters_reused, after.masters_reused);
+            assert_eq!(before.moments_reused, after.moments_reused);
+            assert_eq!(workspace_addresses(&state), original_workspaces);
+            assert_eq!(
+                &state.dp_plans[&key] as *const TensorReductionPlan,
+                original_plan
+            );
+        }
+    }
+    #[test]
+    fn unstable_dp_call_clears_numerics_but_retains_direction_workspaces() {
+        let key = (1, 0, 0);
+        let evaluate = |state: &mut State, check: bool, mass: f64| {
+            state
+                .dp_checked(
+                    key,
+                    dp_batch(1, &[0.; 4], &[0.], &[C64 { re: mass, im: 0. }], 4.).unwrap(),
+                    Mode {
+                        poles: 0,
+                        finite: true,
+                        check,
+                        cache: true,
+                    },
+                )
+                .unwrap()
+        };
+        let workspace_addresses = |state: &State| {
+            [false, true].map(|check| &state.dp[&(key, check)] as *const TensorWorkspace<f64>)
+        };
+        for failed_check in [false, true] {
+            let mut state = State::new();
+            let primary = evaluate(&mut state, false, 4.);
+            let checked = evaluate(&mut state, true, 4.);
+            assert_eq!(primary.0, SUCCESS);
+            assert_eq!(checked.0, SUCCESS);
+            assert_eq!(state.dp.len(), 2);
+            assert!(state.store.statistics().entries > 0);
+            let plan = &state.dp_plans[&key] as *const TensorReductionPlan;
+            let workspaces = workspace_addresses(&state);
+            assert_ne!(workspaces[0], workspaces[1]);
+            // This existing overflow fixture exercises a returned unstable
+            // lane, not a Rust error. No failed tensor or intermediate remains
+            // in the event store, while both structural owners survive.
+            for _ in 0..2 {
+                assert_eq!(evaluate(&mut state, failed_check, 1e308), (UNSTABLE, Vec::new()));
+                assert_eq!(state.store.statistics().entries, 0);
+                assert_eq!(workspace_addresses(&state), workspaces);
+                assert_eq!(state.dp_plans.len(), 1);
+                assert_eq!(&state.dp_plans[&key] as *const TensorReductionPlan, plan);
+                // Change the input after the overflow and check recovery
+                // against a fresh state, then return to the original point.
+                let changed = evaluate(&mut State::new(), false, 9.);
+                assert_eq!(evaluate(&mut state, false, 9.), changed);
+                let before_check = state.store.statistics();
+                assert_eq!(evaluate(&mut state, true, 9.), changed);
+                let after_check = state.store.statistics();
+                assert_eq!(before_check, after_check);
+                assert_eq!(evaluate(&mut state, false, 4.), primary);
+                let before_check = state.store.statistics();
+                assert_eq!(evaluate(&mut state, true, 4.), checked);
+                assert_eq!(before_check, state.store.statistics());
+                assert_eq!(workspace_addresses(&state), workspaces);
+            }
+        }
+    }
+    #[test]
+    fn rust_dp_error_discards_both_workspaces_but_retains_plan() {
+        let key = (1, 0, 0);
+        let mode = Mode { poles: 0, finite: true, check: false, cache: true };
+        let batch = || dp_batch(1, &[0.; 4], &[0.], &[C64 { re: 4., im: 0. }], 4.).unwrap();
+        let mut state = State::new();
+        let reference = state.dp_checked(key, batch(), mode).unwrap();
+        assert_eq!(reference.0, SUCCESS);
+        let check_mode = Mode { check: true, ..mode };
+        assert_eq!(state.dp_checked(key, batch(), check_mode).unwrap(), reference);
+        assert_eq!(state.dp.len(), 2);
+        let plan = &state.dp_plans[&key] as *const TensorReductionPlan;
+        let malformed = KinematicsBatch { rows: 1, components: 2, values: Vec::new() };
+        assert!(state.dp_checked(key, malformed, mode).is_err());
+        assert!(state.dp.is_empty());
+        assert_eq!(state.store.statistics().entries, 0);
+        assert_eq!(&state.dp_plans[&key] as *const TensorReductionPlan, plan);
+        assert_eq!(state.dp_checked(key, batch(), mode).unwrap(), reference);
+        assert_eq!(state.dp_checked(key, batch(), check_mode).unwrap(), reference);
+    }
+    #[test]
+    fn binary128_last_bit_and_signed_zero_transport() {
+        let value = Float::with_val(113, 1) + Float::with_val(113, 2).pow(112).inv();
+        let record = |s: &str| {
+            let mut b = [b' '; RECORD];
+            b[..s.len()].copy_from_slice(s.as_bytes());
+            b
+        };
+        let parsed = parse_records(&record(&format!("{value:.39e}"))).unwrap();
+        assert_eq!(parsed[0].to_rational(), value.to_rational());
+        assert!(parse_records(&record("-0")).unwrap()[0].is_sign_negative());
+        assert!(parse_records(&record("NaN")).is_err());
+    }
+    #[test]
+    fn complex_mass_box_converges_between_256_and_384_bits() {
+        let key = (4, 4, 0);
+        let plan = DirectReductionPlan::new(settings(key)).unwrap();
+        let input = dp_batch(
+            4,
+            &[
+                0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
+            ],
+            &[
+                0., -1., -1., -1., -1., 0., -2., -2., -1., -2., 0., -2., -1., -2., -2., 0.,
+            ],
+            &[C64 { re: 4., im: -0.125 }; 4],
+            4.,
+        )
+        .unwrap();
+        let evaluate = |bits| {
+            let mut workspace = plan.workspace(Float::new(bits)).unwrap();
+            workspace.set_input_precision(113);
+            workspace.set_stability_threshold(Float::with_val(bits, 2).pow(136).inv());
+            let batch = KinematicsBatch {
+                rows: 1,
+                components: 1,
+                values: input
+                    .values
+                    .iter()
+                    .map(|v| Complex::new(Float::with_val(bits, v.re), Float::with_val(bits, v.im)))
+                    .collect(),
+            };
+            workspace
+                .reduce_batch(&batch)
+                .unwrap()
+                .lane(0)
+                .unwrap()
+                .to_vec()
+        };
+        let low = evaluate(256);
+        let high = evaluate(384);
+        let tolerance = Float::with_val(384, 2).pow(180).inv();
+        for (a, b) in low.iter().zip(&high) {
+            for (value, reference) in [(&a.re, &b.re), (&a.im, &b.im)] {
+                let mut widened = value.clone();
+                widened.set_prec(384);
+                let magnitude = |v: Float| if v < Float::new(384) { -v } else { v };
+                let difference = magnitude(widened - reference);
+                assert!(
+                    difference
+                        <= (magnitude(reference.clone()) + Float::with_val(384, 1)) * &tolerance
+                );
+            }
+        }
+    }
+    #[test]
+    fn tensor_order_and_pole_selection() {
+        let v: Vec<_> = (0..12).map(|v| Complex::new(v as f64, 0.0)).collect();
+        let p = pack_dp(&v, 0, 4);
+        assert_eq!(
+            p.iter().map(|v| v.re).collect::<Vec<_>>(),
+            vec![0., 4., 8., 1., 5., 9., 2., 6., 10., 3., 7., 11.]
+        );
+    }
+    #[test]
+    fn rank_six_scaleless_poles_sign_and_packing() {
+        let c = handle();
+        let key = (2, 6, 0);
+        let nc = 210;
+        let p = [0., 0., 0., 0., 2., 0., 0., 2.];
+        let s = [0.; 4];
+        let m = [C64::default(); 2];
+        let mut output = vec![C64::default(); 4 * nc];
+        let evaluate = |out: &mut [C64], poles, check, cache| unsafe {
+            ml_tirust_evaluate_dp(
+                c,
+                2,
+                6,
+                p.as_ptr(),
+                8,
+                s.as_ptr(),
+                4,
+                m.as_ptr(),
+                2,
+                4.,
+                out.as_mut_ptr(),
+                out.len(),
+                poles,
+                1,
+                check,
+                cache,
+            )
+        };
+        assert_eq!(evaluate(&mut output, 0, 0, 1), SUCCESS);
+        for (i, monomial) in DirectReductionPlan::new(settings(key))
+            .unwrap()
+            .basis()
+            .iter()
+            .enumerate()
+        {
+            let rank = monomial.rank();
+            let expected = if monomial.0[1] + monomial.0[2] == 0 {
+                2f64.powi(rank as i32) / (rank + 1) as f64
+            } else {
+                0.
+            };
+            assert!(
+                (output[i].re - expected).abs() < 1e-12,
+                "UV {:?}: {:?}",
+                monomial,
+                output[i]
+            );
+            assert!(
+                (output[nc + i].re + expected).abs() < 1e-12,
+                "IR {:?}",
+                monomial
+            );
+            assert_eq!(output[2 * nc + i], C64::default());
+            assert!(output[3 * nc + i].re.abs() < 1e-12);
+        }
+        for selection in 1..=3 {
+            let mut selected = vec![C64::default(); 4 * nc];
+            assert_eq!(evaluate(&mut selected, selection, 0, 1), SUCCESS);
+            for i in 0..nc {
+                assert_eq!(selected[3 * nc + i], output[3 * nc + i]);
+            }
+        }
+        let mut checked = vec![C64::default(); 4 * nc];
+        assert_eq!(evaluate(&mut checked, 0, 1, 1), SUCCESS);
+        assert_eq!(checked, output);
+        let mut uncached = vec![C64::default(); 4 * nc];
+        assert_eq!(evaluate(&mut uncached, 0, 0, 0), SUCCESS);
+        assert_eq!(uncached, output);
+        assert_eq!(unsafe { ml_tirust_context_destroy(c) }, SUCCESS);
+    }
+}
+
+/// Raised propagator powers (`ml_tirust_*_powers`).
+#[cfg(test)]
+mod raised_powers {
+    use super::*;
+
+    fn handle() -> *mut Context {
+        let mut c = std::ptr::null_mut();
+        assert_eq!(unsafe { ml_tirust_context_create(ABI_VERSION, &mut c) }, SUCCESS);
+        c
+    }
+
+    /// A generic massive triangle: shifts, column-major invariants, squared
+    /// masses (the plumbing, whatever the pinned TIRust reduces).
+    fn triangle(m0: f64) -> (Vec<f64>, Vec<f64>, Vec<C64>) {
+        let shifts = [[0.0, 0.0, 0.0, 0.0], [3.0, 0.0, 0.0, 2.0], [3.0, 1.0, -1.0, 0.5]];
+        let d = |a: &[f64; 4], b: &[f64; 4]| {
+            let v: [f64; 4] = std::array::from_fn(|i| a[i] - b[i]);
+            v[0] * v[0] - v[1] * v[1] - v[2] * v[2] - v[3] * v[3]
+        };
+        let mut s = vec![0.0; 9];
+        for i in 0..3 {
+            for j in 0..3 {
+                s[i + 3 * j] = d(&shifts[i], &shifts[j]);
+            }
+        }
+        let m = [m0, 4.0, 5.0].iter().map(|&re| C64 { re, im: 0.0 }).collect();
+        (shifts.concat(), s, m)
+    }
+
+    fn dp(c: *mut Context, rank: i32, powers: Option<&[i32]>, m0: f64, finite: i32) -> (i32, Vec<C64>) {
+        let (p, s, m) = triangle(m0);
+        let nc = dimensions(3, rank).unwrap().1;
+        let mut out = vec![C64::default(); 4 * nc];
+        let status = unsafe {
+            match powers {
+                None => ml_tirust_evaluate_dp(
+                    c, 3, rank, p.as_ptr(), p.len(), s.as_ptr(), s.len(), m.as_ptr(), m.len(), 9.0,
+                    out.as_mut_ptr(), out.len(), 0, finite, 0, 1,
+                ),
+                Some(powers) => ml_tirust_evaluate_dp_powers(
+                    c, 3, rank, powers.as_ptr(), powers.len(), p.as_ptr(), p.len(), s.as_ptr(), s.len(),
+                    m.as_ptr(), m.len(), 9.0, out.as_mut_ptr(), out.len(), 0, finite, 0, 1,
+                ),
+            }
+        };
+        (status, out)
+    }
+
+    fn records(values: &[String]) -> Vec<u8> {
+        let mut bytes = vec![b' '; values.len() * RECORD];
+        for (i, value) in values.iter().enumerate() {
+            bytes[i * RECORD..i * RECORD + value.len()].copy_from_slice(value.as_bytes());
+        }
+        bytes
+    }
+
+    fn mp(c: *mut Context, rank: i32, powers: &[i32]) -> (i32, Vec<C64>) {
+        let (p, s, m) = triangle(4.0);
+        let text = |x: f64| format!("{x:e}");
+        let p = records(&p.iter().map(|&x| text(x)).collect::<Vec<_>>());
+        let s = records(&s.iter().map(|&x| text(x)).collect::<Vec<_>>());
+        let m = records(&m.iter().flat_map(|z| [text(z.re), text(z.im)]).collect::<Vec<_>>());
+        let scale = records(&[text(9.0)]);
+        let nc = dimensions(3, rank).unwrap().1;
+        let mut output = vec![0u8; 8 * nc * RECORD];
+        let status = unsafe {
+            ml_tirust_evaluate_mp_powers(
+                c, 3, rank, powers.as_ptr(), powers.len(), p.as_ptr(), p.len(), s.as_ptr(), s.len(),
+                m.as_ptr(), m.len(), scale.as_ptr(), scale.len(), output.as_mut_ptr(), output.len(), 0, 1, 0, 1,
+            )
+        };
+        let value = |k: usize| -> f64 {
+            std::str::from_utf8(&output[k * RECORD..(k + 1) * RECORD]).unwrap().trim().parse().unwrap()
+        };
+        let values = (0..4 * nc).map(|k| C64 { re: value(2 * k), im: value(2 * k + 1) }).collect();
+        (status, values)
+    }
+
+    fn relative(values: &[C64], reference: &[C64]) -> f64 {
+        let error = values.iter().zip(reference).map(|(a, b)| (a.re - b.re).hypot(a.im - b.im)).fold(0.0, f64::max);
+        error / reference.iter().map(|z| z.re.hypot(z.im)).fold(0.0, f64::max)
+    }
+
+    #[test]
+    fn unit_powers_reproduce_the_original_entry_points() {
+        let (a, b) = (handle(), handle());
+        let (status, original) = dp(a, 2, None, 4.0, 1);
+        assert_eq!(status, SUCCESS);
+        assert_eq!(dp(b, 2, Some(&[1, 1, 1]), 4.0, 1), (SUCCESS, original));
+        assert_eq!(unsafe { ml_tirust_supports_powers(3, 2, [1, 1, 1].as_ptr(), 3, 1) }, SUCCESS);
+        for handle in [a, b] {
+            unsafe { ml_tirust_context_destroy(handle) };
+        }
+    }
+
+    /// Line 0 doubled: the mass derivative of the unit-power integral
+    /// (central differences, one Richardson step).
+    #[test]
+    fn a_doubled_line_is_the_mass_derivative_in_dp_and_qp() {
+        let c = handle();
+        let powers = [2, 1, 1];
+        assert_eq!(unsafe { ml_tirust_supports_powers(3, 2, powers.as_ptr(), 3, 1) }, SUCCESS);
+        let (status, dotted) = dp(c, 2, Some(&powers), 4.0, 1);
+        assert_eq!(status, SUCCESS);
+        let central = |h: f64| -> Vec<C64> {
+            let (up, down) = (dp(c, 2, None, 4.0 + h, 1).1, dp(c, 2, None, 4.0 - h, 1).1);
+            up.iter().zip(&down).map(|(u, d)| C64 { re: (u.re - d.re) / (2.0 * h), im: (u.im - d.im) / (2.0 * h) }).collect()
+        };
+        let (coarse, fine) = (central(4e-3), central(2e-3));
+        let derivative: Vec<C64> = coarse
+            .iter()
+            .zip(&fine)
+            .map(|(c, f)| C64 { re: (4.0 * f.re - c.re) / 3.0, im: (4.0 * f.im - c.im) / 3.0 })
+            .collect();
+        assert!(relative(&dotted, &derivative) <= 1e-8, "DP against d/dm^2: {:e}", relative(&dotted, &derivative));
+        let (status, quad) = mp(c, 2, &powers);
+        assert_eq!(status, SUCCESS);
+        assert!(relative(&quad, &dotted) <= 1e-13, "QP against DP: {:e}", relative(&quad, &dotted));
+        unsafe { ml_tirust_context_destroy(c) };
+    }
+
+    #[test]
+    fn raised_powers_are_refused_pole_only_and_invalid() {
+        let c = handle();
+        let powers = [2, 1, 1];
+        assert_eq!(unsafe { ml_tirust_supports_powers(3, 2, powers.as_ptr(), 3, 0) }, UNSUPPORTED);
+        assert_eq!(dp(c, 2, Some(&powers), 4.0, 0).0, UNSUPPORTED);
+        for bad in [[0, 1, 1], [9, 1, 1]] {
+            assert_eq!(unsafe { ml_tirust_supports_powers(3, 2, bad.as_ptr(), 3, 1) }, UNSUPPORTED);
+            assert_eq!(dp(c, 2, Some(&bad), 4.0, 1).0, ERROR);
+        }
+        assert_eq!(unsafe { ml_tirust_supports_powers(3, 2, powers.as_ptr(), 2, 1) }, UNSUPPORTED);
+        unsafe { ml_tirust_context_destroy(c) };
+    }
+}
+
+#[cfg(test)]
+mod captured_failures;

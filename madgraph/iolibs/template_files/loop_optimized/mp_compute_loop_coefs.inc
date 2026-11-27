@@ -12,6 +12,11 @@ C Modules
 C
       use %(proc_prefix)sPOLYNOMIAL_CONSTANTS
       USE ALOHA_OBJECT
+## if(OniaPwave) {
+C     A P-wave bound state: the dual momenta and loop momenta (polynomial.f;
+C     the double-precision calls, not used here, take PWPD)
+      USE %(proc_prefix)sPW_DUAL, ONLY: PWPD, MPPWPD, MPPWPL, %(proc_prefix)sPW_DUAL_INIT
+## }
 C
       IMPLICIT NONE
 C  
@@ -89,6 +94,32 @@ C
 C FUNCTIONS
 C
       LOGICAL %(proc_prefix)sIS_HEL_SELECTED
+## if(Onia) {
+      LOGICAL %(proc_prefix)sONIA_HEL_LIVE
+## }
+## if(OniaPwave) {
+      LOGICAL %(proc_prefix)sMP_ONIA_PW_DIRECTION
+      INTEGER ONIA_ILZ
+C     the derivatives of the loop wavefunctions and the polynomials of the
+C     propagator derivatives
+	  %(complex_mp_format)s DWL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  common/%(proc_prefix)sMP_PW_DWL/DWL
+	  %(complex_mp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+	  common/%(proc_prefix)sMP_PW_PCOEFS/PCOEFS
+## if(OniaPwave2) {
+C     Two P-wave bound states: the derivatives DWL2 (second state) and D2WL
+C     (mixed) of the loop wavefunctions, and the polynomials of the
+C     propagator derivatives
+	  %(complex_mp_format)s DWL2(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  %(complex_mp_format)s D2WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  common/%(proc_prefix)sMP_PW_DWL2/DWL2,D2WL
+	  %(complex_mp_format)s PW2_P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+	  %(complex_mp_format)s PW2_P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+	  %(complex_mp_format)s PW2_PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
+	  %(complex_mp_format)s PW2_PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
+	  common/%(proc_prefix)sMP_PW2_PCOEFS/PW2_P1,PW2_P2,PW2_PX,PW2_PT
+## }
+## }
       INTEGER %(proc_prefix)sML5SOINDEX_FOR_BORN_AMP
 	  INTEGER %(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP
 	  INTEGER %(proc_prefix)sML5SQSOINDEX
@@ -126,11 +157,15 @@ C
 	  %(complex_dp_format)s DP_AMP(NBORNAMPS)
 	  common/%(proc_prefix)sAMPS/DP_AMP
 ## }	  
+## if(not OniaPwave) {
 	  type(mp_aloha) W(NWAVEFUNCS)
 	  common/%(proc_prefix)sMP_W/W  
+## }
 
+## if(not OniaPwave) {
 	  type(aloha) DPW(NWAVEFUNCS)
 	  common/%(proc_prefix)sW/DPW
+## }
 
 	  %(complex_mp_format)s WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
 	  %(complex_mp_format)s PL(0:3,-1:NLOOPWAVEFUNCS)
@@ -206,7 +241,12 @@ C BEGIN CODE
 C ----------
 
 C Decide whether to really compute the integrand in quadruple precision or to fake it and copy the double precision computation in the quadruple precision variables.
-COMPUTE_INTEGRAND_IN_QP = ((MLREDUCTIONLIB(LIBINDEX).eq.6.AND.UseQPIntegrandForNinja) .OR. (MLREDUCTIONLIB(LIBINDEX).eq.1.AND.UseQPIntegrandForCutTools))
+COMPUTE_INTEGRAND_IN_QP = ((MLREDUCTIONLIB(LIBINDEX).eq.6.AND.UseQPIntegrandForNinja) .OR. (MLREDUCTIONLIB(LIBINDEX).eq.1.AND.UseQPIntegrandForCutTools) .OR. (MLREDUCTIONLIB(LIBINDEX).eq.8.AND.UseQPIntegrandForNinjaRS) .OR. (MLREDUCTIONLIB(LIBINDEX).eq.9.AND.UseQPIntegrandForTIRust))
+## if(OniaPwave) {
+C A P-wave bound state: the integrand is always computed in quadruple
+C precision (its derivative has no double-precision copy here)
+COMPUTE_INTEGRAND_IN_QP = .TRUE.
+## }
 
 C To be on the safe side, we always update the MP params here.
 C It can be redundant as this routine can be called a couple of times for the same PS point during the stability checks.
@@ -231,6 +271,24 @@ DO I=0,3
     DP_PL(I,0)=DCMPLX(0.0d0,0.0d0)
   ENDIF
 ENDDO
+## if(OniaPwave) {
+C The starting loop wavefunctions do not depend on the relative momentum
+CALL %(proc_prefix)sPW_DUAL_INIT()
+DO I=0,3
+  MPPWPL(I,-1)=ZERO
+  MPPWPL(I,0)=ZERO
+ENDDO
+DWL(:,:,:,-1:0)=(ZERO,ZERO)
+PCOEFS=(ZERO,ZERO)
+## if(OniaPwave2) {
+DWL2(:,:,:,-1:0)=(ZERO,ZERO)
+D2WL(:,:,:,-1:0)=(ZERO,ZERO)
+PW2_P1=(ZERO,ZERO)
+PW2_P2=(ZERO,ZERO)
+PW2_PX=(ZERO,ZERO)
+PW2_PT=(ZERO,ZERO)
+## }
+## }
 
 ## if(AmplitudeReduction){
 IF (.NOT.SKIP_LOOPNUM_COEFS_CONSTRUCTION) THEN
@@ -313,6 +371,19 @@ DO K=1,3
 ENDDO
 
 DPW_COPIED = .False.
+## if(Onia) {
+## if(OniaPwave) {
+C The weights of the P-wave bound state for this PS point
+CALL %(proc_prefix)sMP_ONIA_PREPARE(MP_P)
+## } else {
+C The effective Born amplitudes of the bound states for this PS point
+IF (COMPUTE_INTEGRAND_IN_QP) THEN
+  CALL %(proc_prefix)sMP_ONIA_PREPARE(MP_P)
+ELSE
+  CALL %(proc_prefix)sONIA_PREPARE(P)
+ENDIF
+## }
+## }
 DO H=1,NCOMB
   IF ((HELPICKED.EQ.H).OR.((HELPICKED.EQ.-1).AND.(CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED).OR.(GOODHEL(H).GT.-HELOFFSET.AND.GOODHEL(H).NE.0)))) THEN
 
@@ -320,10 +391,25 @@ C  Handle the possible requirement of specific polarizations
   IF ((.NOT.CHECKPHASE).AND.HELDOUBLECHECKED.AND.POLARIZATIONS(0,0).eq.0.AND.(.NOT.%(proc_prefix)sIS_HEL_SELECTED(H))) THEN
     CYCLE
   ENDIF
+## if(Onia) {
+C  A constituent helicity configuration without effective Born at this point
+  IF (.NOT.%(proc_prefix)sONIA_HEL_LIVE(H)) CYCLE
+## }
 
   DO I=1,NEXTERNAL
     NHEL(I)=HELC(I,H)
   ENDDO
+## if(OniaPwave) {
+C  A P-wave bound state: the amplitudes and their derivatives along each
+C  direction eps(L_z) of the relative momentum (dual momenta MPPWPD)
+## if(OniaPwave2) {
+C  (two P-wave states: each pair of directions IDIR = ILZ1 + 3 (ILZ2-1))
+  DO ONIA_ILZ=1,9
+## } else {
+  DO ONIA_ILZ=1,3
+## }
+  IF (.NOT.%(proc_prefix)sMP_ONIA_PW_DIRECTION(MP_P,H,ONIA_ILZ,MPPWPD)) CYCLE
+## }
 
   IF (COMPUTE_INTEGRAND_IN_QP) THEN  
     MP_UVCT_REQ_SO_DONE=.FALSE.
@@ -399,6 +485,7 @@ C   Copy back to the quantities computed in DP in the QP containers (but only th
         AMPL(K,I)=CMPLX(DP_AMPL(K,I),KIND=16)
       ENDDO
     ENDDO
+## if(not OniaPwave) {
     DO I=1,NWAVEFUNCS
       DO J=1,SIZE(W(I)%W)
         W(I)%W(J)=CMPLX(DPW(I)%W(J),KIND=16)
@@ -406,10 +493,28 @@ C   Copy back to the quantities computed in DP in the QP containers (but only th
       W(I)%P = DPW(I)%P
       W(I)%flv_index = DPW(I)%flv_index
     ENDDO
+## }
   ENDIF
 
 3000 CONTINUE
   MP_UVCT_REQ_SO_DONE=.TRUE.
+## if(OniaPwave) {
+C The P-wave bound state: the counterterm amplitudes with their effective
+C Born (onia_loop.f)
+  CALL %(proc_prefix)sMP_ONIA_PW_CT(H,HEL_MULT,ANS)
+## } else {
+## if(Onia) {
+C The bound states: the Born amplitudes are replaced by the effective Born
+C of this constituent helicity configuration
+  IF (COMPUTE_INTEGRAND_IN_QP) THEN
+    CALL %(proc_prefix)sMP_ONIA_EFFECTIVE_BORN(H,AMP)
+  ELSE
+    CALL %(proc_prefix)sONIA_EFFECTIVE_BORN(H,DP_AMP)
+    DO I=1,NBORNAMPS
+      AMP(I)=CMPLX(DP_AMP(I),KIND=16)
+    ENDDO
+  ENDIF
+## }
 
 ## if(not AmplitudeReduction) { 
   IF (COMPUTE_INTEGRAND_IN_QP) THEN
@@ -451,6 +556,7 @@ C   Copy back to the quantities computed in DP in the QP containers (but only th
   ENDIF
 
 ## }
+## }
 
   IF (COMPUTE_INTEGRAND_IN_QP) THEN
     
@@ -476,6 +582,9 @@ C   Copy back to the coefficients computed in DP in the QP containers
 
   4000 CONTINUE
   MP_LOOP_REQ_SO_DONE=.TRUE.
+## if(OniaPwave) {
+  ENDDO
+## }
 
 ## if(AmplitudeReduction) {
   IF (COMPUTE_INTEGRAND_IN_QP) THEN
@@ -498,6 +607,7 @@ C Copy the multiple precision CT amplitudes computed to the AMPL double precisio
 
 c Copy the qp wfs to the dp ones as they are used to setup the CT calls.
 C This needs to be done once since only the momenta of these WF matters.
+## if(not OniaPwave) {
   IF(.NOT.DPW_COPIED.AND.COMPUTE_INTEGRAND_IN_QP) THEN
     DO I=1,NWAVEFUNCS
       DO J=1,SIZE(W(I)%W)
@@ -508,6 +618,7 @@ C This needs to be done once since only the momenta of these WF matters.
     ENDDO
     DPW_COPIED=.True.
   ENDIF
+## }
 
 ## if(AmplitudeReduction) {
   DO I=1,NSQUAREDSO

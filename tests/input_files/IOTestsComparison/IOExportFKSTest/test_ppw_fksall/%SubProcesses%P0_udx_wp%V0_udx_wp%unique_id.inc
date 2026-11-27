@@ -1,2 +1,1 @@
-      integer UNIQUE_ID
-      parameter(UNIQUE_ID=1)
+../../_shared/IOExportFKSTest%test_ppw_fksall%%SubProcesses%P0_dxu_wp%V0_dxu_wp%unique_id.inc

@@ -978,6 +978,7 @@ pub(crate) fn _lower_recurrence_direct_v2(
     helicity_dispatch_destination: Option<PathBuf>,
     progress_callback: Option<Py<PyAny>>,
 ) -> PyResult<Py<PyAny>> {
+    let _unlock = pyamplicol::unlock();
     let extraction_started = Instant::now();
     let owned = parse_input(builder_input)?;
     let prepared_template = parse_prepared_template_input(prepared_template_input)?;
@@ -1041,6 +1042,7 @@ pub(crate) fn _on_the_fly_test_support_probe_v1(
     selected_public_flow_id: u32,
     public_helicities: Vec<i32>,
 ) -> PyResult<Py<PyAny>> {
+    let _unlock = pyamplicol::unlock();
     let input = parse_input(builder_input)?;
     let prepared_template = parse_prepared_template_input(prepared_template_input)?;
     let direct_template_catalog_json = direct_template_catalog_json.as_bytes().to_vec();
@@ -1093,6 +1095,7 @@ pub(crate) fn _on_the_fly_query_family_census_v1(
     public_helicities: Vec<Vec<i32>>,
     enable_color_projection: bool,
 ) -> PyResult<Py<PyAny>> {
+    let _unlock = pyamplicol::unlock();
     if selected_public_flow_ids.len() != public_helicities.len() {
         return Err(PyValueError::new_err(
             "on-the-fly query-family flow and helicity columns have different lengths",
@@ -1176,6 +1179,7 @@ pub(crate) fn _on_the_fly_artifact_probe_v1(
     enable_color_projection: bool,
     query_family: Option<Vec<(u32, Vec<i32>)>>,
 ) -> PyResult<Py<PyAny>> {
+    let _unlock = pyamplicol::unlock();
     let input = parse_input(builder_input)?;
     let prepared_template = parse_prepared_template_input(prepared_template_input)?;
     let direct_template_catalog_json = direct_template_catalog_json.as_bytes().to_vec();
@@ -1263,6 +1267,7 @@ pub(crate) fn _on_the_fly_execution_diagnostic_v1(
     point_major_external_momenta: Vec<f64>,
     parameter_overrides: Option<BTreeMap<String, Vec<f64>>>,
 ) -> PyResult<Py<PyAny>> {
+    let _unlock = pyamplicol::unlock();
     let input = parse_input(builder_input)?;
     let prepared_template = parse_prepared_template_input(prepared_template_input)?;
     let direct_template_catalog_json = direct_template_catalog_json.as_bytes().to_vec();
@@ -1379,6 +1384,7 @@ pub(crate) fn _build_on_the_fly_process_seeds_v1(
     direct_template_catalog_json: &Bound<'_, PyBytes>,
     prepared_kernel_pack_digest: &str,
 ) -> PyResult<Py<PyList>> {
+    let _unlock = pyamplicol::unlock();
     let ordered_source_projection_jsons =
         owned_on_the_fly_source_projection_jsons(ordered_source_projection_jsons)?;
     let recurrence_template_catalog_json = recurrence_template_catalog_json.as_bytes().to_vec();
@@ -1410,6 +1416,7 @@ pub(crate) fn _build_on_the_fly_process_seed_v1(
     direct_template_catalog_json: &Bound<'_, PyBytes>,
     prepared_kernel_pack_digest: &str,
 ) -> PyResult<Py<PyBytes>> {
+    let _unlock = pyamplicol::unlock();
     let source_projection_json = source_projection_json.as_bytes().to_vec();
     let recurrence_template_catalog_json = recurrence_template_catalog_json.as_bytes().to_vec();
     let direct_template_catalog_json = direct_template_catalog_json.as_bytes().to_vec();
@@ -1437,6 +1444,7 @@ pub(crate) fn _inspect_on_the_fly_process_seed_v1(
     py: Python<'_>,
     payload: &Bound<'_, PyBytes>,
 ) -> PyResult<String> {
+    let _unlock = pyamplicol::unlock();
     let payload = payload.as_bytes().to_vec();
     py.detach(move || {
         rusticol_core::__private::inspect_on_the_fly_process_seed_identity_json_v1(&payload)
@@ -2294,7 +2302,7 @@ fn resolved_helicities_from_direct_plan(
         .iter()
         .enumerate()
         .map(|(index, row)| {
-            if row.id != index as u32 {
+            if !rusticol_core::narrow::is_index(row.id, index) {
                 return Err(invalid(format!(
                     "direct resolved helicity {index} has non-canonical ID {}",
                     row.id
@@ -2866,6 +2874,7 @@ fn exact_sections_from_direct_plan(
         contributions: plan.contributions().to_vec(),
         finalizations: plan.finalizations().to_vec(),
         closures: plan.closures().to_vec(),
+        closure_amplitude_orders: plan.amplitude_orders().closure_components().to_vec(),
         row_groups: plan.row_groups().to_vec(),
         momentum_forms: plan.momentum_forms().to_vec(),
         momentum_terms: plan.momentum_terms().to_vec(),

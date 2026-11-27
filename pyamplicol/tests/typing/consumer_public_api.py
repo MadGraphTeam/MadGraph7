@@ -30,19 +30,27 @@ from pyamplicol import (
     GenerationResult,
     Generator,
     HelicityConfiguration,
+    LaurentCoefficients,
     ModelSource,
     ProcessPhysics,
     ProcessRequest,
     ProcessSet,
     ResolvedEvaluation,
+    ResolvedVirtualEvaluation,
     RunConfig,
     Runtime,
+    VirtualEvaluation,
+    VirtualRescueLevel,
+    VirtualRescuePolicy,
+    VirtualRescueRecord,
+    VirtualVerificationDiagnostic,
     WarmUpResult,
     benchmark,
     generate,
     load,
 )
 from pyamplicol.api import GeneratorBackend, ModelParameters, Momenta, RuntimeBackend
+from pyamplicol.benchmarking import VirtualProfileResult
 from pyamplicol.config import (
     CONFIG_SECTIONS,
     FIELD_REGISTRY,
@@ -109,7 +117,7 @@ def exercise_runtime(artifact: Path) -> None:
     assert_type(runtime.artifact_id, str)
     assert_type(
         runtime.execution_mode,
-        Literal["compiled", "eager", "recurrence", "on-the-fly"],
+        Literal["compiled", "eager", "recurrence", "on-the-fly", "loop_recurrence"],
     )
     assert_type(runtime.inspect(), Mapping[str, object])
     physics = runtime.physics
@@ -120,18 +128,48 @@ def exercise_runtime(artifact: Path) -> None:
             helicities=physics.helicities,
             color_flows=physics.color_flows,
         ),
-        tuple[complex | Decimal, ...],
+        tuple[complex | Decimal, ...] | VirtualEvaluation,
     )
     resolved = runtime.evaluate_resolved(MOMENTA, precision=32)
-    assert_type(resolved, ResolvedEvaluation)
-    assert_type(resolved.total(), tuple[complex | Decimal, ...])
+    assert_type(resolved, ResolvedEvaluation | ResolvedVirtualEvaluation)
+    assert_type(resolved.total(), tuple[complex | Decimal, ...] | VirtualEvaluation)
     runtime.set_model_parameters(PARAMETERS)
     runtime.set_model_parameter("normalization.alpha_s_me_check", 0.119)
     runtime.mute_warnings()
     runtime.unmute_warnings()
     runtime.clear()
-    assert_type(BenchmarkRunner(BenchmarkConfig()).run(runtime), BenchmarkResult)
-    assert_type(benchmark(runtime, points=MOMENTA), BenchmarkResult)
+    # A loop runtime profiles to a VirtualProfileResult; a tree runtime to a
+    # BenchmarkResult, which a consumer narrows to.
+    profiled = BenchmarkRunner(BenchmarkConfig()).run(runtime)
+    assert_type(profiled, BenchmarkResult | VirtualProfileResult)
+    if isinstance(profiled, BenchmarkResult):
+        assert_type(profiled, BenchmarkResult)
+    one_shot = benchmark(runtime, points=MOMENTA)
+    assert_type(one_shot, BenchmarkResult | VirtualProfileResult)
+    if isinstance(one_shot, BenchmarkResult):
+        assert_type(one_shot, BenchmarkResult)
+
+
+def exercise_virtual_runtime(artifact: Path) -> None:
+    runtime = Runtime.load(
+        artifact,
+        model_parameters={"aS": Decimal("0.118")},
+        arithmetic="arbitrary",
+        precision=70,
+    )
+    result = runtime.evaluate(
+        MOMENTA,
+        arithmetic="arbitrary",
+        precision=70,
+        mu_r2="1000000",
+        r2_strategy="model",
+    )
+    assert_type(result, tuple[complex | Decimal, ...] | VirtualEvaluation)
+    if isinstance(result, VirtualEvaluation):
+        assert_type(result.shape, tuple[int, int, int])
+        assert_type(result.for_order((("QCD", 6),)), VirtualEvaluation)
+        assert_type(result.sum_orders(), tuple[LaurentCoefficients | None, ...])
+        assert_type(result.valid, tuple[bool, ...])
 
 
 def exercise_correlations(artifact: Path, momenta: Momenta) -> None:
@@ -153,23 +191,36 @@ def exercise_correlations(artifact: Path, momenta: Momenta) -> None:
     }
     assert_type(requests, dict[str, CorrelatedRequest])
     results = runtime.evaluate_correlated_many(momenta, requests, precision=40)
-    assert_type(results, dict[str, tuple[CorrelatedValue, ...]])
-    assert_type(results["dipole13_spin"][0].real, Decimal)
-    assert_type(results["dipole13_spin"][0].imag, Decimal)
-    assert_type(runtime.evaluate_correlated(momenta), tuple[CorrelatedValue, ...])
+    assert_type(
+        results, dict[str, tuple[CorrelatedValue, ...]] | dict[str, VirtualEvaluation]
+    )
+    tree_result = results["dipole13_spin"]
+    if isinstance(tree_result, tuple):
+        assert_type(tree_result[0].real, Decimal)
+        assert_type(tree_result[0].imag, Decimal)
+    assert_type(
+        runtime.evaluate_correlated(momenta),
+        tuple[CorrelatedValue, ...] | VirtualEvaluation,
+    )
     runtime.set_spin_correlation_vectors(
         {3: (Decimal(0), (Decimal("1.00000000000000000001"), Decimal("1e-25")), 0, 0)}
     )
     assert_type(
         runtime.evaluate_correlated(momenta, arithmetic="double-double", precision=31),
-        tuple[CorrelatedValue, ...],
+        tuple[CorrelatedValue, ...] | VirtualEvaluation,
     )
     assert_type(
         runtime.evaluate_correlated_many(
             momenta, requests, arithmetic="double-double", precision=31
         ),
-        dict[str, tuple[CorrelatedValue, ...]],
+        dict[str, tuple[CorrelatedValue, ...]] | dict[str, VirtualEvaluation],
     )
+    virtual_result = runtime.evaluate_correlated(
+        momenta, mu_r2="1000000", arithmetic="arbitrary", precision=70
+    )
+    if isinstance(virtual_result, VirtualEvaluation):
+        assert_type(virtual_result.correlated, bool)
+        assert_type(virtual_result.shape, tuple[int, int, int])
     runtime.set_spin_correlation_vectors(None)
 
 
@@ -294,5 +345,34 @@ def exercise_protocols(
     assert_type(generator.plan(processes), GenerationPlan)
     assert_type(generator.generate(processes, "artifact"), GenerationResult)
     assert_type(runtime.physics, ProcessPhysics)
-    assert_type(runtime.evaluate(MOMENTA), Sequence[complex | Decimal])
-    assert_type(runtime.evaluate_resolved(MOMENTA), ResolvedEvaluation)
+    assert_type(
+        runtime.evaluate(MOMENTA), Sequence[complex | Decimal] | VirtualEvaluation
+    )
+    assert_type(
+        runtime.evaluate_resolved(MOMENTA),
+        ResolvedEvaluation | ResolvedVirtualEvaluation,
+    )
+
+
+def exercise_virtual_stability(runtime: Runtime) -> None:
+    policy = VirtualRescuePolicy(
+        (
+            VirtualRescueLevel("double", rotations=1, target=1e-6),
+            VirtualRescueLevel("arbitrary", 40, rotations=("euler:0.1,0.2,0.3",)),
+        )
+    )
+    value = runtime.evaluate(MOMENTA, mu_r2="1000000", stability=policy)
+    if isinstance(value, VirtualEvaluation):
+        assert_type(value.rescue, tuple[VirtualRescueRecord, ...] | None)
+        assert_type(value.rescue_counts, dict[int | str, int] | None)
+        assert_type(
+            value.diagnostics[0].verification, VirtualVerificationDiagnostic | None
+        )
+    resolved = runtime.evaluate_resolved_with_prec(
+        MOMENTA, 40, arithmetic="arbitrary", mu_r2="1000000"
+    )
+    if isinstance(resolved, ResolvedVirtualEvaluation):
+        assert_type(
+            resolved.total().diagnostics[0].verification,
+            VirtualVerificationDiagnostic | None,
+        )

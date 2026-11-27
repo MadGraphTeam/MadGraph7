@@ -1,0 +1,531 @@
+{
+ "note": "u u~ > chic0(1|3P01) Jpsi(1|3P08) [virt=QCD] (a P-wave colour singlet with a P-wave colour octet; loop_sm_onia-c_mass, QCD only) on TIRust da7902b + bridge v16. dp: qp_check.py at the seed-1 points, modes 1 and 2 with MLStabThres 1d99, -1 with 1.0d-3. qp: CTModeRun 4 at 20 GeV, point 0. terms: appendix_b.py terms (the parts of ONIA_IR_POLES in the order of eq. (B.2), CTModeRun 1).",
+ "dp": {
+  "output": "P0_uux_chic013P01Jpsi13P08",
+  "masses": [
+   0.0,
+   0.0,
+   3.1,
+   3.1
+  ],
+  "modes": [
+   "1",
+   "2",
+   "-1"
+  ],
+  "note": "The quadruple-precision path of a two-P-wave output against its double\nprecision: the virtual at points in CTModeRun 1 (double precision), 4\n(quadruple precision) and 5 (quadruple precision, loop direction reversed),\nwith MLStabThres 1d99, and in CTModeRun -1 with MLStabThres 1d-30, so that\nMadLoop's stability test sends every point to quadruple precision (the\nrescue: return code 2xx when the two quadruple-precision passes agree).\n`--thres X` sets the MLStabThres of CTModeRun -1 instead (MadLoop's default\nis 1.0d-3).\nEach point prints the poles in units of Born * alpha_s/(2 pi) against\nONIA_IR_POLES, the finite parts, the differences between the passes, the\nreturn codes and the times.\n\n    qp_check.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--modes 1,4,5,-1] [--thres 1.0d-30]\n\nThe points are those of fixtures.py and acceptance.py (seed 1).\n",
+  "records": [
+   {
+    "energy": 8.0,
+    "point": 0,
+    "momenta": [
+     [
+      "0x1.0000000000000p+2",
+      "0x0.0p+0",
+      "0x0.0p+0",
+      "0x1.0000000000000p+2"
+     ],
+     [
+      "0x1.0000000000000p+2",
+      "0x0.0p+0",
+      "0x0.0p+0",
+      "-0x1.0000000000000p+2"
+     ],
+     [
+      "0x1.0000000000000p+2",
+      "0x1.00d545973c1a7p+1",
+      "-0x1.37e333ef8b58ep+0",
+      "-0x1.e0337a04b91f5p-1"
+     ],
+     [
+      "0x1.0000000000000p+2",
+      "-0x1.00d545973c1a7p+1",
+      "0x1.37e333ef8b58ep+0",
+      "0x1.e0337a04b91f5p-1"
+     ]
+    ],
+    "ctmode1": {
+     "born": 1.5044591995095978e-10,
+     "finite": -8.803719786583787e-11,
+     "single": -1.617564087846311e-11,
+     "double": -7.534445321944237e-12,
+     "accuracy": -1.0,
+     "ret_code": 110,
+     "ao2pi": 0.01878028328484365,
+     "mu": 8.0,
+     "time": 7.968591,
+     "predicted_single_norm": -5.725045507606057,
+     "predicted_double_norm": -2.6666666666666665,
+     "finite_norm": -31.15901051028969,
+     "single_norm": -5.7250455075908695,
+     "double_norm": -2.666666666667755
+    },
+    "ctmode2": {
+     "born": 1.5044591995095978e-10,
+     "finite": -8.803719786590846e-11,
+     "single": -1.617564087845095e-11,
+     "double": -7.534445321935747e-12,
+     "accuracy": -1.0,
+     "ret_code": 110,
+     "ao2pi": 0.01878028328484365,
+     "mu": 8.0,
+     "time": 7.980857,
+     "predicted_single_norm": -5.725045507606057,
+     "predicted_double_norm": -2.6666666666666665,
+     "finite_norm": -31.159010510314673,
+     "single_norm": -5.725045507586565,
+     "double_norm": -2.66666666666475
+    },
+    "ctmode-1": {
+     "born": 1.5044591995095978e-10,
+     "finite": -8.803719786587317e-11,
+     "single": -1.6175640878457028e-11,
+     "double": -7.534445321939993e-12,
+     "accuracy": 1.8956e-11,
+     "ret_code": 213,
+     "ao2pi": 0.01878028328484365,
+     "mu": 8.0,
+     "time": 9.605386,
+     "predicted_single_norm": -5.725045507606057,
+     "predicted_double_norm": -2.6666666666666665,
+     "finite_norm": -31.15901051030218,
+     "single_norm": -5.7250455075887166,
+     "double_norm": -2.6666666666662526
+    }
+   },
+   {
+    "energy": 8.0,
+    "point": 1,
+    "momenta": [
+     [
+      "0x1.0000000000000p+2",
+      "0x0.0p+0",
+      "0x0.0p+0",
+      "0x1.0000000000000p+2"
+     ],
+     [
+      "0x1.0000000000000p+2",
+      "0x0.0p+0",
+      "0x0.0p+0",
+      "-0x1.0000000000000p+2"
+     ],
+     [
+      "0x1.0000000000000p+2",
+      "-0x1.88db861f89fbdp-2",
+      "0x1.70ecccc831054p-3",
+      "-0x1.3efbd1bf09e50p+1"
+     ],
+     [
+      "0x1.0000000000000p+2",
+      "0x1.88db861f89fbdp-2",
+      "-0x1.70ecccc831054p-3",
+      "0x1.3efbd1bf09e50p+1"
+     ]
+    ],
+    "ctmode1": {
+     "born": 8.085494275226916e-12,
+     "finite": -7.865588284460241e-11,
+     "single": -5.192688293824739e-13,
+     "double": -4.0492766130425346e-13,
+     "accuracy": -1.0,
+     "ret_code": 110,
+     "ao2pi": 0.01878028328484365,
+     "mu": 8.0,
+     "time": 7.081129,
+     "predicted_single_norm": -3.4196648335814968,
+     "predicted_double_norm": -2.666666666666666,
+     "finite_norm": -517.9913376295326,
+     "single_norm": -3.419664820908016,
+     "double_norm": -2.666666666707971
+    },
+    "ctmode2": {
+     "born": 8.085494275226916e-12,
+     "finite": -7.865588338663585e-11,
+     "single": -5.192688180556481e-13,
+     "double": -4.049276602639094e-13,
+     "accuracy": -1.0,
+     "ret_code": 110,
+     "ao2pi": 0.01878028328484365,
+     "mu": 8.0,
+     "time": 7.14126,
+     "predicted_single_norm": -3.4196648335814968,
+     "predicted_double_norm": -2.666666666666666,
+     "finite_norm": -517.9913411991146,
+     "single_norm": -3.4196647463147696,
+     "double_norm": -2.666666659856745
+    },
+    "ctmode-1": {
+     "born": 8.085494275226916e-12,
+     "finite": -7.865588311561913e-11,
+     "single": -5.192688237190609e-13,
+     "double": -4.049276607840814e-13,
+     "accuracy": 2.09e-08,
+     "ret_code": 213,
+     "ao2pi": 0.01878028328484365,
+     "mu": 8.0,
+     "time": 8.556488,
+     "predicted_single_norm": -3.4196648335814968,
+     "predicted_double_norm": -2.666666666666666,
+     "finite_norm": -517.9913394143235,
+     "single_norm": -3.4196647836113923,
+     "double_norm": -2.6666666632823577
+    }
+   },
+   {
+    "energy": 20.0,
+    "point": 0,
+    "momenta": [
+     [
+      "0x1.4000000000000p+3",
+      "0x0.0p+0",
+      "0x0.0p+0",
+      "0x1.4000000000000p+3"
+     ],
+     [
+      "0x1.4000000000000p+3",
+      "0x0.0p+0",
+      "0x0.0p+0",
+      "-0x1.4000000000000p+3"
+     ],
+     [
+      "0x1.3ffffffffffffp+3",
+      "0x1.e2fb56247673bp+2",
+      "-0x1.2541aee163b5ap+2",
+      "-0x1.c384084d604c8p+1"
+     ],
+     [
+      "0x1.3ffffffffffffp+3",
+      "-0x1.e2fb56247673bp+2",
+      "0x1.2541aee163b5ap+2",
+      "0x1.c384084d604c8p+1"
+     ]
+    ],
+    "ctmode1": {
+     "born": 3.2503309890625865e-11,
+     "finite": 4.7461308427600616e-11,
+     "single": -9.590061900797182e-13,
+     "double": -1.6277903131767103e-12,
+     "accuracy": -1.0,
+     "ret_code": 110,
+     "ao2pi": 0.01878028328484365,
+     "mu": 20.0,
+     "time": 6.875073,
+     "predicted_single_norm": -1.571056111304102,
+     "predicted_double_norm": -2.6666666666666656,
+     "finite_norm": 77.75171538730065,
+     "single_norm": -1.5710560626342887,
+     "double_norm": -2.666666666667768
+    },
+    "ctmode2": {
+     "born": 3.2503309890625865e-11,
+     "finite": 4.746130712430247e-11,
+     "single": -9.590061991505265e-13,
+     "double": -1.6277903131764242e-12,
+     "accuracy": -1.0,
+     "ret_code": 110,
+     "ao2pi": 0.01878028328484365,
+     "mu": 20.0,
+     "time": 7.678246,
+     "predicted_single_norm": -1.571056111304102,
+     "predicted_double_norm": -2.6666666666666656,
+     "finite_norm": 77.75171325222115,
+     "single_norm": -1.5710560774942015,
+     "double_norm": -2.6666666666672993
+    },
+    "ctmode-1": {
+     "born": 3.2503309890625865e-11,
+     "finite": 4.746130777595154e-11,
+     "single": -9.590061946151223e-13,
+     "double": -1.6277903131765672e-12,
+     "accuracy": 8.7736e-08,
+     "ret_code": 213,
+     "ao2pi": 0.01878028328484365,
+     "mu": 20.0,
+     "time": 8.621999,
+     "predicted_single_norm": -1.571056111304102,
+     "predicted_double_norm": -2.6666666666666656,
+     "finite_norm": 77.75171431976091,
+     "single_norm": -1.5710560700642449,
+     "double_norm": -2.6666666666675334
+    }
+   },
+   {
+    "energy": 20.0,
+    "point": 1,
+    "momenta": [
+     [
+      "0x1.4000000000000p+3",
+      "0x0.0p+0",
+      "0x0.0p+0",
+      "0x1.4000000000000p+3"
+     ],
+     [
+      "0x1.4000000000000p+3",
+      "0x0.0p+0",
+      "0x0.0p+0",
+      "-0x1.4000000000000p+3"
+     ],
+     [
+      "0x1.4000000000000p+3",
+      "-0x1.7163c68c7b3c4p+0",
+      "0x1.5ae309bdace33p-1",
+      "-0x1.2bedc83355dbep+3"
+     ],
+     [
+      "0x1.4000000000000p+3",
+      "0x1.7163c68c7b3c4p+0",
+      "-0x1.5ae309bdace33p-1",
+      "0x1.2bedc83355dbep+3"
+     ]
+    ],
+    "ctmode1": {
+     "born": 5.89533157649e-14,
+     "finite": -1.5058377260137802e-12,
+     "single": -9.808750471219265e-14,
+     "double": -2.9524265478061084e-15,
+     "accuracy": -1.0,
+     "ret_code": 110,
+     "ao2pi": 0.01878028328484365,
+     "mu": 20.0,
+     "time": 6.102191,
+     "predicted_single_norm": -88.59379925366869,
+     "predicted_double_norm": -2.6666666666666665,
+     "finite_norm": -1360.090471059591,
+     "single_norm": -88.59379612052906,
+     "double_norm": -2.6666666300122333
+    },
+    "ctmode2": {
+     "born": 5.89533157649e-14,
+     "finite": -1.5058376704540733e-12,
+     "single": -9.808750135236574e-14,
+     "double": -2.9524265556909826e-15,
+     "accuracy": -1.0,
+     "ret_code": 110,
+     "ao2pi": 0.01878028328484365,
+     "mu": 20.0,
+     "time": 7.17963,
+     "predicted_single_norm": -88.59379925366869,
+     "predicted_double_norm": -2.6666666666666665,
+     "finite_norm": -1360.0904208774054,
+     "single_norm": -88.59379308589361,
+     "double_norm": -2.666666637133945
+    },
+    "ctmode-1": {
+     "born": 5.89533157649e-14,
+     "finite": -1.5058376982339268e-12,
+     "single": -9.80875030322792e-14,
+     "double": -2.9524265517485453e-15,
+     "accuracy": 1.1002e-07,
+     "ret_code": 213,
+     "ao2pi": 0.01878028328484365,
+     "mu": 20.0,
+     "time": 7.973234,
+     "predicted_single_norm": -88.59379925366869,
+     "predicted_double_norm": -2.6666666666666665,
+     "finite_norm": -1360.0904459684982,
+     "single_norm": -88.59379460321134,
+     "double_norm": -2.666666633573089
+    }
+   },
+   {
+    "energy": 50.0,
+    "point": 0,
+    "momenta": [
+     [
+      "0x1.9000000000000p+4",
+      "0x0.0p+0",
+      "0x0.0p+0",
+      "0x1.9000000000000p+4"
+     ],
+     [
+      "0x1.9000000000000p+4",
+      "0x0.0p+0",
+      "0x0.0p+0",
+      "-0x1.9000000000000p+4"
+     ],
+     [
+      "0x1.8ffffffffffffp+4",
+      "0x1.3b0df84a89d0cp+4",
+      "-0x1.7e96da6be412ep+3",
+      "-0x1.2687670622ec6p+3"
+     ],
+     [
+      "0x1.8ffffffffffffp+4",
+      "-0x1.3b0df84a89d0cp+4",
+      "0x1.7e96da6be412ep+3",
+      "0x1.2687670622ec6p+3"
+     ]
+    ],
+    "ctmode1": {
+     "born": 1.0583729100824654e-12,
+     "finite": 2.4339372655340166e-12,
+     "single": 7.486706444511137e-14,
+     "double": -5.300411486009808e-14,
+     "accuracy": -1.0,
+     "ret_code": 110,
+     "ao2pi": 0.01878028328484365,
+     "mu": 50.0,
+     "time": 7.656599,
+     "predicted_single_norm": 3.76656918232093,
+     "predicted_double_norm": -2.6666666666666665,
+     "finite_norm": 122.4527452623017,
+     "single_norm": 3.766603889448284,
+     "double_norm": -2.6666666666913152
+    },
+    "ctmode2": {
+     "born": 1.0583729100824654e-12,
+     "finite": 2.4339490073998915e-12,
+     "single": 7.487081877929408e-14,
+     "double": -5.300411486000746e-14,
+     "accuracy": -1.0,
+     "ret_code": 110,
+     "ao2pi": 0.01878028328484365,
+     "mu": 50.0,
+     "time": 7.862645,
+     "predicted_single_norm": 3.76656918232093,
+     "predicted_double_norm": -2.6666666666666665,
+     "finite_norm": 122.45333600214174,
+     "single_norm": 3.7667927721010193,
+     "double_norm": -2.6666666666867562
+    },
+    "ctmode-1": {
+     "born": 1.0583729100824654e-12,
+     "finite": 2.4339431364669542e-12,
+     "single": 7.486894161220273e-14,
+     "double": -5.300411486005277e-14,
+     "accuracy": 1.893e-05,
+     "ret_code": 213,
+     "ao2pi": 0.01878028328484365,
+     "mu": 50.0,
+     "time": 8.574623,
+     "predicted_single_norm": 3.76656918232093,
+     "predicted_double_norm": -2.6666666666666665,
+     "finite_norm": 122.45304063222173,
+     "single_norm": 3.766698330774652,
+     "double_norm": -2.6666666666890353
+    }
+   }
+  ]
+ },
+ "qp": {
+  "energy": 20.0,
+  "point": 0,
+  "mode": "4",
+  "result": {
+   "born": 3.2503309890625865e-11,
+   "finite": 4.746130856957895e-11,
+   "single": -9.590062197888532e-13,
+   "double": -1.6277903131760451e-12,
+   "accuracy": -1.0,
+   "ret_code": 120,
+   "ao2pi": 0.01878028328484365,
+   "mu": 20.0,
+   "time": 354.6838,
+   "predicted_single_norm": -1.571056111304102,
+   "predicted_double_norm": -2.6666666666666656,
+   "finite_norm": 77.75171561989136,
+   "single_norm": -1.5710561113041692,
+   "double_norm": -2.666666666666678
+  }
+ },
+ "terms": {
+  "output": "P0_uux_chic013P01Jpsi13P08",
+  "masses": [
+   0.0,
+   0.0,
+   3.1,
+   3.1
+  ],
+  "note": "MadLoop's two-P-wave poles against app. B of the two-P-wave manuscript\n(/shared/external/madloop_onia/Manuscript/Quarkonium_FKS/JHEP_2Pwave,\neq. (B.2) = eq:Vpoles of paper.tex).\n\n    appendix_b.py table2 OUTDIR OUT.json MODE m_c:ENERGY[:NPTS] ...\n    appendix_b.py terms  OUTDIR OUT.json ENERGY:NPTS ...\n\ntable2: e+ e- > chic0(1|3P01) hc(1|1P11) [virt=QCD] at the points of the\nmanuscript's table 2 (tab:chic0hc): the computed 1/eps per Born alpha_s/2pi\nand ONIA_IR_POLES, in CTModeRun MODE (MLStabThres 1d99), with m_c set in\nthe param_card (the bound-state masses follow it).\n\nterms: patches OUTDIR in place (pass a copy) so that ONIA_IR_POLES prints\nthe parts of its 1/eps in the order of eq. (B.2):\n  APPB_T1  POLES(1), POLES(2), BORN2   lines 1-4 (point-like quarkonia)\n  APPB_T3  4 f1 Re Z_G, 4 f2 Re Z_V, Im Z_G, Im Z_V, w   line 6 (dipole-dipole)\n  APPB_T2  C1, C2, PDD                 lines 4-5 per state, and line 6\nand evaluates the output in CTModeRun 1 at the points of qp_check.py\n(seed 1), next to the computed 1/eps.\n",
+  "rows": [
+   {
+    "energy": 8.0,
+    "point": 0,
+    "omega": 2.329864724245577,
+    "c1": -5.7250455075908695,
+    "c2": -2.666666666667755,
+    "predicted": -5.725045507606057,
+    "code": 110,
+    "term1": -5.640286681221233,
+    "term1_double": -2.666666666666667,
+    "term2": [
+     -0.07315856379184014,
+     -0.590482323891407
+    ],
+    "term3_f1": -6.751121220077597,
+    "term3_f2": 7.330003281376005,
+    "term3": 0.5788820612984229,
+    "im_z": [
+     -8.280818224104632e-15,
+     -1.9873963737851106e-14
+    ]
+   },
+   {
+    "energy": 8.0,
+    "point": 1,
+    "omega": 2.329864724245577,
+    "c1": -3.419664820908016,
+    "c2": -2.666666666707971,
+    "predicted": -3.4196648335814968,
+    "code": 110,
+    "term1": -6.944439422109108,
+    "term1_double": -2.666666666666666,
+    "term2": [
+     -0.2338359711439412,
+     -1.8873526282358264
+    ],
+    "term3_f1": -43.56812507560243,
+    "term3_f2": 49.21408826350737,
+    "term3": 5.6459631879073795,
+    "im_z": [
+     -8.631247763482496e-13,
+     -2.835077365474136e-12
+    ]
+   },
+   {
+    "energy": 20.0,
+    "point": 0,
+    "omega": 19.81165452653485,
+    "c1": -1.5710560626342887,
+    "c2": -2.666666666667768,
+    "predicted": -1.571056111304102,
+    "code": 110,
+    "term1": -0.3715433964805264,
+    "term1_double": -2.666666666666666,
+    "term2": [
+     -0.5811473418837683,
+     -0.675842907669953
+    ],
+    "term3_f1": -2.5742763619499707,
+    "term3_f2": 2.6317538966801166,
+    "term3": 0.05747753473014564,
+    "im_z": [
+     -1.2867551035268463e-14,
+     -1.6645683041368576e-13
+    ]
+   },
+   {
+    "energy": 20.0,
+    "point": 1,
+    "omega": 19.811654526534856,
+    "c1": -88.59379612052906,
+    "c2": -2.6666666300122333,
+    "predicted": -88.59379925366869,
+    "code": 110,
+    "term1": -6.296161548698293,
+    "term1_double": -2.6666666666666665,
+    "term2": [
+     -47.172189830627694,
+     -54.85870387525056
+    ],
+    "term3_f1": -523.1733411997857,
+    "term3_f2": 542.9065972006935,
+    "term3": 19.733256000907847,
+    "im_z": [
+     -2.818889188397002e-11,
+     -5.933629665107692e-10
+    ]
+   }
+  ]
+ }
+}

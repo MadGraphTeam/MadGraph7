@@ -1552,7 +1552,7 @@ fn validate_closure_proof_tables(
         .map_err(|_| invalid("three-line traversal certificate count exceeds u32"))?;
 
     for (index, certificate) in reflection_certificates.iter().enumerate() {
-        if certificate.id != index as u32 {
+        if !crate::narrow::is_index(certificate.id, index) {
             return Err(invalid(format!(
                 "reflection certificate row {index} has non-dense id {}",
                 certificate.id
@@ -1560,7 +1560,7 @@ fn validate_closure_proof_tables(
         }
     }
     for (index, certificate) in three_line_traversal_certificates.iter().enumerate() {
-        if certificate.id != index as u32 {
+        if !crate::narrow::is_index(certificate.id, index) {
             return Err(invalid(format!(
                 "three-line traversal certificate row {index} has non-dense id {}",
                 certificate.id
@@ -1568,7 +1568,7 @@ fn validate_closure_proof_tables(
         }
     }
     for (index, contribution) in contributions.iter().enumerate() {
-        if contribution.id != index as u32 {
+        if !crate::narrow::is_index(contribution.id, index) {
             return Err(invalid(format!(
                 "closure proof contribution row {index} has non-dense id {}",
                 contribution.id
@@ -1599,7 +1599,7 @@ fn validate_closure_proof_tables(
 
     let mut next_contribution = 0u64;
     for (index, group) in groups.iter().enumerate() {
-        if group.id != index as u32 {
+        if !crate::narrow::is_index(group.id, index) {
             return Err(invalid(format!(
                 "closure proof group row {index} has non-dense id {}",
                 group.id
@@ -2721,7 +2721,7 @@ impl RecurrenceProgram {
             )));
         }
         for (index, helicity) in self.resolved_helicities.iter().enumerate() {
-            if helicity.id != index as u32 {
+            if !crate::narrow::is_index(helicity.id, index) {
                 return Err(invalid(format!(
                     "resolved-helicity row {index} has non-dense id {}",
                     helicity.id

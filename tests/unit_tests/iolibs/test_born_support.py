@@ -87,6 +87,42 @@ class TestBornRegistry(unittest.TestCase):
                                                for line in helper])
             self.assertFalse(support.explicit_helas_dependencies(root))
 
+    def test_quadruple_precision_aloha_records_preserve_the_dependency_proof(self):
+        # Outputs with MadLoop virtuals install aloha_functions_loop.f, which
+        # also defines MP_ALOHA/MP_ALOHA2D. Rejecting them dropped the
+        # G-rescaling helicity predicate, so every tree helicity mask was
+        # relearned whenever G changed (each point with a dynamic scale).
+        module = ['module aloha_object']
+        for name, size in (('aloha', 4), ('aloha2d', 16)):
+            module += ['type %s' % name, 'sequence', 'double complex::w(%d)' % size,
+                       'double complex :: p(0:3)', 'integer :: flv_index', 'end type %s' % name]
+        for name, size in (('mp_aloha', 4), ('mp_aloha2d', 16)):
+            module += ['type %s' % name, 'sequence', 'complex*32 :: w(%d)' % size,
+                       'complex*32 :: p(0:3)', 'integer :: flv_index', 'end type %s' % name]
+        module += ['end module aloha_object']
+        helper = ['subroutine helper(w)', 'use aloha_object', 'implicit none',
+                  'type(aloha) w', 'w%w(1)=2d0*w%p(0)', 'end',
+                  'subroutine mp_helper(w)', 'use aloha_object', 'implicit none',
+                  'type(mp_aloha) w', 'w%w(1)=2*w%p(0)', 'end']
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            directory = root/'Source/DHELAS'
+            directory.mkdir(parents=True)
+            path = directory/'aloha_functions.f'
+            support.write_fortran(path, module+helper)
+            self.assertTrue(support.explicit_helas_dependencies(root))
+            # Module-level state is still rejected inside an MP record module,
+            # including declarations spelled like the record members.
+            for hidden in ('complex*32 hidden', 'complex*32 :: hidden',
+                           'real*16 :: hidden(2)'):
+                support.write_fortran(path, module[:-1]+[hidden]+
+                                      module[-1:]+helper)
+                self.assertFalse(support.explicit_helas_dependencies(root), hidden)
+            # Only the known record names are certified.
+            support.write_fortran(path, [line.replace('mp_aloha2d', 'mp_other')
+                                         for line in module]+helper)
+            self.assertFalse(support.explicit_helas_dependencies(root))
+
     def test_target_couplings_are_transferred_as_numeric_model_state(self):
         lines = ['double complex, target :: gc_10,gc_11',
                  'double complex, target :: gal(2)',

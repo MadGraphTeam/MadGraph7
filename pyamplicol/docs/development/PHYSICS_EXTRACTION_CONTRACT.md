@@ -56,7 +56,8 @@ later, separately validated refactor.
   direct artifacts. It is not described as generic crossing reuse.
 - Resolved evaluation executes one DAG. LC exposes physical
   `(point, helicity, flow)` values; NLC/full exposes one contracted color
-  component per helicity. Structural zeros remain exact and resolved members
+  component per helicity, a strict or graded artifact one per helicity and
+  N_c degree (`nc_degree`). Structural zeros remain exact and resolved members
   sum to the compatibility total.
 - A color-singlet LC axis may have an empty ordered color word. Every nonempty
   LC word contains exactly once every external label whose model-derived color

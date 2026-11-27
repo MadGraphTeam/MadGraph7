@@ -35,11 +35,15 @@ import madgraph.core.base_objects as base_objects
 import madgraph.core.color_algebra as color
 import madgraph.core.helas_objects as helas_objects
 import madgraph.loop.loop_helas_objects as loop_helas_objects
+import madgraph.loop.loop_onia as loop_onia
+import madgraph.loop.onia_ep as onia_ep
 import madgraph.iolibs.drawing_eps as draw
 import madgraph.iolibs.files as files
 import madgraph.iolibs.group_subprocs as group_subprocs
 import madgraph.various.banner as banner_mod
 import madgraph.various.misc as misc
+import madgraph.various.ninjars_install as ninjars_install
+import madgraph.various.tirust_install as tirust_install
 import madgraph.various.q_polynomial as q_polynomial
 import madgraph.iolibs.file_writers as writers
 import madgraph.iolibs.gen_infohtml as gen_infohtml
@@ -65,6 +69,12 @@ pjoin = os.path.join
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0] + '/'
 logger = logging.getLogger('madgraph.loop_exporter')
 
+_FACTORIZED_WL_VERTEX = r'(?:FFV1L1_2|FFV1L2_1)'
+_PRIVATE_MP_WL_ROUTINE = (r'(?:TERMINAL_WL_\d+_\d+'
+    r'(?:_FACTOR_'+_FACTORIZED_WL_VERTEX+r')?|'
+    r'UPDATE_WL_[2-4]_1_FACTOR_'+_FACTORIZED_WL_VERTEX+r')')
+_PRIVATE_MP_WL_CALL = r'\bCALL MP_\w*'+_PRIVATE_MP_WL_ROUTINE+r'\('
+
 #===============================================================================
 # LoopExporterFortran
 #===============================================================================
@@ -78,6 +88,13 @@ class LoopExporterFortran(object):
         ProcessExporterFortran but give access to arguments like dir_path and
         clean using options. This avoids method resolution object ambiguity"""
 
+    # The loop color bases (LoopColorBasis) are always trace ones, and the FKS
+    # exporters, which inherit this, read the color flow of their Born and real
+    # color bases directly (color_flow_decomposition): placed before the
+    # ProcessExporterFortran(SA, ME, ...) in the MRO, this keeps every loop
+    # output (MadLoop, loop-induced, NLO) on the trace basis.
+    ddm_color_basis = 'never'
+
     default_opt = dict(export_v4.ProcessExporterFortran.default_opt)
     default_opt.update({'clean': False, 'complex_mass':False,
                         'export_format':'madloop', 'mp':True,
@@ -90,6 +107,8 @@ class LoopExporterFortran(object):
                         'vector_size':0})
 
     include_names    = {'ninja' : 'mninja.mod',
+                        'ninjars' : 'mninjars.mod',
+                        'tirust' : 'mtirust.mod',
                         'golem' : 'generic_function_1p.mod',
                         'samurai':'msamurai.mod',
                         'collier': 'collier.mod'}
@@ -264,6 +283,10 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         
 
         MLCard = banner_mod.MadLoopParam(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
+        if getattr(self, 'has_onia', False):
+            self.set_onia_madloop_defaults(MLCard)
+        elif not self.has_loop_induced:
+            self.set_default_reduction_library(MLCard)
         # For loop-induced processes and *only* when summing over all helicity configurations
         # (which is the default for standalone usage), COLLIER is faster than Ninja.
         if self.has_loop_induced:
@@ -279,6 +302,52 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         MLCard.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'))
         MLCard.write(pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat'))
             
+    def set_onia_reduction_library(self, card):
+        """With bound states the constituents carry equal momenta: the Gram
+        determinants of every loop with both constituents vanish and the
+        Coulomb-exchange loops have linearly dependent propagators. Only
+        TIRust (9) reduces them reliably: the other libraries, IREGI
+        included, can return wrong values that pass MadLoop's stability
+        tests, and onia_loop.f reports their results unstable. TIRust is
+        therefore the only library of the default chain."""
+        if 'mlreductionlib' in card.user_set:
+            return False
+        if not getattr(self, 'tir_available_dict', {}).get('tirust', False):
+            logger.warning('Processes with bound states need TIRust for the '
+                           'reduction of their threshold integrals (install tirust): '
+                           'the results of the other libraries are reported unstable.')
+            return False
+        card.set('MLReductionLib', '9', user=True)
+        return True
+
+    def set_onia_madloop_defaults(self, card):
+        """MadLoopParams.dat defaults of processes with bound states:
+        - the reduction libraries (set_onia_reduction_library);
+        - no helicity filter, since which constituent helicity configurations
+          contribute depends on the frame (onia_loop.f skips them point by
+          point).
+        Values the user set are kept. (The rounding of the counterterm
+        interference, which MadLoop's stability test does not vary, is
+        estimated in loop_matrix.f instead: ONIA_CTSQ.)"""
+        self.set_onia_reduction_library(card)
+        if 'helicityfilterlevel' not in card.user_set:
+            card.set('HelicityFilterLevel', 0, user=True)
+
+    def set_default_reduction_library(self, card):
+        """Prefer a usable NinjaRS installation for untouched ordinary defaults."""
+        if (getattr(self, 'has_loop_induced', False) or
+                not getattr(self, 'tir_available_dict', {}).get('ninjars', False) or
+                'mlreductionlib' in card.user_set or card['MLReductionLib'] != '6|7|1'):
+            return False
+        preferred = ninjars_install.default_reduction_library(
+            True, getattr(self, 'ninjars_dir', None))
+        if preferred != [8]:
+            return False
+        # An active value is required: Fortran ignores commented default lines.
+        card.set('MLReductionLib', '%s|%s' % (preferred[0], card['MLReductionLib']),
+                 user=True)
+        return True
+
     def write_f2py_makefile(self, model):
         return
     
@@ -513,6 +582,8 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         replace_dict['tir_include'] = ' '.join(tir_include)
         replace_dict['rpaths_libs'] = ''
         for lib in tir_libs:
+            if lib.endswith(('libninjars.a', 'libtirust.a')):
+                continue
             replace_dict['rpaths_libs'] += '-Wl,-rpath,%s '%os.path.dirname(lib)    
 
         file = file % replace_dict
@@ -529,6 +600,31 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
         self.get_aloha_model(model)
         super(LoopProcessExporterFortranSA, self).convert_model(model,
            wanted_lorentz = wanted_lorentz, wanted_couplings = wanted_couplings)
+
+    def write_aloha_library(self, model, wanted_lorentz, npwave=0, gauge='',
+                            loop_dual=False, loop_npwave=1):
+        """The HELAS library of the loop output: with a P-wave bound state
+        its double-precision routines are dual (export_v4), for all the
+        processes of the output, which must then all have one."""
+        pwave = getattr(self, 'onia_pwave_processes', [])
+        if any(pwave):
+            if not all(pwave):
+                raise loop_onia.OniaLoopError(
+                    'A process with a P-wave bound state must be output alone (or '
+                    'with other P-wave processes): its HELAS library is in dual numbers.')
+            loop_dual = True
+            # the dual numbers of the library have one direction per P-wave
+            # state: all the processes of the output must have the same number
+            counts = getattr(self, 'onia_npwave', set()) or {1}
+            if len(counts) > 1:
+                raise loop_onia.OniaLoopError(
+                    'Processes with one and with two P-wave bound states must be '
+                    'output separately: their HELAS libraries differ.')
+            return super(LoopProcessExporterFortranSA, self).write_aloha_library(
+                model, wanted_lorentz, npwave=npwave, gauge=gauge, loop_dual=loop_dual,
+                loop_npwave=max(counts), loop_ep=bool(getattr(self, 'onia_ep_dirs', {})))
+        return super(LoopProcessExporterFortranSA, self).write_aloha_library(
+            model, wanted_lorentz, npwave=npwave, gauge=gauge, loop_dual=loop_dual)
 
     def get_ME_identifier(self, matrix_element, 
                                  group_number = None, group_elem_number = None):
@@ -865,7 +961,11 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                 'AmplitudeReduction': AmplitudeReduction,
                 'TIRCaching': TIRCaching,
                 'MadEventOutput': MadEventOutput,
-                'UseDensity': UseDensity}
+                'UseDensity': UseDensity,
+                'Onia': loop_onia.has_onia(matrix_element),
+                'OniaPwave': loop_onia.has_pwave(matrix_element),
+                'OniaPwave2': loop_onia.npwave(matrix_element) == 2,
+                'OniaPwaveEP': False}
 
 
     #===========================================================================
@@ -1271,6 +1371,11 @@ PARAMETER(MAX_SPIN_EXTERNAL_PARTICLE=%(max_spin_external_particle)d)
             'write_so_born_results','write_so_loop_results','set_coupling_target']:
             if key not in list(replace_dict.keys()):
                 replace_dict[key]=''
+        # With bound states the driver sees the physical legs (one per bound
+        # state, of mass m1+m2: pmass.inc)
+        onia = loop_onia.has_onia(matrix_element)
+        if onia:
+            replace_dict['nexternal'] = matrix_element.get_physical_nexternal_ninitial()[0]
         
         #initialisation of the parameters for density matrix (dont think it is needed)
         replace_dict['use_density'] = '.false.'
@@ -1312,6 +1417,10 @@ PARAMETER(MAX_SPIN_EXTERNAL_PARTICLE=%(max_spin_external_particle)d)
          
         # We can always write the f2py wrapper if present (in loop optimized mode, it is)
         if not os.path.isfile(pjoin(self.template_dir,'check_py.f.inc')):
+            return
+        if onia:
+            # The f2py wrapper passes arrays of the constituent legs
+            logger.info('No python (f2py) wrapper for processes with bound states.')
             return
         
         file = open(os.path.join(self.template_dir,\
@@ -1381,9 +1490,19 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
         else:
             replace_dict['include_vector'] = '' 
 
-        file_mp = open(os.path.join(self.template_dir,'improve_ps.inc')).read()
-        file_mp=file_mp%replace_dict
-        
+        template = open(os.path.join(self.template_dir,'improve_ps.inc')).read()
+        file_mp=template%replace_dict
+
+        if loop_onia.has_onia(matrix_element):
+            # With bound states, MP_IMPROVE_PS_POINT_PRECISION is that of
+            # onia_loop.f: it puts the physical particles (a bound state of
+            # mass m1+m2) on their mass shell with exact momentum
+            # conservation, and splits the bound states again.
+            name = '%(proc_prefix)sMP_IMPROVE_PS_POINT_PRECISION' % replace_dict
+            definition = 'SUBROUTINE %s(' % name
+            assert file_mp.count(definition) == 1
+            file_mp = file_mp.replace(definition,
+                                  'SUBROUTINE %s_CONSTITUENT_LEGS(' % name)
         writer.writelines(file_mp)
 
     def write_loop_num(self, writer, matrix_element,fortran_model):
@@ -1460,6 +1579,11 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
 
         file = file % replace_dict
         files.append(file)
+
+        if optimized_output:
+            ninjars_template = os.path.join(self.template_dir, 'NINJARS_interface.inc')
+            with open(ninjars_template) as stream:
+                files.append(stream.read() % replace_dict)
         
         # Now collect the different kind of subroutines needed for the
         # loop HELAS-like calls.
@@ -1566,12 +1690,19 @@ p= [[None,]*4]*%d"""%len(curr_proc.get('legs'))
         in the replace_dict dictionary under the entry entry_name.
         The context specified will be forwarded to the fileWriter."""
         helascalls_replace_dict=copy.copy(replace_dict)
+        helascalls_replace_dict.setdefault('terminal_ieee_use', '')
+        helascalls_replace_dict.setdefault('terminal_ieee_declarations', '')
         helascalls_replace_dict['bunch_name']=bunch_name
         helascalls_files=[]
         for i, k in enumerate(range(0, len(helas_calls), n_helas)):
             helascalls_replace_dict['bunch_number']=i+1                
             helascalls_replace_dict['helas_calls']=\
                                            '\n'.join(helas_calls[k:k + n_helas])
+            if replace_dict.get('terminal_ieee_use'):
+                has_private = re.search(_PRIVATE_MP_WL_CALL,
+                    helascalls_replace_dict['helas_calls'])
+                for key in ('terminal_ieee_use', 'terminal_ieee_declarations'):
+                    helascalls_replace_dict[key] = replace_dict[key] if has_private else ''
             helascalls_replace_dict['required_so_broadcaster']=\
                                                          required_so_broadcaster
             helascalls_replace_dict['continue_label']=continue_label
@@ -1899,7 +2030,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
     # make sure that ninja appears first in the list of -L because 
     # it is the tool for which the user is most susceptible of 
     # using a standalone version independent of gosam_contrib
-    all_tir=['pjfry','iregi','ninja','golem','samurai','collier']
+    all_tir=['pjfry','iregi','ninja','golem','samurai','collier','ninjars','tirust']
     
     def __init__(self, dir_path = "", opt=None):
         """Initiate the LoopProcessOptimizedExporterFortranSA with directory 
@@ -1909,15 +2040,16 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         super(LoopProcessOptimizedExporterFortranSA,self).__init__(dir_path, opt)
 
         # TIR available ones
-        self.tir_available_dict={'pjfry':True,'iregi':True,'golem':True,
-                                 'samurai':True,'ninja':True,'collier':True}
+        self.tir_available_dict={'pjfry':False,'iregi':True,'golem':True,
+                                 'samurai':True,'ninja':True,'collier':True,'ninjars':True,'tirust':True}
 
         for tir in self.all_tir:
             tir_dir="%s_dir"%tir
             if tir_dir in self.opt and not self.opt[tir_dir] is None:
                 # Make sure to defer the 'local path' to the current MadGraph7 root.
                 tir_path = self.opt[tir_dir].strip()
-                if tir_path.startswith('.'):
+                if tir_path.startswith('.') or (
+                        tir in ('ninjars', 'tirust') and not os.path.isabs(tir_path)):
                     tir_path = os.path.abspath(pjoin(MG5DIR,tir_path))
                 setattr(self,tir_dir,tir_path)
             else:
@@ -1930,6 +2062,410 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         super(LoopProcessOptimizedExporterFortranSA, self).copy_template(model)
         
         self.loop_optimized_additional_template_setup()
+
+    #===========================================================================
+    # Bound states (onia)
+    #===========================================================================
+    def check_onia_loop_output(self, matrix_element):
+        """Refuse the loop outputs of processes with bound states that the
+        onia layer (onia_loop.f) does not handle."""
+        if not matrix_element.get('processes')[0].get('has_born'):
+            raise loop_onia.OniaLoopError('Loop-induced processes with bound states '
+                                          'are not supported yet.')
+        if self.compute_color_flows:
+            raise loop_onia.OniaLoopError("The option 'loop_color_flows' is not "
+                                          "supported for processes with bound states.")
+
+    def write_onia_loop_files(self, matrix_element, fortran_model, loop_replace_dict):
+        """Write onia_loop_data.inc and onia_loop.f, the projection of the
+        constituent amplitudes onto the bound states (see loop_onia.py)."""
+
+        self.check_onia_loop_output(matrix_element)
+        self.has_onia = True
+        info = loop_onia.onia_loop_info(matrix_element)
+        nexternal = info['nexternal']
+        ncomb = len(info['helc'])
+        nonia = len(info['onia'])
+        njzt = len(info['jz'])
+        nborn = matrix_element.get_number_of_born_amplitudes()
+        model = matrix_element.get('processes')[0].get('model')
+
+        # The colour flows of the (projected) Born amplitudes and their
+        # colour matrix (loop_onia.py, "Colour in the basis of colour flows")
+        ampb_to_jampb = self.get_amp_to_jamp_map(
+            matrix_element.get_born_color_amplitudes(), nborn)
+        nflow = len(matrix_element.get('born_color_basis'))
+        born_cm = loop_onia.flow_colour_matrix(
+            color_amp.ColorMatrix(matrix_element.get('born_color_basis')))
+
+        def ints(values):
+            return ','.join('%d' % v for v in values)
+
+        lines = ['C     Bound states of the process (loop_onia.py, onia_loop.f)',
+                 'INTEGER ONIA_NONIA, ONIA_NJZT, ONIA_NOTHERS, ONIA_IDEN',
+                 'PARAMETER (ONIA_NONIA=%d, ONIA_NJZT=%d, ONIA_NOTHERS=%d, ONIA_IDEN=%d)'
+                 % (nonia, njzt, info['nothers'], matrix_element.get_denominator_factor()),
+                 'C     physical leg of each constituent leg, and the other constituent',
+                 'INTEGER ONIA_MAPPING(%d), ONIA_PARTNER(%d)' % (nexternal, nexternal),
+                 'C     per bound state: particle and antiparticle legs, S, J, colour',
+                 'INTEGER ONIA_Q1(%d), ONIA_Q2(%d), ONIA_S(%d), ONIA_J(%d), ONIA_C(%d)'
+                 % ((nonia,) * 5),
+                 'C     J_z of each bound state in each polarisation configuration',
+                 'INTEGER ONIA_JZ(%d,%d)' % (nonia, njzt),
+                 'C     the constituent helicity configurations (HelConfigs.dat) and',
+                 'C     the index of the helicities of their other legs',
+                 'INTEGER ONIA_HELC(%d,%d), ONIA_OTHERS(%d)' % (nexternal, ncomb, ncomb)]
+        partner = [0] * nexternal
+        for o in info['onia']:
+            partner[o['q1'] - 1] = o['q2']
+            partner[o['q2'] - 1] = o['q1']
+        lines.append('DATA ONIA_MAPPING/%s/' % ints(info['mapping']))
+        lines.append('DATA ONIA_PARTNER/%s/' % ints(partner))
+        for key, attr in [('ONIA_Q1', 'q1'), ('ONIA_Q2', 'q2'), ('ONIA_S', 'S'),
+                          ('ONIA_J', 'J'), ('ONIA_C', 'C')]:
+            lines.append('DATA %s/%s/' % (key, ints([o[attr] for o in info['onia']])))
+        lines.append('DATA ONIA_JZ/%s/' % ints([j for t in info['jz'] for j in t]))
+        lines.append('DATA ONIA_HELC/%s/' % ints([h for hel in info['helc'] for h in hel]))
+        lines.append('DATA ONIA_OTHERS/%s/' % ints(info['others']))
+        lines.append('C     the colour flows of the projected Born amplitudes (ONIA_BF, one')
+        lines.append('C     basis: ONIA_BORN_FLOWS) and the colour matrix between them')
+        lines.append('INTEGER ONIA_NFLOW')
+        lines.append('PARAMETER (ONIA_NFLOW=%d)' % nflow)
+        lines.extend(loop_onia.flow_map_lines('ONIA_BF', [ampb_to_jampb], [nflow]))
+        lines.extend(loop_onia.flow_matrix_lines('ONIA_FCM', [born_cm], (nflow, nflow)))
+        # QCD loops hold both constituents of a bound state, and so meet the
+        # degenerate threshold integrals, only when the constituents are
+        # coloured (not for leptonia)
+        process = matrix_element.get('processes')[0]
+        coloured = any(model.get_particle(leg.get('id')).get('color') != 1
+                       for leg in process.get('legs') if leg.get('onium'))
+        lines.append('C     some loop holds both constituents of a bound state')
+        lines.append('LOGICAL ONIA_THRESHOLD_LOOPS')
+        lines.append('PARAMETER (ONIA_THRESHOLD_LOOPS=%s)'
+                     % ('.TRUE.' if coloured else '.FALSE.'))
+        lines.append('C     the P-wave bound state (0 if none), and L of each bound state')
+        lines.append('INTEGER ONIA_IPW, ONIA_L(%d)' % nonia)
+        lines.append('PARAMETER (ONIA_IPW=%d)' % info['ipwave'])
+        if info['npwave'] == 2:
+            lines.append('C     the second P-wave bound state (dual component 2)')
+            lines.append('INTEGER ONIA_IPW2')
+            lines.append('PARAMETER (ONIA_IPW2=%d)' % info['ipwaves'][1])
+        lines.append('DATA ONIA_L/%s/' % ints([o['L'] for o in info['onia']]))
+        writers.FortranWriter('onia_loop_data.inc').writelines(lines)
+        context = self.get_context(matrix_element)
+        if context.get('OniaPwave') and not context.get('tirust_raised_powers'):
+            raise loop_onia.OniaLoopError(
+                'The one-loop virtual of a P-wave bound state needs TIRust with '
+                'raised propagator powers (installation metadata raised_powers): '
+                "run 'install tirust --update'.")
+
+        # The masses of the constituent legs
+        masses = []
+        for wf in sorted(matrix_element.get_external_wavefunctions(),
+                         key=lambda wf: wf.get('number_external')):
+            mass = model.get('particle_dict')[wf.get('pdg_code')].get('mass')
+            masses.append('ZERO' if mass.lower() == 'zero' else 'ABS(%s)' % mass)
+        mass_lines = '\n'.join('CMASS(%d)=%s' % (i + 1, m) for i, m in enumerate(masses))
+        # In quadruple precision, the masses squared of the loop propagators
+        # are the double-precision ones (M2L of the loop routines): the QP
+        # constituent masses are their square roots, so that the
+        # constituents stay exactly on the mass shell the reduction sees
+        # (TIRust recognises the Coulomb-exchange degeneracy at the input
+        # precision).
+        mp_mass_lines = '\n'.join(
+            'CMASS(%d)=%s' % (i + 1, m if m == 'ZERO' else
+                              'SQRT(REAL(REAL(%s,KIND=8)**2,KIND=16))' % m)
+            for i, m in enumerate(masses))
+
+        # The Born amplitudes alone (no counterterm), in DP and QP
+        born_calls = []
+        for diagram in matrix_element.get_born_diagrams():
+            born_calls.extend([fortran_model.get_wavefunction_call(wf)
+                               for wf in diagram.get('wavefunctions')])
+            for amplitude in diagram.get('amplitudes'):
+                born_calls.append(fortran_model.get_amplitude_call(amplitude))
+        mp_born_calls = list(born_calls)
+        self.turn_to_mp_calls(mp_born_calls)
+        if loop_onia.has_pwave(matrix_element):
+            born_calls = loop_onia.pwave_dual_names(born_calls)
+            mp_born_calls = loop_onia.pwave_dual_names(mp_born_calls, mp=True)
+
+        ldme_product = self.get_ldme_product(matrix_element) or '1D0'
+        # the entries of loop_matrix.f (split orders, colour matrix, ...) and
+        # the bound states
+        replace_dict = copy.copy(loop_replace_dict)
+        replace_dict.update(matrix_element.rep_dict)
+        replace_dict.update({
+            'onia_nexternal_phys': info['nexternal_phys'],
+            'nexternal': nexternal,
+            'ncomb': ncomb,
+            'nbornamps': nborn,
+            'onia_dp_masses': mass_lines,
+            'onia_mp_masses': mp_mass_lines,
+            'onia_born_calls': '\n'.join(born_calls),
+            'onia_mp_born_calls': '\n'.join(mp_born_calls),
+            'onia_dp_norm': loop_onia.fortran_double(info['norm']),
+            'onia_mp_norm': loop_onia.fortran_quad(info['norm']),
+            'onia_ldme_product': ldme_product,
+            'onia_ldme_perturbative': self.get_ldme_perturbative(matrix_element)})
+        if ncomb != matrix_element.get_helicity_combinations():
+            raise loop_onia.OniaLoopError('Inconsistent helicity configurations.')
+        replace_dict['nincoming'] = info['ninitial']
+        self.write_onia_loop_links(matrix_element, info, model)
+        file = open(os.path.join(self.template_dir, 'onia_loop.inc')).read() % replace_dict
+        writers.FortranWriter('onia_loop.f').writelines(file, context=context)
+        # The LDMEs of the onia card (Source/MODEL/ldme.inc, export_onia_files)
+        ln('../ldme.inc')
+
+    def write_onia_loop_links(self, matrix_element, info, model):
+        """onia_loop_links.inc: the colour links between the physical legs
+        in the Born colour-flow basis (loop_onia.flow_color_links) and the
+        coefficient of 1/eps of the Gamma_j of each physical leg, for
+        ONIA_IR_POLES."""
+
+        nflow = len(matrix_element.get('born_color_basis'))
+        links = loop_onia.flow_color_links(matrix_element, info)
+        keys = sorted(links)
+        nlinks = max(len(keys), 1)
+        # the massless quark flavours (gamma_g)
+        nl = len(set(abs(p.get('pdg_code')) for p in model.get('particles')
+                     if abs(p.get_color()) == 3 and p.get('spin') == 2
+                     and p.get('mass').lower() == 'zero'))
+        cf, ca, tr = fractions.Fraction(4, 3), fractions.Fraction(3), fractions.Fraction(1, 2)
+        gamma = [fractions.Fraction(0)] * info['nexternal_phys']
+        onia_legs = dict((o['phys'], o) for o in info['onia'])
+        for wf in matrix_element.get_external_wavefunctions():
+            n = wf.get('number_external')
+            leg = info['mapping'][n - 1]
+            part = model.get_particle(wf.get('pdg_code'))
+            if leg in onia_legs:
+                gamma[leg - 1] = ca if (onia_legs[leg]['C'] == 8 and
+                                        abs(part.get_color()) == 3) else fractions.Fraction(0)
+            elif abs(part.get_color()) == 8:
+                gamma[leg - 1] = ca * 11 / 6 - tr * 2 * nl / 3 \
+                    if part.get('mass').lower() == 'zero' else ca
+            elif abs(part.get_color()) == 3:
+                gamma[leg - 1] = cf * 3 / 2 if part.get('mass').lower() == 'zero' else cf
+
+        def col(values):
+            return ','.join(loop_onia.fortran_double(v) for v in values)
+
+        lines = ['C     Colour links between the physical legs (ONIA_IR_POLES)',
+                 'INTEGER ONIA_NLINKS',
+                 'PARAMETER (ONIA_NLINKS=%d)' % len(keys),
+                 'INTEGER ONIA_LINK_J(%d), ONIA_LINK_K(%d)' % (nlinks, nlinks),
+                 'REAL*8 ONIA_LEG_GAMMA(%d)' % info['nexternal_phys'],
+                 'DATA ONIA_LEG_GAMMA/%s/' % col(gamma)]
+        if keys:
+            lines.append('DATA ONIA_LINK_J/%s/' % ','.join('%d' % k[0] for k in keys))
+            lines.append('DATA ONIA_LINK_K/%s/' % ','.join('%d' % k[1] for k in keys))
+        else:
+            lines.append('DATA ONIA_LINK_J/0/, ONIA_LINK_K/0/')
+        lines.extend(loop_onia.flow_matrix_lines(
+            'ONIA_FCL', [links[k] for k in keys], (nflow, nflow, nlinks),
+            '<T_j.T_k> between the Born colour flows, per link'))
+        writers.FortranWriter('onia_loop_links.inc').writelines(lines)
+        if info['npwave'] == 2:
+            self.write_onia_loop_pwsoft2(matrix_element, info)
+        elif info['ipwave']:
+            self.write_onia_loop_pwsoft(matrix_element, info)
+
+    def write_onia_loop_pwsoft(self, matrix_element, info):
+        """onia_loop_pwsoft.inc: the colour of the soft current of the P-wave
+        bound state (loop_onia.pwave_soft_current), for the P -> S pole of
+        ONIA_PW_SOFT_POLE: the colour bases of its S-wave states (PWS_SF,
+        basis A for state A) and the flow matrices of the links (PWS_FX)."""
+
+        nflow = len(matrix_element.get('born_color_basis'))
+        aux = loop_onia.pwave_soft_current(matrix_element, info, self.get_amp_to_jamp_map)
+        links = [(ia + 1, k, kind, x) for ia, a in enumerate(aux)
+                 for (k, kind), x in sorted(a['links'].items())]
+        naux, nlinks = max(len(aux), 1), max(len(links), 1)
+        nfmax = max([a['nflow'] for a in aux] + [1])
+
+        def col(values):
+            return ','.join(loop_onia.fortran_double(v) for v in values)
+
+        lines = ['C     The S-wave states of the soft current of the P-wave bound state',
+                 'C     and their colour (ONIA_PW_SOFT_POLE)',
+                 'INTEGER PWS_NAUX, PWS_NLINKS, PWS_NFMAX',
+                 'PARAMETER (PWS_NAUX=%d, PWS_NLINKS=%d, PWS_NFMAX=%d)'
+                 % (len(aux), len(links), nfmax),
+                 "CHARACTER*2 PWS_LABEL(%d)" % naux,
+                 'REAL*8 PWS_CNORM(%d)' % naux,
+                 'INTEGER PWS_AUX(%d), PWS_LEG(%d), PWS_KIND(%d)' % (nlinks, nlinks, nlinks)]
+        if aux:
+            lines.append('DATA PWS_LABEL/%s/' % ','.join("'%s'" % a['label'] for a in aux))
+            lines.append('DATA PWS_CNORM/%s/' % col(a['cnorm'] for a in aux))
+        else:
+            lines.append("DATA PWS_LABEL/'  '/, PWS_CNORM/0D0/")
+        if links:
+            lines.append('DATA PWS_AUX/%s/' % ','.join('%d' % l[0] for l in links))
+            lines.append('DATA PWS_LEG/%s/' % ','.join('%d' % l[1] for l in links))
+            lines.append('DATA PWS_KIND/%s/' % ','.join('%d' % l[2] for l in links))
+        else:
+            lines.append('DATA PWS_AUX/0/, PWS_LEG/0/, PWS_KIND/0/')
+        lines.append('C     the colour flows of the S-wave states (ONIA_PWS_FLOWS)')
+        lines.extend(loop_onia.flow_map_lines('PWS_SF', [a['amp_s'] for a in aux],
+                                              [a['nflow'] for a in aux]))
+        lines.extend(loop_onia.flow_matrix_lines(
+            'PWS_FX', [l[3] for l in links], (nflow, nfmax, nlinks),
+            'X between the Born flows and those of the S-wave state, per link'))
+        writers.FortranWriter('onia_loop_pwsoft.inc').writelines(lines)
+
+    def write_onia_loop_pwsoft2(self, matrix_element, info):
+        """onia_loop_pwsoft.inc of two P-wave bound states: the colour of the
+        soft current of each state (loop_onia.pwave_soft_current, the other
+        state keeping its colour), indexed by the state (1: ONIA_IPW, 2:
+        ONIA_IPW2), and of the dipole-dipole exchange between them
+        (loop_onia.pwave_dipole_dipole), for ONIA_PW_SOFT_POLE. The colour
+        bases (PWS_SF) are those of S-wave state A of state S, number
+        A+(S-1)*PWS_NAUXMAX, then those of the dipole-dipole terms N, number
+        2*PWS_NAUXMAX+N."""
+
+        nflow = len(matrix_element.get('born_color_basis'))
+        auxs = [loop_onia.pwave_soft_current(matrix_element, info, self.get_amp_to_jamp_map, ipw)
+                for ipw in info['ipwaves']]
+        links = [[(ia + 1, k, kind, x) for ia, a in enumerate(aux)
+                  for (k, kind), x in sorted(a['links'].items())] for aux in auxs]
+        dd = loop_onia.pwave_dipole_dipole(matrix_element, info, self.get_amp_to_jamp_map)
+        naux = max([len(a) for a in auxs] + [1])
+        nlinks = max([len(l) for l in links] + [1])
+        ndd = max(len(dd), 1)
+        nfmax = max([a['nflow'] for aux in auxs for a in aux] + [d['nflow'] for d in dd] + [1])
+
+        def col(values):
+            return ','.join(loop_onia.fortran_double(v) for v in values)
+
+        def padded(rows, size, fill):
+            return [r + [fill] * (size - len(r)) for r in rows]
+
+        lines = ['C     Two P-wave bound states: the S-wave states of the soft current of',
+                 'C     each state and their colour (index 1: ONIA_IPW, 2: ONIA_IPW2), and',
+                 'C     the colour of the dipole-dipole exchange between the two',
+                 'C     (ONIA_PW_SOFT_POLE)',
+                 'INTEGER PWS_NAUXMAX, PWS_NLINKSMAX, PDD_N, PDD_NMAX, PWS_NFMAX',
+                 'PARAMETER (PWS_NAUXMAX=%d, PWS_NLINKSMAX=%d, PDD_N=%d, PDD_NMAX=%d)'
+                 % (naux, nlinks, len(dd), ndd),
+                 'PARAMETER (PWS_NFMAX=%d)' % nfmax,
+                 'INTEGER PWS_NAUX(2), PWS_NLINKS(2)',
+                 'CHARACTER*2 PWS_LABEL(PWS_NAUXMAX,2)',
+                 'REAL*8 PWS_CNORM(PWS_NAUXMAX,2)',
+                 'INTEGER PWS_AUX(PWS_NLINKSMAX,2), PWS_LEG(PWS_NLINKSMAX,2)',
+                 'INTEGER PWS_KIND(PWS_NLINKSMAX,2)',
+                 'CHARACTER*2 PDD_LABEL1(PDD_NMAX), PDD_LABEL2(PDD_NMAX)',
+                 'INTEGER PDD_KIND1(PDD_NMAX), PDD_KIND2(PDD_NMAX)',
+                 'REAL*8 PDD_CNORM1(PDD_NMAX), PDD_CNORM2(PDD_NMAX)',
+                 'DATA PWS_NAUX/%s/' % ','.join('%d' % len(a) for a in auxs),
+                 'DATA PWS_NLINKS/%s/' % ','.join('%d' % len(l) for l in links)]
+        aux_rows = padded([list(a) for a in auxs], naux, None)
+        lines.append('DATA PWS_LABEL/%s/' % ','.join(
+            "'%s'" % (a['label'] if a else '  ') for row in aux_rows for a in row))
+        lines.append('DATA PWS_CNORM/%s/' % col(a['cnorm'] if a else 0 for row in aux_rows for a in row))
+        link_rows = padded(links, nlinks, (0, 0, 0, {}))
+        for field, name in ((0, 'AUX'), (1, 'LEG'), (2, 'KIND')):
+            lines.append('DATA PWS_%s/%s/' % (name, ','.join('%d' % l[field] for row in link_rows
+                                                            for l in row)))
+        ddp = dd or [dict(label1='  ', label2='  ', kind1=0, kind2=0, cnorm1=0, cnorm2=0,
+                          amp_s=[], nflow=0, x={})]
+        lines.append('DATA PDD_LABEL1/%s/' % ','.join("'%s'" % d['label1'] for d in ddp))
+        lines.append('DATA PDD_LABEL2/%s/' % ','.join("'%s'" % d['label2'] for d in ddp))
+        lines.append('DATA PDD_KIND1/%s/' % ','.join('%d' % d['kind1'] for d in ddp))
+        lines.append('DATA PDD_KIND2/%s/' % ','.join('%d' % d['kind2'] for d in ddp))
+        lines.append('DATA PDD_CNORM1/%s/' % col(d['cnorm1'] for d in ddp))
+        lines.append('DATA PDD_CNORM2/%s/' % col(d['cnorm2'] for d in ddp))
+        lines.append('C     the colour flows of the S-wave states and of the dipole-dipole')
+        lines.append('C     terms (ONIA_PWS_FLOWS)')
+        bases = [a for row in aux_rows for a in row] + ddp
+        lines.extend(loop_onia.flow_map_lines('PWS_SF', [b['amp_s'] if b else [] for b in bases],
+                                              [b['nflow'] if b else 0 for b in bases]))
+        lines.extend(loop_onia.flow_matrix_lines(
+            'PWS_FX', [l[3] for row in link_rows for l in row], (nflow, nfmax, nlinks, 2),
+            'X between the Born flows and those of the S-wave state, per link'))
+        lines.extend(loop_onia.flow_matrix_lines(
+            'PDD_FX', [d['x'] for d in ddp], (nflow, nfmax, ndd),
+            'X between the Born flows and those of the dipole-dipole term'))
+        writers.FortranWriter('onia_loop_pwsoft.inc').writelines(lines)
+
+    def onia_public_entries(self, file, matrix_element):
+        """loop_matrix.f of a process with bound states: MadLoop runs on the
+        constituent legs and the public SLOOPMATRIX of onia_loop.f takes the
+        physical momenta, so the core routine is SLOOPMATRIX_CONSTITUENTS and
+        the public wrappers (SLOOPMATRIX_THRES, SLOOPMATRIXHEL(_THRES)) take
+        one leg per bound state."""
+        prefix = matrix_element.rep_dict['proc_prefix']
+        nexternal = matrix_element.get_nexternal_ninitial()[0]
+        nphys = matrix_element.get_physical_nexternal_ninitial()[0]
+        core = '      SUBROUTINE %sSLOOPMATRIX(P_USER,ANS)\n' % prefix
+        if file.count(core) not in (1, 2):
+            raise loop_onia.OniaLoopError('Unexpected loop_matrix.f: core SLOOPMATRIX')
+        file = file.replace(core, '      SUBROUTINE %sSLOOPMATRIX_CONSTITUENTS(P_USER,ANS)\n' % prefix)
+        parameter = 'PARAMETER (NEXTERNAL=%d)' % nexternal
+        for wrapper in ['SLOOPMATRIXHEL(P,HEL,ANS)',
+                        'SLOOPMATRIXHEL_THRES(P,HEL,ANS,PREC_ASKED,PREC_FOUND,RET_CODE)',
+                        'SLOOPMATRIX_THRES(P,ANS,PREC_ASKED,PREC_FOUND,RET_CODE)']:
+            head = '      SUBROUTINE %s%s' % (prefix, wrapper)
+            if file.count(head) != 1:
+                raise loop_onia.OniaLoopError('Unexpected loop_matrix.f: %s' % wrapper)
+            i = file.index(head)
+            j = file.index(parameter, i)
+            file = file[:j] + 'PARAMETER (NEXTERNAL=%d)' % nphys + file[j + len(parameter):]
+        return file
+
+    def write_bornmatrix(self, writer, matrix_element, fortran_model):
+        """born_matrix.f. With bound states it is the Born of the constituent
+        process, not projected (the projected Born is in onia_loop.f): the
+        'onium' attributes are dropped from a copy of the matrix element."""
+
+        if not loop_onia.has_onia(matrix_element):
+            return super(LoopProcessOptimizedExporterFortranSA, self).write_bornmatrix(
+                                              writer, matrix_element, fortran_model)
+        constituent_me = copy.copy(matrix_element)
+        for prop in ['diagrams', 'processes']:
+            constituent_me.set(prop, copy.deepcopy(matrix_element.get(prop)), force=True)
+        for diagram in constituent_me.get('diagrams'):
+            for wf in diagram.get('wavefunctions'):
+                wf.set('onium', {})
+            for amp in diagram.get_regular_amplitudes() if hasattr(diagram, 'get_regular_amplitudes') else diagram.get('amplitudes'):
+                for wf in amp.get('mothers'):
+                    if wf.get('onium'):
+                        wf.set('onium', {})
+        for proc in constituent_me.get('processes'):
+            for leg in proc.get('legs'):
+                leg.set('onium', {})
+        res = super(LoopProcessOptimizedExporterFortranSA, self).write_bornmatrix(
+                                              writer, constituent_me, fortran_model)
+        nsqso = open(pjoin(os.path.dirname(os.path.abspath(writer.name)),
+                           'nsqso_born.inc')).read()
+        if 'NSQSO_BORN=1)' not in nsqso.replace(' ', ''):
+            raise loop_onia.OniaLoopError('Processes with bound states and more than '
+                         'one squared split order in the Born are not supported.')
+        return res
+
+    def write_pmass_file(self, writer, matrix_element):
+        """pmass.inc of the physical legs of the check drivers: a bound state
+        has the mass m1+m2 of its constituents (MadLoop's onia layer puts them
+        at zero relative momentum)."""
+
+        if not loop_onia.has_onia(matrix_element):
+            return super(LoopProcessOptimizedExporterFortranSA, self).write_pmass_file(
+                                                             writer, matrix_element)
+        info = loop_onia.onia_loop_info(matrix_element)
+        model = matrix_element.get('processes')[0].get('model')
+        masses = []
+        for wf in sorted(matrix_element.get_external_wavefunctions(),
+                         key=lambda wf: wf.get('number_external')):
+            mass = model.get('particle_dict')[wf.get('pdg_code')].get('mass')
+            masses.append('ZERO' if mass.lower() == 'zero' else 'ABS(%s)' % mass)
+        phys = {}
+        for i, m in enumerate(masses):
+            phys.setdefault(info['mapping'][i], []).append(m)
+        lines = []
+        for leg in sorted(phys):
+            ms = [m for m in phys[leg] if m != 'ZERO'] or ['ZERO']
+            lines.append('PMASS(%d)=%s' % (leg, '+'.join(ms)))
+        writer.writelines(lines)
+        return True
 
     def get_context(self,matrix_element, **opts):
         """ Additional contextual information which needs to be created for
@@ -1945,10 +2481,39 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         except AttributeError:
             context['ninja_supports_quad_prec'] = False
 
+        context['ninjars_supports_quad_prec'] = (
+            self.tir_available_dict.get('ninjars', False) and
+            ninjars_install.supports_quad_precision(getattr(self, 'ninjars_dir', '')))
+
+        context['tirust_supports_quad_prec'] = (
+            self.tir_available_dict.get('tirust', False) and
+            tirust_install.supports_quad_precision(getattr(self, 'tirust_dir', '')))
+
+        context['tirust_dp_route_statistics_available'] = (
+            self.tir_available_dict.get('tirust', False) and
+            tirust_install.supports_dp_route_statistics(
+                getattr(self, 'tirust_dir', '')))
+
+        # optional raised propagator powers (P-wave bound states)
+        context['tirust_raised_powers'] = (
+            self.tir_available_dict.get('tirust', False) and
+            tirust_install.supports_raised_powers(getattr(self, 'tirust_dir', '')))
+
+        # The extended-precision passes of one P-wave bound state
+        # (#PWaveExtendedPrecision, onia_ep.py): standalone output, TIRust
+        # with extended inputs (the EP integrals) and quadruple precision
+        # (the MP code the EP code is derived from)
+        context['OniaPwaveEP'] = bool(
+            type(self) is LoopProcessOptimizedExporterFortranSA and
+            context.get('OniaPwave') and not context.get('OniaPwave2') and
+            not context.get('AmplitudeReduction') and
+            context['tirust_supports_quad_prec'] and context['tirust_raised_powers'] and
+            onia_ep.tirust_supports_extended_inputs(getattr(self, 'tirust_dir', '')))
+
         for tir in self.all_tir:
             context['%s_available'%tir]=self.tir_available_dict[tir]
             # safety check
-            if tir not in ['golem','pjfry','iregi','samurai','ninja','collier']:
+            if tir not in ['golem','pjfry','iregi','samurai','ninja','collier','ninjars','tirust']:
                 raise MadGraph5Error("%s was not a TIR currently interfaced."%tir_name)
 
         return context
@@ -1969,11 +2534,31 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             tir_name=tir
             libpath = self.link_TIR(os.path.join(self.dir_path, 'lib'),
                                               libpath,libname,tir_name=tir_name)
+            if tir in ('ninjars', 'tirust'):
+                setattr(self, tir + '_dir', libpath)
             if libpath != "":
-                if tir in ['ninja','pjfry','golem','samurai','collier']:
+                if tir in ['ninja','pjfry','golem','samurai','collier','ninjars','tirust']:
                     # It is cleaner to use the original location of the libraries
-                    link_tir_libs.append('-L%s/ -l%s'%(libpath,tir))
-                    tir_libs.append('%s/lib%s.$(libext)'%(libpath,tir))
+                    copied_ninjars = tir in ('ninjars', 'tirust') and self.dependencies == 'internal'
+                    if tir == 'ninjars':
+                        link_tir_libs.extend(ninjars_install.pre_link_flags(libpath))
+                    if tir == 'tirust':
+                        link_tir_libs.extend(tirust_install.pre_link_flags(libpath))
+                    if copied_ninjars:
+                        link_tir_libs.append('-L$(LIBDIR) -l' + tir)
+                        tir_libs.append('$(LIBDIR)lib' + tir + '.a')
+                    else:
+                        link_tir_libs.append('-L%s/ -l%s'%(libpath,tir))
+                        tir_libs.append('%s/lib%s.%s' % (
+                            libpath, tir, 'a' if tir in ('ninjars', 'tirust') else '$(libext)'))
+                    if tir == 'ninjars':
+                        link_tir_libs.extend(ninjars_install.native_link_flags(libpath))
+                    if tir == 'tirust':
+                        link_tir_libs.extend(tirust_install.native_link_flags(libpath))
+                        # Executables live in SubProcesses or its process directories;
+                        # shared process libraries live in lib.
+                        link_tir_libs.extend(tirust_install.runtime_search_flags(
+                            libpath, copied_ninjars))
                     # For Ninja, we must also link against OneLoop.
                     if tir in ['ninja']:
                         if not any(os.path.isfile(pjoin(libpath,'libavh_olo.%s'%ext)) 
@@ -1982,13 +2567,16 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
 "The OneLOop library 'libavh_olo.(a|dylib|so)' could no be found in path '%s'. Please place a symlink to it there."%libpath)
                         link_tir_libs.append('-L%s/ -l%s'%(libpath,'avh_olo'))
                         tir_libs.append('%s/lib%s.$(libext)'%(libpath,'avh_olo'))
-                    if tir in ['ninja','golem', 'samurai','collier']:
+                    if tir in ['ninja','golem', 'samurai','collier','ninjars','tirust']:
                         trgt_path = pjoin(os.path.dirname(libpath),'include')
                         if os.path.isdir(trgt_path):
                             to_include = misc.find_includes_path(trgt_path,
                                                         self.include_names[tir])
                         else:
                             to_include = None
+                        if to_include is None and tir in ('ninjars', 'tirust'):
+                            to_include = misc.find_includes_path(
+                                libpath, self.include_names[tir])
                         # Special possible location for collier
                         if to_include is None and tir=='collier':
                             to_include = misc.find_includes_path(
@@ -1998,17 +2586,19 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
 'Could not find the include directory for %s, looking in %s.\n' % (tir, str(trgt_path))+
 'Generation carries on but you will need to edit the include path by hand in the makefiles.')
                             to_include = '<Not_found_define_it_yourself>'                
-                        tir_include.append('-I %s'%str(to_include))
+                        tir_include.append('-I %s' % (
+                            '$(LIBDIR)' if copied_ninjars else str(to_include)))
                         # To be able to easily compile a MadLoop library using
                         # makefiles built outside of the MadGraph7 framework
                         # (such as what is done with the Sherpa interface), we
                         # place here an easy handle on the golem includes
                         name_map = {'golem':'golem95','samurai':'samurai',
-                                    'ninja':'ninja','collier':'collier'}
-                        ln(to_include, starting_dir=pjoin(self.dir_path,'lib'),
-                                   name='%s_include'%name_map[tir],abspath=True)
-                        ln(libpath, starting_dir=pjoin(self.dir_path,'lib'),
-                                       name='%s_lib'%name_map[tir],abspath=True)
+                                    'ninja':'ninja','collier':'collier','ninjars':'ninjars','tirust':'tirust'}
+                        if not copied_ninjars:
+                            ln(to_include, starting_dir=pjoin(self.dir_path,'lib'),
+                                       name='%s_include'%name_map[tir],abspath=True)
+                            ln(libpath, starting_dir=pjoin(self.dir_path,'lib'),
+                                           name='%s_lib'%name_map[tir],abspath=True)
                 else :
                     link_tir_libs.append('-l%s'%tir)
                     tir_libs.append('$(LIBDIR)lib%s.$(libext)'%tir)
@@ -2050,7 +2640,12 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         """Link the TIR source directory inside the target path given
         in argument"""
         
-        if tir_name in ['pjfry','golem','samurai','ninja','collier']:
+        # PJFry's reduction ID is retired. Keep historical source helpers,
+        # but never link or advertise it in a newly generated process.
+        if tir_name == 'pjfry':
+            self.tir_available_dict['pjfry'] = False
+            return ""
+        if tir_name in ['golem','samurai','ninja','collier','ninjars','tirust']:
             # not self-contained libraries
             if (not isinstance(libpath,str)) or (not os.path.exists(libpath)) \
             or (not os.path.isfile(pjoin(libpath,libname))):
@@ -2061,6 +2656,17 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                                    +" with PATH:%s specified in mg7_configuration.txt."%libpath\
                                    +" It will not be available.")
                 self.tir_available_dict[tir_name]=False
+                return ""
+            if tir_name == 'ninjars':
+                if not ninjars_install.is_available(libpath):
+                    logger.warning("NinjaRS installation at %s is unusable; "
+                                   "run 'install ninjars --update'. It will not be available.", libpath)
+                    self.tir_available_dict[tir_name] = False
+                    return ""
+            if tir_name == 'tirust' and not tirust_install.is_available(libpath):
+                logger.warning("TIRust installation at %s is unusable; run "
+                               "'install tirust --update'. It will not be available.", libpath)
+                self.tir_available_dict[tir_name] = False
                 return ""
             # Check the version of the tool, if the library was found
             if tir_name in ['ninja','samurai'] and self.tir_available_dict[tir_name]:
@@ -2088,6 +2694,18 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 return ""
        
         if self.dependencies=='internal':
+            if tir_name in ('ninjars', 'tirust'):
+                os.makedirs(targetPath, exist_ok=True)
+                installer = ninjars_install if tir_name == 'ninjars' else tirust_install
+                # Include the installed ABI, runtime and its complete dependency
+                # notices/provenance so internal output stays self-contained.
+                for artifact in installer.export_files(libpath):
+                    source = artifact if os.path.isabs(artifact) else pjoin(libpath, artifact)
+                    destination = pjoin(targetPath, os.path.basename(source))
+                    if os.path.abspath(source) != os.path.abspath(destination):
+                        shutil.copy2(source, destination)
+                self.tir_available_dict[tir_name] = True
+                return os.path.abspath(targetPath)
             if tir_name in ['pjfry','golem','samurai','ninja','collier']:
                 self.tir_available_dict[tir_name]=False
                 logger.info("When using the 'output_dependencies=internal' "+\
@@ -2149,7 +2767,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                     self.tir_available_dict[tir_name]=False
                     return ""
             # We link the tools below directly to the lib directory of the output 
-            if not tir_name in ['pjfry','golem','samurai','ninja','collier']:
+            if not tir_name in ['pjfry','golem','samurai','ninja','collier','ninjars','tirust']:
                 ln(os.path.join(libpath,libname),targetPath,abspath=True)
 
         elif self.dependencies=='environment_paths':
@@ -2160,7 +2778,7 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 logger.info('MadGraph7 is using %s installation found at %s.'%\
                                                           (tir_name,newlibpath)) 
                 # We link the tools below directly to directly where the library is detected
-                if not tir_name in ['pjfry','golem','samurai','ninja','collier']:
+                if not tir_name in ['pjfry','golem','samurai','ninja','collier','ninjars','tirust']:
                     ln(newlibpath,targetPath,abspath=True)
                 self.tir_available_dict[tir_name]=True
                 return os.path.dirname(newlibpath)
@@ -2187,12 +2805,73 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         
         return self.group_loops
     
+    def make(self):
+        """Compile Source, its DHELAS and MODEL libraries at -O2 (identical
+        results without -march or fast-math options, faster loop evaluation)
+        for the plain standalone output, whose make_opts has no -O flag. The
+        DP-terminal proof admits exactly these flags (dp_terminal_proof)."""
+        if type(self) is LoopProcessOptimizedExporterFortranSA:
+            self.set_library_optimization()
+        super(LoopProcessOptimizedExporterFortranSA, self).make()
+
+    def set_library_optimization(self, flag='-O2'):
+        """ALOHA_FLAG (read by the DHELAS makefile) and MODEL_FLAG (MODEL
+        makefile) in Source/make_opts."""
+        make_opts = pjoin(self.dir_path, 'Source', 'make_opts')
+        if os.path.exists(make_opts):
+            from madgraph.interface.common_run_interface import CommonRunCmd
+            CommonRunCmd.update_make_opts_full(
+                make_opts, {'ALOHA_FLAG': flag, 'MODEL_FLAG': flag})
+
     def finalize(self, matrix_element, cmdhistory, MG5options, outputflag):
         """create the global information for loops"""
         
         super(LoopProcessOptimizedExporterFortranSA,self).finalize(matrix_element,
                                              cmdhistory, MG5options, outputflag)
         self.write_global_specs(matrix_element)
+        # Model, ALOHA and shared include sources now exist. Until this final
+        # rendered proof succeeds, every DP batch retains the ordinary call.
+        self.finalize_dp_terminal_updates()
+        self.write_onia_ep_files()
+        if 2 in getattr(self, 'onia_npwave', set()):
+            self.set_onia_pw2_code_model()
+
+    ONIA_PW2_CODE_MODEL = (
+        '# Two P-wave bound states: the loop polynomials of their derivatives can\n'
+        '# exceed the 2 GB of static data of the default x86-64 code model\n'
+        'ifeq ($(shell uname -m),x86_64)\n'
+        'FFLAGS += -mcmodel=medium\n'
+        'endif\n')
+
+    def set_onia_pw2_code_model(self):
+        """The subprocesses of two P-wave bound states are built with the
+        medium code model on x86-64: their loop wavefunctions and those of
+        their derivatives (four polynomials of rank R+2 per wavefunction, in
+        double and in quadruple precision) can exceed 2 GB of static data,
+        e.g. for g g > chic0 chic0."""
+        path = pjoin(self.dir_path, 'SubProcesses', 'makefile')
+        with open(path) as stream:
+            text = stream.read()
+        old = 'include $(ROOT)/Source/make_opts\n'
+        if self.ONIA_PW2_CODE_MODEL in text:
+            return
+        if text.count(old) != 1:
+            raise MadGraph5Error('Unexpected SubProcesses makefile')
+        with open(path, 'w') as stream:
+            stream.write(text.replace(old, old + self.ONIA_PW2_CODE_MODEL))
+
+    def write_onia_ep_files(self):
+        """The extended-precision passes of the processes with a P-wave bound
+        state (#PWaveExtendedPrecision): their EP files, derived from the MP
+        ones now that all are written (onia_ep.py), and their build."""
+        ep_dirs = getattr(self, 'onia_ep_dirs', {})
+        if not ep_dirs:
+            return
+        for pdir, proc_prefix in sorted(ep_dirs.items()):
+            onia_ep.derive_subprocess(pdir, proc_prefix)
+        onia_ep.patch_subprocesses_makefile(pjoin(self.dir_path, 'SubProcesses', 'makefile'))
+        logger.info('Extended-precision passes of the P-wave bound state written '
+                    '(off by default: #PWaveExtendedPrecision in MadLoopParams.dat).')
     
 
     
@@ -2281,6 +2960,10 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             self.write_COLLIER_interface(writers.FortranWriter(filename),
                                        matrix_element)
 
+        if self.tir_available_dict.get('tirust', False):
+            self.write_TIRUST_interface(writers.FortranWriter('TIRUST_interface.f'),
+                                        matrix_element)
+
         filename = 'loop_num.f'
         self.write_loop_num(writers.FortranWriter(filename),\
                                            matrix_element,OptimizedFortranModel)
@@ -2309,14 +2992,201 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             filename = 'tir_cache_size.inc'
             self.write_tir_cache_size_include(writers.FortranWriter(filename))
 
+        # The object graph is necessary but not sufficient: a custom template
+        # or writer may introduce another COMMON consumer. Fail closed by
+        # regenerating the ordinary MP batches if the rendered proof fails.
+        terminal = OptimizedFortranModel.get_terminal_wavefunctions(matrix_element)
+        if terminal and not self.validate_terminal_wavefunctions(
+                '.', matrix_element.rep_dict['proc_prefix'], terminal):
+            logger.debug("Keeping full MP updaters: generated terminal proof unavailable")
+            self.write_mp_compute_loop_coefs(writers.FortranWriter('mp_compute_loop_coefs.f'),
+                matrix_element, OptimizedFortranModel, _terminal=False)
+
+        dp_terminal = self.get_dp_terminal_wavefunctions(matrix_element)
+        if dp_terminal:
+            pending = getattr(self, '_dp_terminal_pending', {})
+            pending[os.path.abspath('.')] = (
+                matrix_element.rep_dict['proc_prefix'], dp_terminal)
+            self._dp_terminal_pending = pending
+
         return calls
+
+    def get_dp_terminal_wavefunctions(self, matrix_element):
+        """Select the qualified DP diagonal rank/shape pairs.
+
+        Only the layouts the rendered proof knows: standalone and MC@NLO
+        output of processes with a Born. Subclasses with other templates or
+        build recipes keep the dense updaters.
+        """
+        from madgraph.iolibs import export_fks
+        if (type(self) not in (LoopProcessOptimizedExporterFortranSA,
+                               export_fks.ProcessOptimizedExporterFortranFKS) or
+                loop_onia.has_pwave(matrix_element) or
+                self.opt.get('vector_size') or
+                self.get_context(matrix_element)['MadEventOutput'] or
+                not matrix_element.get('processes')[0].get('has_born') or
+                matrix_element.rep_dict.get('max_lwf_size') != 4 or
+                len(matrix_element.rep_dict['proc_prefix']+'DP_TERMINAL_WL_1_1') > 63):
+            return {}
+        terminal = helas_call_writers.FortranUFOHelasCallWriterOptimized.\
+            get_terminal_wavefunctions(matrix_element)
+        rank = matrix_element.get_max_loop_rank()
+        vertex_rank = matrix_element.get_max_loop_vertex_rank()
+        return {number: info for number, info in terminal.items()
+                if info['vertex_rank'] == 1 and
+                (info['loop_mother_rank'] == 1 or
+                 (info['loop_mother_rank'] in (2, 3) and vertex_rank == 1 and
+                  info['loop_mother_rank'] + 1 <= rank <= 6)) and
+                info['lcut_size'] == info['in_size'] == info['out_size'] == 4}
+
+    # The IEEE environment of the private DP updaters (nearest rounding, no
+    # halting exception), checked once per coefficient batch, before its first
+    # private call. Each call ANDs it with the sticky INEXACT flag captured
+    # just before it. dp_terminal_proof certifies these exact statements.
+    DP_TERMINAL_MODE_DECLARATIONS = (
+        'LOGICAL WL_MODES_OK', 'INTEGER WL_H',
+        'LOGICAL WL_HALTING(SIZE(IEEE_ALL))', 'TYPE(IEEE_ROUND_TYPE) WL_ROUNDING')
+    DP_TERMINAL_MODE_BLOCK = (
+        'WL_MODES_OK=.FALSE.',
+        'CALL IEEE_GET_ROUNDING_MODE(WL_ROUNDING)',
+        'IF(WL_ROUNDING.EQ.IEEE_NEAREST) THEN',
+        'WL_MODES_OK=.TRUE.',
+        'DO WL_H=1,SIZE(IEEE_ALL)',
+        'IF(.NOT.IEEE_SUPPORT_HALTING(IEEE_ALL(WL_H))) WL_MODES_OK=.FALSE.',
+        'ENDDO',
+        'IF(WL_MODES_OK) THEN',
+        'CALL IEEE_GET_HALTING_MODE(IEEE_ALL,WL_HALTING)',
+        'IF(ANY(WL_HALTING)) WL_MODES_OK=.FALSE.',
+        'ENDIF',
+        'ENDIF')
+    DP_TERMINAL_MODE_AND = 'WL_ENTRY_INEXACT=WL_ENTRY_INEXACT.AND.WL_MODES_OK'
+
+    @staticmethod
+    def prepare_dp_terminal_batch(source, prefix, expected):
+        """Propose exact fixed-form call replacements, leaving other bytes intact.
+
+        This is only a proposal: the independent full-source validator must
+        accept all consumers and aliases before these private calls survive.
+        """
+        cls = LoopProcessOptimizedExporterFortranSA
+        if (not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*|', prefix) or
+                re.search(r'(?<![A-Z0-9_])(?:WL_ENTRY_INEXACT|WL_MODES_OK|WL_HALTING|'
+                          r'WL_ROUNDING|WL_H)(?![A-Z0-9_])', source.upper())):
+            raise ValueError('Unknown DP terminal batch declaration')
+        wanted = {}
+        for target, info in expected.items():
+            if (info['loop_mother_rank'] not in (1, 2, 3) or info['vertex_rank'] != 1 or
+                    any(info[key] != 4 for key in ('lcut_size', 'in_size', 'out_size'))):
+                raise ValueError('Unsupported DP terminal shape')
+            call = ('CALL '+prefix+'UPDATE_WL_{loop_mother_rank}_{vertex_rank}'
+                    '(WL(1,0,1,{loop_mother_number}),'
+                    '4,COEFS,4,4,WL(1,0,1,{out}))').format(**info)
+            wanted[re.sub(r'\s+', '', call).upper()] = target
+        physical = source.splitlines(True)
+        blocks = []
+        for index, raw in enumerate(physical):
+            if not raw.strip() or raw[0] in 'cC*!':
+                continue
+            if len(raw.rstrip('\n')) > 132 or len(raw) < 6 or '\t' in raw[:6]:
+                raise ValueError('Unknown DP fixed-form statement')
+            text = re.sub(r'\s+', '', raw[6:].strip()).upper()
+            if raw[5] not in ' 0':
+                if not blocks:
+                    raise ValueError('Orphan DP continuation')
+                blocks[-1][1] = index+1
+                blocks[-1][2] += text
+            else:
+                blocks.append([index, index+1, text])
+
+        def fixed(statement):
+            return '      '+statement[:66]+'\n'+''.join(
+                '     $'+statement[i:i+66]+'\n' for i in range(66, len(statement), 66))
+
+        replacements, found = [], set()
+        for start, end, text in blocks:
+            if text not in wanted:
+                continue
+            target = wanted[text]
+            if target in found or physical[start][:5].strip():
+                raise ValueError('Duplicate or labeled DP terminal producer')
+            if any(line[0] in 'cC*!' for line in physical[start:end]):
+                raise ValueError('Comment inside DP terminal call')
+            found.add(target)
+            private = text.replace('CALL', 'CALL ', 1).replace(
+                'UPDATE_WL_', 'DP_TERMINAL_WL_', 1)[:-1]+',WL_ENTRY_INEXACT)'
+            replacements.append((start, end,
+                fixed('CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)')+
+                fixed(cls.DP_TERMINAL_MODE_AND)+fixed(private)))
+        if not found:
+            return source, found
+        # The modes are checked once, before the first private call
+        replacements.sort()
+        start, end, replacement = replacements[0]
+        replacements[0] = (start, end, ''.join(fixed(statement) for statement in
+                                               cls.DP_TERMINAL_MODE_BLOCK) + replacement)
+        for start, end, replacement in reversed(replacements):
+            physical[start:end] = [replacement]
+        candidate = ''.join(physical)
+        pattern = r'(?mi)^ {6}IMPLICIT\s+NONE[ \t]*\n'
+        insertion = ('      USE, INTRINSIC :: IEEE_ARITHMETIC\n'
+                     '      USE, INTRINSIC :: IEEE_EXCEPTIONS\n'
+                     '      IMPLICIT NONE\n      LOGICAL WL_ENTRY_INEXACT\n' +
+                     ''.join('      %s\n' % declaration for declaration in
+                             cls.DP_TERMINAL_MODE_DECLARATIONS))
+        candidate, count = re.subn(pattern, lambda _: insertion, candidate)
+        if count != 1:
+            raise ValueError('Unknown DP terminal batch scope')
+        return candidate, found
+
+    def finalize_dp_terminal_updates(self):
+        """Promote only complete rendered proofs; otherwise restore dense bytes."""
+        pending = getattr(self, '_dp_terminal_pending', {})
+        self._dp_terminal_pending = {}
+        for directory, (prefix, expected) in sorted(pending.items()):
+            original, proposals, selected = {}, {}, set()
+            accepted = False
+            try:
+                from madgraph.loop.dp_terminal_proof import validate_dp_terminal_wavefunctions
+                if os.path.realpath(directory) != os.path.abspath(directory):
+                    raise ValueError('Aliased DP export directory')
+                for filename in sorted(glob.glob(pjoin(directory, 'coef_construction_*.f'))):
+                    if os.path.islink(filename) or not stat.S_ISREG(os.stat(filename).st_mode):
+                        raise ValueError('Aliased or nonregular DP batch')
+                    with open(filename, 'rb') as stream:
+                        source_bytes = stream.read()
+                    source = source_bytes.decode('utf-8')
+                    candidate, found = self.prepare_dp_terminal_batch(source, prefix, expected)
+                    if selected.intersection(found):
+                        raise ValueError('Repeated DP terminal producer across batches')
+                    selected.update(found)
+                    if found:
+                        original[filename], proposals[filename] = source_bytes, candidate.encode('utf-8')
+                if selected != set(expected):
+                    raise ValueError('Not every DP terminal producer was recognized')
+                for filename, source in proposals.items():
+                    with open(filename, 'wb') as stream:
+                        stream.write(source)
+                accepted = validate_dp_terminal_wavefunctions(directory, prefix, expected)
+            except (ImportError, OSError, ValueError, KeyError, TypeError):
+                accepted = False
+            finally:
+                if not accepted:
+                    for filename, source in original.items():
+                        with open(filename, 'wb') as stream:
+                            stream.write(source)
+            if not accepted:
+                logger.debug('Keeping full DP updaters: generated terminal proof unavailable')
 
     def set_optimized_output_specific_replace_dict_entries(self, matrix_element):
         """ Specify the entries of the replacement dictionary which are specific
         to the optimized output and only relevant to it (the more general entries
         are set in the mother class LoopProcessExporterFortranSA."""
         
-        max_loop_rank=matrix_element.get_max_loop_rank()
+        # P-wave bound states: the derivative of a loop propagator gives the
+        # integral of rank R+1 with that propagator doubled, and with two
+        # P-wave states the mixed derivative ranks up to R+2
+        max_loop_rank = matrix_element.get_max_loop_rank() + \
+                        loop_onia.loop_rank_increase(matrix_element)
         matrix_element.rep_dict['maxrank']=max_loop_rank
         matrix_element.rep_dict['loop_max_coefs']=\
                         q_polynomial.get_number_of_coefs_for_rank(max_loop_rank)
@@ -2415,6 +3285,33 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             writer.writelines(file,context=self.get_context(matrix_element))
         else:
             return file
+
+    def write_TIRUST_interface(self, writer, matrix_element):
+        """Emit the DP/QP tensor adapters, static permutation and plan registry."""
+        replace_dict = copy.copy(matrix_element.rep_dict)
+        replace_dict['include_vector'] = (
+            "include '../../Source/vector.inc'" if self.opt['vector_size'] else '')
+        generator = q_polynomial.FortranPolynomialRoutines(replace_dict['maxrank'])
+        permutation = generator.get_TIRUST_mapping()
+        replace_dict['tirust_coefmap'] = '\n'.join(
+            'DATA (TIRUST_MAP(I),I=%d,%d)/%s/' %
+            (start, min(start + 9, len(permutation) - 1),
+             ','.join(str(value) for value in permutation[start:start + 10]))
+            for start in range(0, len(permutation), 10))
+        plans = sorted(set((amp.get_call_key()[1],
+                            amp.get_analytic_info('wavefunction_rank'))
+                           for diagram in matrix_element.get_loop_diagrams()
+                           for amp in diagram.get_loop_amplitudes()))
+        replace_dict['tirust_plan_registration'] = '\n'.join(
+            '      CALL TIRUST_REGISTER_PLAN(%d,%d,STATUS)\n'
+            '      IF(STATUS.NE.TIRUST_SUCCESS) RETURN' % pair
+            for pair in plans if 1 <= pair[0] <= 6 and 0 <= pair[1] <= 6)
+        with open(os.path.join(self.template_dir, 'TIRUST_interface.inc')) as stream:
+            source = stream.read() % replace_dict
+        if writer:
+            writer.writelines(source, context=self.get_context(matrix_element))
+        else:
+            return source
 
     def write_COLLIER_interface(self, writer, matrix_element):
         """ Create the file COLLIER_interface.f"""
@@ -2543,18 +3440,63 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         subroutines.append(dp_routine)
         subroutines.append(mp_routine)        
 
-        # Initialize the polynomial routine writer
+        # Initialize the polynomial routine writer at the rank of
+        # LOOPMAXCOEFS (rep_dict['maxrank']): R+1 for a P-wave bound state,
+        # whose doubled propagators have one more power of l, and R+2 with
+        # two P-wave states (tripled lines and two doubled lines, l^mu l^nu)
+        poly_rank = matrix_element.get_max_loop_rank() + \
+                    loop_onia.loop_rank_increase(matrix_element)
         poly_writer=q_polynomial.FortranPolynomialRoutines(
-            matrix_element.get_max_loop_rank(),
+            poly_rank,
             updater_max_rank = matrix_element.get_max_loop_vertex_rank(), 
             sub_prefix=replace_dict['proc_prefix'],
             proc_prefix=replace_dict['proc_prefix'],
             mp_prefix='')
         # Write the polynomial constant module common to all
         writer.writelines(poly_writer.write_polynomial_constant_module()+'\n')
+        ep = self.get_context(matrix_element).get('OniaPwaveEP', False)
+        if loop_onia.has_pwave(matrix_element):
+            # A P-wave bound state: the dual numbers have default
+            # initialisation and type-bound procedures, so cannot be in COMMON
+            # blocks; the dual objects shared by the routines are in a module
+            # (polynomial.f is compiled before the other files)
+            writer.writelines('\n'.join([
+                'MODULE %(proc_prefix)sPW_DUAL',
+                'C     A P-wave bound state: the dual (value, derivative in the relative',
+                'C     momentum) wavefunctions, Born and counterterm amplitudes and loop',
+                'C     momenta shared by the routines of the process (onia_loop.f), and',
+                'C     the dual constituent momenta of the current direction. They are',
+                'C     allocatable: gfortran 15.2 re-applies the default initialisation',
+                'C     of the dual numbers to use-associated (non-allocatable) arrays on',
+                'C     entry of the procedures that use them.',
+                'USE ALOHA_OBJECT',
+                'IMPLICIT NONE',
+                'TYPE(ALOHA), ALLOCATABLE :: PWW(:)',
+                'TYPE(DUAL), ALLOCATABLE :: PWAMP(:), PWAMPL(:,:), PWPL(:,:), PWPD(:,:)',
+                'C     the same in quadruple precision',
+                'TYPE(MP_ALOHA), ALLOCATABLE :: MPPWW(:)',
+                'TYPE(MP_DUAL), ALLOCATABLE :: MPPWAMP(:), MPPWAMPL(:,:)',
+                'TYPE(MP_DUAL), ALLOCATABLE :: MPPWPL(:,:), MPPWPD(:,:)'] +
+                (['C     and in extended precision (#PWaveExtendedPrecision)',
+                  'TYPE(EP_ALOHA), ALLOCATABLE :: EPPWW(:)',
+                  'TYPE(EP_DUAL), ALLOCATABLE :: EPPWAMP(:), EPPWAMPL(:,:)',
+                  'TYPE(EP_DUAL), ALLOCATABLE :: EPPWPL(:,:), EPPWPD(:,:)']
+                 if ep else []) + [
+                'CONTAINS',
+                'SUBROUTINE %(proc_prefix)sPW_DUAL_INIT()',
+                'IF (ALLOCATED(PWW)) RETURN',
+                'ALLOCATE(PWW(%(nwavefuncs)d), PWAMP(%(nbornamps)d), PWAMPL(3,%(nctamps)d))',
+                'ALLOCATE(PWPL(0:3,-1:%(nloopwavefuncs)d), PWPD(0:3,%(nexternal)d))',
+                'ALLOCATE(MPPWW(%(nwavefuncs)d), MPPWAMP(%(nbornamps)d), MPPWAMPL(3,%(nctamps)d))',
+                'ALLOCATE(MPPWPL(0:3,-1:%(nloopwavefuncs)d), MPPWPD(0:3,%(nexternal)d))'] +
+                (['ALLOCATE(EPPWW(%(nwavefuncs)d), EPPWAMP(%(nbornamps)d), EPPWAMPL(3,%(nctamps)d))',
+                  'ALLOCATE(EPPWPL(0:3,-1:%(nloopwavefuncs)d), EPPWPD(0:3,%(nexternal)d))']
+                 if ep else []) + [
+                'END SUBROUTINE %(proc_prefix)sPW_DUAL_INIT',
+                'END MODULE %(proc_prefix)sPW_DUAL']) % replace_dict + '\n')
 
         mp_poly_writer=q_polynomial.FortranPolynomialRoutines(
-            matrix_element.get_max_loop_rank(),
+            poly_rank,
             updater_max_rank = matrix_element.get_max_loop_vertex_rank(),        
             coef_format='complex*32', sub_prefix='MP_'+replace_dict['proc_prefix'],
             proc_prefix=replace_dict['proc_prefix'], mp_prefix='MP_')
@@ -2600,11 +3542,178 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                   wl_update[0],wl_update[1],loop_over_vertex_coefs_first=False))
                 subroutines.append(mp_poly_writer.write_compact_wl_updater(\
                   wl_update[0],wl_update[1],loop_over_vertex_coefs_first=False))            
+            if wl_update[1] == 1 and 2 <= wl_update[0] <= 4:
+                for vertex in ('FFV1L1_2', 'FFV1L2_1'):
+                    name = (mp_poly_writer.sub_prefix+'UPDATE_WL_%d_1_FACTOR_%s' %
+                            (wl_update[0], vertex))
+                    if len(name) <= 63:
+                        subroutines.append(mp_poly_writer.write_factorized_wl_updater(
+                            wl_update[0], vertex))
                 
+        terminal = helas_call_writers.FortranUFOHelasCallWriterOptimized.\
+            get_terminal_wavefunctions(matrix_element)
+        dp_terminal = self.get_dp_terminal_wavefunctions(matrix_element)
+        for left, right in sorted(set((item['loop_mother_rank'], item['vertex_rank'])
+                                      for item in dp_terminal.values())):
+            subroutines.append(poly_writer.write_dp_terminal_wl_updater(left, right))
+        for left, right in sorted(set((item['loop_mother_rank'], item['vertex_rank'])
+                                      for item in terminal.values())):
+            if left == right == 1 or left == 0 or right == 0:
+                subroutines.append(mp_poly_writer.write_expanded_wl_updater(
+                    left, right, terminal=True))
+            else:
+                subroutines.append(mp_poly_writer.write_compact_wl_updater(
+                    left, right, terminal=True))
+            if right == 1 and 2 <= left <= 4:
+                for vertex in ('FFV1L1_2', 'FFV1L2_1'):
+                    name = (mp_poly_writer.sub_prefix+'TERMINAL_WL_%d_1_FACTOR_%s' %
+                            (left, vertex))
+                    if len(name) <= 63:
+                        subroutines.append(mp_poly_writer.write_factorized_wl_updater(
+                            left, vertex, terminal=True))
         writer.writelines('\n\n'.join(subroutines),
                                        context=self.get_context(matrix_element))
 
-    def write_mp_compute_loop_coefs(self, writer, matrix_element, fortran_model):
+    @staticmethod
+    def validate_terminal_wavefunctions(directory, prefix, expected):
+        """Check all rendered consumers before retaining private MP calls."""
+        def logical_source(filename):
+            statements = []
+            with open(filename) as stream:
+                for raw in stream:
+                    if not raw.strip() or raw[0] in 'cC*!':
+                        continue
+                    statement = raw[6:].strip().upper()
+                    if len(raw) > 5 and raw[5] not in ' 0':
+                        if not statements:
+                            raise ValueError("Orphan continuation")
+                        statements[-1] += statement
+                    else:
+                        statements.append(statement)
+            return '\n'.join(statements)
+        try:
+            sources = {os.path.basename(name): logical_source(name)
+                       for name in glob.glob(pjoin(directory, '*.f'))}
+            batches = sorted((name for name in sources
+                              if re.fullmatch(r'mp_coef_construction_\d+\.f', name)),
+                             key=lambda name: int(re.search(r'(\d+)\.f$', name)[1]))
+            if not batches:
+                return False
+            stem = re.escape('MP_'+prefix.upper())
+            update = re.compile(r'CALL '+stem+r'(UPDATE|TERMINAL)_WL_(\d+)_(\d+)'
+                r'(_FACTOR_'+_FACTORIZED_WL_VERTEX+r')?'
+                r'\(WL\(1,0,1,(-?\d+)\),(\d+),COEFS,(\d+),(\d+),'
+                r'WL\(1,0,1,(\d+)\)(,WL_ENTRY_INEXACT)?\)')
+            create = re.compile(r'CALL '+stem+r'CREATE_LOOP_COEFS\(WL\(1,0,1,(\d+)\),')
+            producers, consumers, roots, private = {}, set(), set(), {}
+            for name in batches:
+                for line in sources[name].splitlines():
+                    match = update.fullmatch(line)
+                    if match:
+                        mode, left, right, factor, origin, cut, ins, outs, target, flag = match.groups()
+                        left, right, origin, cut, ins, outs, target = map(
+                            int, (left, right, origin, cut, ins, outs, target))
+                        if (target in producers or target == origin or
+                                (origin not in producers and origin not in (-1, 0)) or
+                                (mode == 'TERMINAL' or bool(factor)) != bool(flag) or
+                                (factor and not (2 <= left <= 4 and right == 1 and
+                                                 ins == outs == 4 and 0 <= cut <= 4))):
+                            return False
+                        info = dict(loop_mother_rank=left, vertex_rank=right,
+                            loop_mother_number=origin, lcut_size=cut,
+                            in_size=ins, out_size=outs, out=target)
+                        producers[target] = info
+                        consumers.add(origin)
+                        if mode == 'TERMINAL':
+                            private[target] = info
+                    elif create.match(line):
+                        if len(re.findall(r'\bWL\b', line)) != 1:
+                            return False
+                        root = int(create.match(line)[1])
+                        if root not in producers:
+                            return False
+                        roots.add(root)
+                    elif re.search(r'\bWL\b', line) and not line.startswith(('COMPLEX', 'COMMON')):
+                        return False
+            if private != expected or not set(private).issubset(roots-consumers):
+                return False
+            block = '/'+prefix.upper()+'MP_WL/'
+            common = 'COMMON'+block+'WL,PL'
+            for name, text in sources.items():
+                declarations = [re.sub(r'\s+', '', line) for line in text.splitlines()
+                                if block in re.sub(r'\s+', '', line)]
+                if not declarations:
+                    continue
+                if any(declaration != common for declaration in declarations):
+                    return False
+                if name in batches:
+                    continue
+                for line in text.splitlines():
+                    if line.startswith(('COMPLEX', 'COMMON')):
+                        continue
+                    if re.search(r'\bCALL\b[^\n]*\bWL\b', line):
+                        return False
+                    if len(re.findall(r'\bWL\b', line)) != len(re.findall(r'\bWL\(', line)):
+                        return False
+                    for use in re.finditer(r'\bWL\(([^)\n]*)\)', line):
+                        indices = use[1].split(',')
+                        if len(indices) != 4 or indices[-1] not in ('-1', '0'):
+                            return False
+            polynomial = sources.get('polynomial.f', '')
+            merge = re.search(r'(?m)^SUBROUTINE '+stem+r'MERGE_WL\(.*?^END\s*$',
+                              polynomial, re.S | re.M)
+            create_body = re.search(r'(?m)^SUBROUTINE '+stem+r'CREATE_LOOP_COEFS\(.*?^END\s*$',
+                                    polynomial, re.S | re.M)
+            return bool(merge and create_body and
+                'OUT(J)=OUT(J)+WL(I,J,I)*CONST' in merge[0].replace(' ', '') and
+                len(re.findall(r'\bWL\(', merge[0])) == 2 and
+                len(re.findall(r'\bWL\b', merge[0])) == 3 and
+                len(re.findall(r'\bLOOP_WF\b', create_body[0])) == 3 and
+                re.search(r'(?m)^CALL '+stem+r'MERGE_WL\(LOOP_WF,', create_body[0]))
+        except (OSError, ValueError, KeyError):
+            return False
+
+    @staticmethod
+    def factorize_mp_coef_calls(calls, prefix):
+        """Select guarded private contractions after recognized vertex calls.
+
+        Selection is local to one generated wavefunction call block. The
+        Fortran helper verifies the actual stored derivative rows and falls
+        back to the original updater whenever its numerical contract fails.
+        """
+        vertex_call = re.compile(r'CALL MP_('+_FACTORIZED_WL_VERTEX+r')\(.*?,COEFS\)')
+        updater = re.compile(r'(CALL MP_'+re.escape(prefix)+
+            r'(UPDATE|TERMINAL)_WL_([2-4])_1)'
+            r'\(WL\(1,0,1,(-?\d+)\),([0-4]),COEFS,4,4,'
+            r'WL\(1,0,1,(\d+)\)(,WL_ENTRY_INEXACT)?\)')
+        result = []
+        for block in calls:
+            vertex = None
+            lines = block.splitlines(keepends=True)
+            for index, raw in enumerate(lines):
+                line = raw.rstrip('\r\n')
+                if not line.strip() or line.lstrip().startswith(('#', '!')):
+                    continue
+                producer = vertex_call.fullmatch(line)
+                if producer:
+                    vertex = producer[1]
+                    continue
+                match = updater.fullmatch(line)
+                if (vertex and match and int(match[4]) != int(match[6]) and
+                        int(match[6]) > 0 and
+                        (match[2] == 'TERMINAL') == bool(match[7])):
+                    name = match[1][5:]+'_FACTOR_'+vertex
+                    if len(name) <= 63:
+                        rewritten = line.replace(match[1], 'CALL '+name, 1)
+                        if match[2] == 'UPDATE':
+                            rewritten = rewritten[:-1]+',WL_ENTRY_INEXACT)'
+                        lines[index] = rewritten+raw[len(line):]
+                vertex = None
+            result.append(''.join(lines))
+        return result
+
+    def write_mp_compute_loop_coefs(self, writer, matrix_element, fortran_model,
+                                   _terminal=True):
         """Create the write_mp_compute_loop_coefs.f file."""
         
         if not matrix_element.get('processes') or \
@@ -2631,14 +3740,39 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                        squared_orders=squared_orders, split_orders=split_orders)
         self.turn_to_mp_calls(born_ct_helas_calls)
         self.turn_to_mp_calls(uvct_helas_calls)
+        pwave = loop_onia.has_pwave(matrix_element)
+        terminal = (fortran_model.get_terminal_wavefunctions(matrix_element)
+                    if _terminal and not pwave else {})
         coef_construction, coef_merging = fortran_model.get_coef_construction_calls(\
                                     matrix_element,group_loops=self.group_loops,
-                        squared_orders=squared_orders,split_orders=split_orders)
+                        squared_orders=squared_orders,split_orders=split_orders,
+                        terminal_wavefunctions=terminal)
         # The proc_prefix must be replaced
         coef_construction = [c % matrix_element.rep_dict for c 
                                                            in coef_construction]
         self.turn_to_mp_calls(coef_construction)
         self.turn_to_mp_calls(coef_merging)        
+        momenta = 'MP_P'
+        if pwave:
+            # A P-wave bound state: the dual quadruple-precision calls, with
+            # the derivative of the loop wavefunctions (no factorised or
+            # terminal updaters)
+            momenta = 'MPPWPD'
+            coef_construction = loop_onia.pwave_dual_names(
+                loop_onia.pwave_coef_construction_calls(
+                    coef_construction, loop_onia.npwave(matrix_element)), mp=True)
+            born_ct_helas_calls = loop_onia.pwave_dual_names(born_ct_helas_calls, mp=True)
+            uvct_helas_calls = loop_onia.pwave_dual_names(uvct_helas_calls, mp=True)
+        else:
+            coef_construction = self.factorize_mp_coef_calls(
+                coef_construction, matrix_element.rep_dict['proc_prefix'])
+        # Add the intrinsic call after MP conversion, which prefixes all CALLs.
+        private_call = re.compile(r'(?m)^(CALL MP_'+re.escape(
+            matrix_element.rep_dict['proc_prefix'])+_PRIVATE_MP_WL_ROUTINE+r'\()')
+        has_private_updates = any(private_call.search(call) for call in coef_construction)
+        coef_construction = [private_call.sub(
+            r'CALL IEEE_GET_FLAG(IEEE_INEXACT,WL_ENTRY_INEXACT)\n\1', call)
+            for call in coef_construction]
                                          
         file = open(os.path.join(self.template_dir,\
                                            'mp_compute_loop_coefs.inc')).read()
@@ -2651,21 +3785,24 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                         'mp_born_ct_helas_calls','mp_helas_calls_ampb',
                         required_so_broadcaster = 'MP_CT_REQ_SO_DONE',
                         continue_label = 2000,
-                        momenta_array_name = 'MP_P',
+                        momenta_array_name = momenta,
                         context=context)
         file=self.split_HELASCALLS(writer,replace_dict,\
                         'mp_helas_calls_split.inc',file,uvct_helas_calls,\
                         'mp_uvct_helas_calls','mp_helas_calls_uvct',
                         required_so_broadcaster = 'MP_UVCT_REQ_SO_DONE',
                         continue_label = 3000,
-                        momenta_array_name = 'MP_P',
+                        momenta_array_name = momenta,
                         context=context)
+        if has_private_updates:
+            replace_dict['terminal_ieee_use'] = '      USE, INTRINSIC :: IEEE_EXCEPTIONS\n'
+            replace_dict['terminal_ieee_declarations'] = '      LOGICAL WL_ENTRY_INEXACT\n'
         file=self.split_HELASCALLS(writer,replace_dict,\
                 'mp_helas_calls_split.inc',file,coef_construction,\
                 'mp_coef_construction','mp_coef_construction',
                 required_so_broadcaster = 'MP_LOOP_REQ_SO_DONE',
                 continue_label = 4000,
-                momenta_array_name = 'MP_P',
+                momenta_array_name = momenta,
                 context=context)
 
         replace_dict['mp_coef_merging']='\n'.join(coef_merging)
@@ -3052,7 +4189,7 @@ PARAMETER (NSQUAREDSO=%d)"""%matrix_element.rep_dict['nSquaredSO'])
         looplibs_av=['.TRUE.']
         # one should be careful about the order in the following as it must match
         # the ordering in MadLoopParamsCard.
-        for tir_lib in ['pjfry','iregi','golem','samurai','ninja','collier']:
+        for tir_lib in ['pjfry','iregi','golem','samurai','ninja','collier','ninjars','tirust']:
             looplibs_av.append('.TRUE.' if tir_lib in self.all_tir and \
                                 self.tir_available_dict[tir_lib] else '.FALSE.')
         replace_dict['data_looplibs_av']=','.join(looplibs_av)
@@ -3132,26 +4269,51 @@ PARAMETER (NSQUAREDSO=%d)"""%matrix_element.rep_dict['nSquaredSO'])
         # Setup the contextual environment which is used in the splitting
         # functions below
         context = self.get_context(matrix_element)
+        # A P-wave bound state: the double-precision amplitudes are computed
+        # in dual numbers, from the dual constituent momenta PD
+        momenta = 'P'
+        if not hasattr(self, 'onia_pwave_processes'):
+            self.onia_pwave_processes = []
+        self.onia_pwave_processes.append(bool(context.get('OniaPwave')))
+        if not hasattr(self, 'onia_npwave'):
+            self.onia_npwave = set()
+        if context.get('OniaPwaveEP'):
+            # the EP files are derived from the MP ones at finalize (onia_ep.py)
+            if not hasattr(self, 'onia_ep_dirs'):
+                self.onia_ep_dirs = {}
+            self.onia_ep_dirs[os.path.abspath('.')] = matrix_element.rep_dict['proc_prefix']
+        if context.get('OniaPwave'):
+            self.onia_npwave.add(loop_onia.npwave(matrix_element))
+            momenta = 'PWPD'
+            coef_construction = loop_onia.pwave_dual_names(
+                loop_onia.pwave_coef_construction_calls(
+                    coef_construction, loop_onia.npwave(matrix_element)))
+            born_ct_helas_calls = loop_onia.pwave_dual_names(born_ct_helas_calls)
+            uvct_helas_calls = loop_onia.pwave_dual_names(uvct_helas_calls)
         file=self.split_HELASCALLS(writer,replace_dict,\
                         'helas_calls_split.inc',file,born_ct_helas_calls,\
                         'born_ct_helas_calls','helas_calls_ampb',
                         required_so_broadcaster = 'CT_REQ_SO_DONE',
-                        continue_label = 2000, context = context)
+                        continue_label = 2000, momenta_array_name=momenta,
+                        context = context)
         file=self.split_HELASCALLS(writer,replace_dict,\
                         'helas_calls_split.inc',file,uvct_helas_calls,\
                         'uvct_helas_calls','helas_calls_uvct',
                         required_so_broadcaster = 'UVCT_REQ_SO_DONE',
-                        continue_label = 3000, context=context)
+                        continue_label = 3000, momenta_array_name=momenta,
+                        context=context)
         file=self.split_HELASCALLS(writer,replace_dict,\
                 'helas_calls_split.inc',file,coef_construction,\
                 'coef_construction','coef_construction',
                 required_so_broadcaster = 'LOOP_REQ_SO_DONE',
-                continue_label = 4000, context=context)    
+                continue_label = 4000, momenta_array_name=momenta,
+                context=context)
         file=self.split_HELASCALLS(writer,replace_dict,\
                 'helas_calls_split.inc',file,loop_CT_calls,\
                 'loop_CT_calls','loop_CT_calls',
                 required_so_broadcaster = 'CTCALL_REQ_SO_DONE',
-                continue_label = 5000, context=context)
+                continue_label = 5000, momenta_array_name=momenta,
+                context=context)
        
         # Add the entries above to the general_replace_dict so that it can be 
         # used by write_mp_compute_loop_coefs later
@@ -3178,7 +4340,12 @@ PARAMETER (NSQUAREDSO=%d)"""%matrix_element.rep_dict['nSquaredSO'])
         for i in range(len(offshell_or_not)):
             replace_dict["keep_offshell_mass"] += f"KEEP_OFFSHELL_MASS({i + 1}) = {offshell_or_not[i]}\n"
 
+        if context.get('Onia'):
+            self.write_onia_loop_files(matrix_element, fortran_model, replace_dict)
+
         file = file % replace_dict
+        if context.get('Onia'):
+            file = self.onia_public_entries(file, matrix_element)
         number_of_calls = len([call for call in loop_CT_calls if call.find('CALL LOOP') != 0])   
         if writer:
             # Write the file

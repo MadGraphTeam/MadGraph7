@@ -6050,7 +6050,10 @@ class TestDecayChainFlavorTree(unittest.TestCase):
 
     @staticmethod
     def generate(cmd, line):
-        cmd.exec_cmd('generate %s' % line)
+        # Crossing off: with it on, most channels of p p > w+ w+ j j are
+        # recorded as crossings of a base (not generated), so they would be
+        # missing from the matrix elements whose flavors are counted here.
+        cmd.exec_cmd('generate %s --use_crossing=False' % line)
         return helas_objects.HelasMultiProcess(
             cmd._curr_amps).get_matrix_elements()
 

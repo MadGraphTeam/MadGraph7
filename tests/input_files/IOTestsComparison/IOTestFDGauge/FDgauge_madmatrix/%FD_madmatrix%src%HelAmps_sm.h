@@ -17,12 +17,12 @@
 #ifndef HelAmps_sm_H
 #define HelAmps_sm_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#ifdef MGONGPU_HAS_VECTORS_H // the simd backend (see its mgOnGpuConfig.h)
-#include "mgOnGpuVectors.h"
+#ifdef MADMATRIX_HAS_VECTORS_H // the simd backend (see its MadMatrixConfig.h)
+#include "MadMatrixVectors.h"
 #else
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 #endif
 #include "MadMatrixDenom.h"
 
@@ -127,7 +127,7 @@ namespace madmatrix
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPU_INLINE_HELAMPS
+#ifdef MADMATRIX_INLINE_HELAMPS
 #define INLINE inline
 #define ALWAYS_INLINE __attribute__( ( always_inline ) )
 #else
@@ -347,7 +347,7 @@ namespace madmatrix
     const fptype_amp_sv tm = 1 - tp;
     if( fmass != 0. )
     {
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3 ) );
 #else
       volatile fptype_amp_sv p2 = pvec1 * pvec1 + pvec2 * pvec2 + pvec3 * pvec3; // volatile fixes #736
@@ -356,7 +356,7 @@ namespace madmatrix
       // The Fortran ip/im indices ( 1 + nh ) / 2 and ( 1 - nh ) / 2 (for pp > 0, ( 3 +- nh ) / 2 as omega(2) has
       // indexes 1,2) are the truth values tp and tm: an array element x[ip] is tm * x[0] + tp * x[1], and
       // ip * x[ip] is just tp * x[1] (and likewise for im)
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       if( pp == 0. )
       {
         // NB: Do not use "abs" for floats! It returns an integer with no build warning! Use std::abs!
@@ -424,7 +424,7 @@ namespace madmatrix
     }
     else
     {
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
       // pvec0+pvec3 is a cancelling difference of two ~|p| numbers for a
       // backward-moving massless fermion, and everything below divides by it.
       // Take it from the light-cone identity p+ p- = pT^2 instead.
@@ -645,7 +645,7 @@ namespace madmatrix
     {
       const fptype_amp_sv nsvahl = static_cast<fptype_amp>( nsv ) * abshel;
       const fptype_amp_sv hel0 = 1 - abshel; // truth value of hel == 0 (longitudinal polarisation)
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pt2 = ( pvec1 * pvec1 ) + ( pvec2 * pvec2 );
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( pt2 + ( pvec3 * pvec3 ) ) );
       const fptype_amp_sv pt = fpmin( pp, fpsqrt( pt2 ) );
@@ -765,7 +765,7 @@ namespace madmatrix
     else
     {
       const fptype_amp_sv& pp = pvec0; // NB: rewrite the following as in Fortran, using pp instead of pvec0
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pt = fpsqrt( ( pvec1 * pvec1 ) + ( pvec2 * pvec2 ) );
 #else
       volatile fptype_amp_sv pt2 = pvec1 * pvec1 + pvec2 * pvec2; // volatile fixes #736
@@ -773,7 +773,7 @@ namespace madmatrix
 #endif
       w[0] = cxzero_sv();
       w[3] = cxmake( hel * pt / pp * sqh, 0. );
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       if( pt != 0. )
       {
         const fptype_amp pzpt = pvec3 / ( pp * pt ) * sqh * hel;
@@ -888,7 +888,7 @@ namespace madmatrix
     const fptype_amp_sv tm = 1 - tp;
     if( fmass != 0. )
     {
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
       const fptype_amp_sv pp = fpmin( pvec0, fpsqrt( ( pvec1 * pvec1 ) + ( pvec2 * pvec2 ) + ( pvec3 * pvec3 ) ) );
       if( pp == 0. )
       {
@@ -964,7 +964,7 @@ namespace madmatrix
     }
     else
     {
-#ifdef MGONGPU_CPPSIMD
+#ifdef MADMATRIX_SIMD
       // pvec0+pvec3 is a cancelling difference of two ~|p| numbers for a
       // backward-moving massless fermion, and everything below divides by it.
       // Take it from the light-cone identity p+ p- = pT^2 instead.
@@ -1151,7 +1151,7 @@ namespace madmatrix
    const fptype_amp_sv one = 1. + fptype_amp_sv{0};
    const fptype_amp_sv zero = 0. + fptype_amp_sv{0};
 
-#ifndef MGONGPU_CPPSIMD
+#ifndef MADMATRIX_SIMD
 
     if (qabs2 > 0.f)
     {
@@ -1925,15 +1925,12 @@ namespace madmatrix
       for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
       return;
     }
-    int flv_sel = -1;
-    if(MCOUP.partner1[flv_index1] == flv_index2) flv_sel = flv_index1;
-    else if(MCOUP.partner1[flv_index2] == flv_index1) flv_sel = flv_index2;
-    if(flv_sel == -1) {
+    if(MCOUP.partner1[flv_index1] != flv_index2) {
       for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
       return;
     }
-    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );
-    const cxtype_amp_sv denom = madmatrix::denom( Ccoeff, COUP, dP3, M3, W3 );
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_index1 );
+    const cxtype_amp_sv denom = madmatrix::denom_timelike( Ccoeff, COUP, dP3, M3, W3 );
     wV3[0] = denom * ( -cI ) * ( wF2[2] * wF1[0] + wF2[3] * wF1[1] + wF2[0] * wF1[2] + wF2[1] * wF1[3] );
     wV3[1] = denom * ( -cI ) * ( -wF2[3] * wF1[0] - wF2[2] * wF1[1] + wF2[1] * wF1[2] + wF2[0] * wF1[3] );
     wV3[2] = denom * ( -cI ) * ( -cI * ( wF2[3] * wF1[0] + wF2[0] * wF1[3] ) + cI * ( wF2[2] * wF1[1] + wF2[1] * wF1[2] ) );
@@ -1990,15 +1987,12 @@ namespace madmatrix
       for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
       return;
     }
-    int flv_sel = -1;
-    if(MCOUP.partner1[flv_index1] == flv_index2) flv_sel = flv_index1;
-    else if(MCOUP.partner1[flv_index2] == flv_index1) flv_sel = flv_index2;
-    if(flv_sel == -1) {
+    if(MCOUP.partner1[flv_index1] != flv_index2) {
       for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
       return;
     }
-    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );
-    const cxtype_amp_sv denom = madmatrix::denom( Ccoeff, COUP, dP3, M3, W3 );
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_index1 );
+    const cxtype_amp_sv denom = madmatrix::denom_timelike( Ccoeff, COUP, dP3, M3, W3 );
     wV3[0] = denom * ( -cI ) * ( wF2[0] * wF1[2] + wF2[1] * wF1[3] );
     wV3[1] = denom * ( -cI ) * ( wF2[1] * wF1[2] + wF2[0] * wF1[3] );
     wV3[2] = denom * ( -cI ) * ( +cI * ( wF2[1] * wF1[2] ) - cI * ( wF2[0] * wF1[3] ) );
@@ -2053,32 +2047,26 @@ namespace madmatrix
     const fptype_sv FDNQ = FDN[0] * FDQ[0].real() - FDN[1] * FDQ[1].real() - FDN[2] * FDQ[2].real() - FDN[3] * FDQ[3].real();
     const int & flv_index1 = F1.flv_index;
     const int & flv_index2 = F2.flv_index;
-    int zero_coup1 = 0;
-    int zero_coup2 = 0;
-    if(flv_index1 != flv_index2 || flv_index1 == -1) {
-      for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
-      return;
-    }
     if(flv_index1 == -1 || flv_index2 == -1) {
       for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
       return;
     }
-    if(MCOUP1.partner1[flv_index1] != flv_index2 || MCOUP1.partner2[flv_index1] != flv_index2) {
-      zero_coup1 = 1;
-      COUP1 = cxzero_sv();
+    const int flv_sel1 = MCOUP1.partner1[flv_index1] == flv_index2 ? flv_index1 : -1;
+    const int flv_sel2 = MCOUP2.partner1[flv_index1] == flv_index2 ? flv_index1 : -1;
+    if(flv_sel1 == -1 && flv_sel2 == -1) {
+      for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
+      return;
     }
-    if(MCOUP2.partner1[flv_index1] != flv_index2 || MCOUP2.partner2[flv_index1] != flv_index2) {
-      zero_coup2 = 1;
-      COUP2 = cxzero_sv();
-    }
-    if(zero_coup1 ==0) { COUP1 = C_ACCESS::kernelAccessConst( MCOUP1.value + C_ACCESS::flv_stride*flv_index1 ); }
-    if(zero_coup2 ==0) { COUP2 = C_ACCESS::kernelAccessConst( MCOUP2.value + C_ACCESS::flv_stride*flv_index1 ); }
-    const cxtype_amp_sv denom1 = madmatrix::denom( Ccoeff1, COUP1, dP3, M3, W3 );
+    if(flv_sel1 == -1) { COUP1 = cxzero_sv(); }
+    else { COUP1 = C_ACCESS::kernelAccessConst( MCOUP1.value + C_ACCESS::flv_stride*flv_sel1 ); }
+    if(flv_sel2 == -1) { COUP2 = cxzero_sv(); }
+    else { COUP2 = C_ACCESS::kernelAccessConst( MCOUP2.value + C_ACCESS::flv_stride*flv_sel2 ); }
+    const cxtype_amp_sv denom1 = madmatrix::denom_timelike( Ccoeff1, COUP1, dP3, M3, W3 );
     wV3[0] = wV3[0] + denom1 * ( -cI ) * ( wF2[0] * wF1[2] + wF2[1] * wF1[3] );
     wV3[1] = wV3[1] + denom1 * ( -cI ) * ( wF2[1] * wF1[2] + wF2[0] * wF1[3] );
     wV3[2] = wV3[2] + denom1 * ( -cI ) * ( +cI * ( wF2[1] * wF1[2] ) - cI * ( wF2[0] * wF1[3] ) );
     wV3[3] = wV3[3] + denom1 * ( -cI ) * ( wF2[0] * wF1[2] - wF2[1] * wF1[3] );
-    const cxtype_amp_sv denom2 = madmatrix::denom( Ccoeff2, COUP2, dP3, M3, W3 );
+    const cxtype_amp_sv denom2 = madmatrix::denom_timelike( Ccoeff2, COUP2, dP3, M3, W3 );
     wV3[0] = wV3[0] + denom2 * ( -cI ) * ( wF2[2] * wF1[0] + wF2[3] * wF1[1] );
     wV3[1] = wV3[1] + denom2 * ( -cI ) * ( -wF2[3] * wF1[0] - wF2[2] * wF1[1] );
     wV3[2] = wV3[2] + denom2 * ( -cI ) * ( -cI * ( wF2[3] * wF1[0] ) + cI * ( wF2[2] * wF1[1] ) );
@@ -2119,14 +2107,11 @@ namespace madmatrix
       *vertex = cxzero_sv();
       return;
     }
-    int flv_sel = -1;
-    if(MCOUP.partner1[flv_index1] == flv_index2) flv_sel = flv_index1;
-    else if(MCOUP.partner1[flv_index2] == flv_index1) flv_sel = flv_index2;
-    if(flv_sel == -1) {
+    if(MCOUP.partner1[flv_index1] != flv_index2) {
       *vertex = cxzero_sv();
       return;
     }
-    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_index1 );
     const cxtype_amp_sv TMP0 = ( wF1[0] * ( wF2[2] * ( wV3[0] + wV3[3] ) + wF2[3] * ( wV3[1] + cI * wV3[2] ) ) + wF1[1] * ( wF2[2] * ( wV3[1] - cI * wV3[2] ) + wF2[3] * ( wV3[0] - wV3[3] ) ) );
     ( *vertex ) = (cxtype_amp_sv)( Ccoeff * COUP * -cI * TMP0 );
     mgDebug( 1, __FUNCTION__ );
@@ -2164,15 +2149,13 @@ namespace madmatrix
       return;
     }
     int flv_index1 = MCOUP.partner2[flv_index2];
-    int flv_sel = flv_index1;
-    if(flv_index1 == -1) { flv_index1 = MCOUP.partner1[flv_index2]; flv_sel = flv_index2; }
     if(flv_index1 == -1){
       for(int i=0; i<F1.nw6; i++) { wF1[i] = cxzero_sv(); }
       F1.flv_index = -1;
       return;
     }
     F1.flv_index = flv_index1;
-    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_index1 );
     const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
     wF1[0] = denom * ( -cI ) * ( wF2[2] * ( wV3[0] + wV3[3] ) + wF2[3] * ( wV3[1] + cI * wV3[2] ) );
     wF1[1] = denom * cI * ( wF2[2] * ( -wV3[1] + cI * wV3[2] ) + wF2[3] * ( -wV3[0] + wV3[3] ) );
@@ -2224,7 +2207,7 @@ namespace madmatrix
     COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_index1 );
     constexpr fptype_amp one( 1. );
     constexpr fptype_denom oned( 1. );
-    const cxtype_amp_sv denom = madmatrix::denom( Ccoeff, COUP, dP2, M2, W2 );
+    const cxtype_amp_sv denom = madmatrix::denom_timelike( Ccoeff, COUP, dP2, M2, W2 );
     wF2[0] = denom * cI * ( wF1[0] * ( P2[0] * ( wV3[0] + wV3[3] ) + ( P2[1] * ( -one ) * ( wV3[1] + cI * wV3[2] ) + ( P2[2] * ( +cI * wV3[1] - wV3[2] ) - P2[3] * ( wV3[0] + wV3[3] ) ) ) ) + wF1[1] * ( P2[0] * ( wV3[1] - cI * wV3[2] ) + ( P2[1] * ( -wV3[0] + wV3[3] ) + ( P2[2] * ( +cI * wV3[0] - cI * wV3[3] ) + P2[3] * ( -wV3[1] + cI * wV3[2] ) ) ) ) );
     wF2[1] = denom * cI * ( wF1[0] * ( P2[0] * ( wV3[1] + cI * wV3[2] ) + ( P2[1] * ( -one ) * ( wV3[0] + wV3[3] ) + ( P2[2] * ( -one ) * ( +cI * ( wV3[0] + wV3[3] ) ) + P2[3] * ( wV3[1] + cI * wV3[2] ) ) ) ) + wF1[1] * ( P2[0] * ( wV3[0] - wV3[3] ) + ( P2[1] * ( -wV3[1] + cI * wV3[2] ) + ( P2[2] * ( -one ) * ( +cI * wV3[1] + wV3[2] ) + P2[3] * ( wV3[0] - wV3[3] ) ) ) ) );
     wF2[2] = denom * -cI * M2 * ( wF1[0] * ( -one ) * ( wV3[0] + wV3[3] ) + wF1[1] * ( -wV3[1] + cI * wV3[2] ) );
@@ -2264,15 +2247,13 @@ namespace madmatrix
       return;
     }
     int flv_index2 = MCOUP.partner1[flv_index1];
-    int flv_sel = flv_index1;
-    if(flv_index2 == -1) { flv_index2 = MCOUP.partner2[flv_index1]; flv_sel = flv_index2; }
     if(flv_index2 == -1){
       for(int i=0; i<F2.nw6; i++) { wF2[i] = cxzero_sv(); }
       F2.flv_index = -1;
       return;
     }
     F2.flv_index = flv_index2;
-    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_index1 );
     constexpr fptype_amp one( 1. );
     constexpr fptype_denom oned( 1. );
     const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
@@ -2325,15 +2306,12 @@ namespace madmatrix
       for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
       return;
     }
-    int flv_sel = -1;
-    if(MCOUP.partner1[flv_index1] == flv_index2) flv_sel = flv_index1;
-    else if(MCOUP.partner1[flv_index2] == flv_index1) flv_sel = flv_index2;
-    if(flv_sel == -1) {
+    if(MCOUP.partner1[flv_index1] != flv_index2) {
       for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
       return;
     }
-    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );
-    const cxtype_amp_sv denom = madmatrix::denom( Ccoeff, COUP, dP3, M3, W3 );
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_index1 );
+    const cxtype_amp_sv denom = madmatrix::denom_timelike( Ccoeff, COUP, dP3, M3, W3 );
     wV3[0] = denom * ( -cI ) * ( wF2[2] * wF1[0] + wF2[3] * wF1[1] );
     wV3[1] = denom * ( -cI ) * ( -wF2[3] * wF1[0] - wF2[2] * wF1[1] );
     wV3[2] = denom * ( -cI ) * ( -cI * ( wF2[3] * wF1[0] ) + cI * ( wF2[2] * wF1[1] ) );
@@ -2384,14 +2362,11 @@ namespace madmatrix
       for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
       return;
     }
-    int flv_sel = -1;
-    if(MCOUP.partner1[flv_index1] == flv_index2) flv_sel = flv_index1;
-    else if(MCOUP.partner1[flv_index2] == flv_index1) flv_sel = flv_index2;
-    if(flv_sel == -1) {
+    if(MCOUP.partner1[flv_index1] != flv_index2) {
       for(int i=0; i<V3.np4; i++) { wV3[i] = cxzero_sv(); }
       return;
     }
-    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_sel );
+    COUP = C_ACCESS::kernelAccessConst( MCOUP.value + C_ACCESS::flv_stride*flv_index1 );
     const cxtype_amp_sv denom = static_cast<cxtype_amp_sv>( static_cast<fptype_denom>(Ccoeff) * static_cast<cxtype_denom_sv>(COUP) );
     wV3[0] = denom * ( -cI ) * ( wF2[2] * wF1[0] + wF2[3] * wF1[1] );
     wV3[1] = denom * cI * ( -wF2[3] * wF1[0] - wF2[2] * wF1[1] );

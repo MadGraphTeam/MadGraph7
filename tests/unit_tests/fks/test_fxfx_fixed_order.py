@@ -45,7 +45,8 @@ class TestFxFxFixedOrder(unittest.TestCase):
                      'include_PDF_and_alphas',
                      'include_bias_wgt', 'reweight_scale',
                      'reweight_pdf', 'fill_pineappl_weights', 'fill_MC_integer',
-                     'fill_plots', 'vs_begin_point', 'virt_surrogate_fit_point',
+                     'fill_plots', 'vs_begin_point', 'reset_folded_virtual',
+                     'virt_surrogate_fit_point',
                      'compute_hard_real_channels')
             (work / 'noops.f90').write_text('\n'.join(
                 'subroutine ' + name + '\nend subroutine' for name in noops))

@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import io
 import json
 import math
 import os
+import shutil
 from collections.abc import Iterator
 from dataclasses import replace
 from decimal import Decimal
@@ -2452,3 +2454,248 @@ def test_recurrence_exact_accepts_all_flow_union_layout() -> None:
         },
         "d_dbar_to_z_g_g",
     )
+
+
+@pytest.mark.parametrize("lc_flow_layout", ("topology-replay", "all-flow-union"))
+def test_lc_recurrence_export_is_resolved_complete_and_static(
+    tmp_path: Path,
+    lc_flow_layout: str,
+    builtin_sm_current_recurrence_jit_o2_model: CompiledModel,
+) -> None:
+    """Export the loaded program before execution, then vary parameters and batches."""
+
+    _require_native_recurrence()
+    process = "d d~ > z g"
+    artifact = tmp_path / "capture-artifact"
+    Generator(_generation_config("recurrence", lc_flow_layout=lc_flow_layout)).generate(
+        process, artifact, model=builtin_sm_current_recurrence_jit_o2_model
+    )
+    kept = os.environ.get("PYAMPLICOL_RECURRENCE_EXPORT_ARTIFACTS")
+    if kept:
+        # CI's Rust parity test interprets these artifacts' exports and
+        # compares them with RustiCol bit for bit (see tests.yml).
+        destination = Path(kept) / lc_flow_layout
+        shutil.rmtree(destination, ignore_errors=True)
+        shutil.copytree(artifact, destination)
+    runtime = Runtime.load(artifact)
+    capture = runtime.export_recurrence()
+    assert capture["schema_version"] == 2
+    assert capture["execution_semantics"] == "rusticol-batched-f64-v1"
+    assert capture["artifact_id"] == load_manifest(artifact).artifact_id
+    # JSON rejects non-finite values; the remaining arithmetic fields must be
+    # literal numbers, including parameters and source masses, not expressions.
+    json.dumps(capture, allow_nan=False)
+    programs = capture["programs"]
+    assert isinstance(programs, list)
+    physics = runtime.physics
+    assert [program["colour_id"] for program in programs] == [
+        flow.id for flow in physics.color_flows
+    ]
+    parameters = {
+        parameter["name"]: parameter["value"] for parameter in capture["parameters"]
+    }
+    for program in programs:
+        assert program["process_key"] == physics.process_id
+        # A compiled built-in model declares no alpha_s; the runtime applies it
+        # through its normalization. d d~ > z g has one strong vertex.
+        assert program["alpha_s"] == {
+            "parameter": "normalization.alpha_s_me_check",
+            "value": parameters["normalization.alpha_s_me_check"],
+            "squared_amplitude_power": 1,
+        }
+        expected_legs = [
+            {
+                "pdg": particle.pdg_id,
+                "name": particle.name,
+                "role": "initial" if particle.state == "incoming" else "final",
+            }
+            for particle in physics.external_particles
+        ]
+        assert program["legs"] == program["caller_legs"] == expected_legs
+        assert program["helicity_outputs"] == [
+            {"id": helicity.id, "helicities": list(helicity.values)}
+            for helicity in physics.helicities
+        ]
+        for value in (*program["scales"], *program["factors"]):
+            assert set(value) == {"re", "im"}
+            assert all(
+                isinstance(component, (int, float)) for component in value.values()
+            )
+        for form in program["momentum_forms"]:
+            assert all(isinstance(term["coefficient"], (int, float)) for term in form)
+        assert program["body"]
+        assert program["runs"]
+        for run in program["runs"]:
+            assert "body" not in run
+            assert all(
+                isinstance(term["weight"], (int, float)) for term in run["reduction"]
+            )
+            for source in run["sources"]:
+                assert isinstance(source["mass"]["re"], (int, float))
+                assert isinstance(source["mass"]["im"], (int, float))
+    # Different points and tile lengths cannot specialize the exported program.
+    points = _seeded_validation_points(process, 17, 23, 31)
+    runtime.evaluate_resolved(points[:2])
+    assert runtime.export_recurrence() == capture
+    runtime.evaluate_resolved(points)
+    assert runtime.export_recurrence() == capture
+    # Updating a source mass must refresh the captured scalar slots and source
+    # metadata immediately, without needing an intervening evaluation.
+    runtime.set_model_parameter("particle.23.mass", 100.0)
+    changed = runtime.export_recurrence()
+    parameters = {
+        parameter["name"]: parameter["value"] for parameter in changed["parameters"]
+    }
+    assert parameters["particle.23.mass"] == {"re": 100.0, "im": 0.0}
+    assert [program["scales"] for program in changed["programs"]] != [
+        program["scales"] for program in programs
+    ]
+    z_leg = next(
+        particle.index
+        for particle in physics.external_particles
+        if particle.pdg_id == 23
+    )
+    z_sources = [
+        source
+        for program in changed["programs"]
+        for run in program["runs"]
+        for source in run["sources"]
+        if source["leg"] == z_leg
+    ]
+    assert z_sources
+    assert all(source["mass"] == {"re": 100.0, "im": 0.0} for source in z_sources)
+    selected = runtime.export_recurrence(color_flows=[physics.color_flows[0].id])
+    assert selected["programs"] == [changed["programs"][0]]
+    # Flow IDs are per process: an unknown one names the process and its flows.
+    with pytest.raises(EvaluationError) as refused:
+        runtime.export_recurrence(color_flows=["flow:not-of-this-process"])
+    message = str(refused.value)
+    assert '"flow:not-of-this-process"' in message
+    assert f'process "{physics.process_id}"' in message
+    assert all(flow.id in message for flow in physics.color_flows)
+
+    with_references = runtime.export_recurrence(reference_momenta=points[:1])
+    expected = runtime.evaluate_resolved(points[:2])
+    for program in with_references["programs"]:
+        reference = program["reference_values"]
+        assert reference["momenta"] == [list(map(list, points[0]))]
+        assert reference["helicity_ids"] == list(expected.helicity_ids)
+        color = expected.color_ids.index(program["colour_id"])
+        assert reference["values"] == [
+            [complex(helicity[color]).real for helicity in expected.values[0]]
+        ]
+    assert all("reference_values" not in program for program in changed["programs"])
+
+
+def test_lc_recurrence_export_covers_aliases_group_members_and_masses(
+    tmp_path: Path,
+    builtin_sm_current_recurrence_jit_o2_model: CompiledModel,
+) -> None:
+    """Export a small grouped artifact with an alias, crossed group members
+    and a massive top; CI interprets its programs bit for bit as well."""
+
+    from pyamplicol import ProcessAlias, ProcessSet
+    from pyamplicol.cli import run_cli
+    from pyamplicol.config import ProcessConfig
+
+    _require_native_recurrence()
+    artifact = tmp_path / "grouped-artifact"
+    config = replace(
+        _generation_config("recurrence"),
+        process=ProcessConfig(flavor_blind=True, max_coupling_orders={"QED": 0}),
+    )
+    processes = ProcessSet.from_expressions(
+        ("u u~ > t t~ g", "d d~ > t t~ g", "u~ u > t t~ g"),
+        names=("uu_ttg", "dd_ttg", "uxu_ttg"),
+        # The alias reorders the outgoing top pair: a crossing of a stored
+        # representative under its own public identity.
+        aliases=(ProcessAlias("uu_txtg", "uu_ttg", (0, 1, 3, 2, 4)),),
+    )
+    Generator(config).generate(
+        processes, artifact, model=builtin_sm_current_recurrence_jit_o2_model
+    )
+    kept = os.environ.get("PYAMPLICOL_RECURRENCE_EXPORT_ARTIFACTS")
+    if kept:
+        destination = Path(kept) / "grouped"
+        shutil.rmtree(destination, ignore_errors=True)
+        shutil.copytree(artifact, destination)
+    manifest = load_manifest(artifact)
+    groups = read_process_groups(artifact)
+    assert groups is not None
+    members = [member.process_id for member in groups.members() if not member.generated]
+    assert members, "flavour-blind generation must store group members"
+    assert any(process["aliases"] for process in manifest.processes)
+
+    capture_path = tmp_path / "capture.json"
+    errors = io.StringIO()
+    status = run_cli(
+        ["export-recurrence", str(artifact), "-o", str(capture_path), "--json"],
+        stdout=io.StringIO(),
+        stderr=errors,
+    )
+    assert status == 0, errors.getvalue()
+    capture = json.loads(capture_path.read_text(encoding="utf-8"))
+    programs = capture["programs"]
+    keys = {program["process_key"] for program in programs}
+    assert "uu_txtg" in keys
+    assert set(members) <= keys
+    references = [program for program in programs if "program_reference" in program]
+    assert references, "aliases and members must reference representatives"
+    assert any(program.get("crossing") for program in programs)
+    assert any(
+        source["mass"]["re"] > 0.0
+        for program in programs
+        if "body" in program
+        for run in program["runs"]
+        for source in run["sources"]
+        if abs(program["legs"][source["leg"]]["pdg"]) == 6
+    ), "the top sources must carry the resolved top mass"
+
+    # Colour-flow IDs are per process: a flow of the representative that the
+    # alias (whose outgoing legs are reordered) lacks, selected without
+    # --process, is refused with the process that lacks it.
+    alias_flows = {
+        program["colour_id"]
+        for program in programs
+        if program["process_key"] == "uu_txtg"
+    }
+    flow = next(
+        program["colour_id"]
+        for program in programs
+        if program["process_key"] == "uu_ttg"
+        and program["colour_id"] not in alias_flows
+    )
+    errors = io.StringIO()
+    status = run_cli(
+        [
+            "export-recurrence",
+            str(artifact),
+            "-o",
+            str(tmp_path / "selected.json"),
+            "--color-flow",
+            flow,
+        ],
+        stdout=io.StringIO(),
+        stderr=errors,
+    )
+    assert status == 2
+    assert "colour-flow IDs are per process" in errors.getvalue()
+    assert not (tmp_path / "selected.json").exists()
+    status = run_cli(
+        [
+            "export-recurrence",
+            str(artifact),
+            "-o",
+            str(tmp_path / "selected.json"),
+            "--process",
+            "uu_ttg",
+            "--color-flow",
+            flow,
+            "--json",
+        ],
+        stdout=io.StringIO(),
+        stderr=io.StringIO(),
+    )
+    assert status == 0
+    selected = json.loads((tmp_path / "selected.json").read_text(encoding="utf-8"))
+    assert [program["colour_id"] for program in selected["programs"]] == [flow]

@@ -6,7 +6,7 @@ static NEXT_PHYSICS_RUNTIME_BINDING_ID: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(1);
 
 impl PhysicsRuntime {
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     pub(super) fn new(manifest: ProcessPhysicsV1) -> RusticolResult<Self> {
         manifest.validate()?;
@@ -202,11 +202,15 @@ impl PhysicsRuntime {
         self.select_indices_into(ids, &self.color_index_by_id, "color component", indices)
     }
 
+    /// Whether the colour axis is contracted: one contracted component, or
+    /// one per N_c degree of a graded artifact (strict or graded colour).
     pub(super) fn has_contracted_color_axis(&self) -> bool {
-        matches!(
-            self.manifest.color_components.as_slice(),
-            [PhysicsColorComponentV1::ContractedColor(_)]
-        )
+        !self.manifest.color_components.is_empty()
+            && self
+                .manifest
+                .color_components
+                .iter()
+                .all(|component| matches!(component, PhysicsColorComponentV1::ContractedColor(_)))
     }
 
     pub(super) fn color_is_computed(&self, index: usize) -> bool {
@@ -1172,7 +1176,13 @@ pub(super) fn certifies_lc_direct_total_source(
         .iter()
         .map(|group| group.id)
         .collect::<BTreeSet<_>>();
-    if raw_group_ids != physics.reduction_by_group_id.keys().copied().collect() {
+    if raw_group_ids
+        != physics
+            .reduction_by_group_id
+            .keys()
+            .copied()
+            .collect::<BTreeSet<_>>()
+    {
         return false;
     }
     let mut covered_members = BTreeSet::new();

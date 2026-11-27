@@ -186,6 +186,7 @@ module mint_module
   logical, private :: double_events,reset,even_rn,firsttime
   ! Reset grids need a per-channel pilot even when a spreading fit is ready.
   logical, private :: initial_channel_scan_pending=.false.
+  private :: bootstrap_virtual_envelopes
   logical, dimension(maxchannels), private :: regridded
   double precision, dimension(0:nintervals,ndimmax,maxchannels), private :: xgrid,xacc
   double precision, dimension(nintervals,ndimmax,maxchannels), private :: ymax,xmmm
@@ -987,6 +988,7 @@ contains
     call update_channel_sampling
     call check_fractional_uncertainty(efrac)
     if (reset) return ! iteration was not accurate enough: do not include it
+    call bootstrap_virtual_envelopes
     call combine_iterations
     call combine_final_three_iterations
     if (fixed_order) then
@@ -1514,8 +1516,10 @@ contains
 ! Update the upper bounding envelope virtual. Do not include the
 ! enhancement due to the virtual_fraction. (And again limit by factor 2
 ! at most).
-    if (f(5)*virtual_fraction(ichan).gt.ymax_virt(ichan)) &
-         ymax_virt(ichan) = min(f(5)*virtual_fraction(ichan),ymax_virt(ichan)*2d0)
+    if(ymax_virt(ichan).gt.0d0)then
+       if (f(5)*virtual_fraction(ichan).gt.ymax_virt(ichan)) &
+            ymax_virt(ichan) = min(f(5)*virtual_fraction(ichan),ymax_virt(ichan)*2d0)
+    endif
 ! for consistent printing in the log files (in particular when doing LO
 ! runs), set also f(6) to zero when imode.eq.1 and the virtuals are not
 ! included.
@@ -1531,6 +1535,26 @@ contains
     enddo
   end subroutine add_point_to_bounding_envelope
      
+  subroutine bootstrap_virtual_envelopes
+    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+    implicit none
+    integer :: kchan
+    double precision :: candidate
+    ! A zero step-zero estimate cannot grow through the factor-two cap.
+    ! Seed from an accepted iteration's mean, never from a single point.
+    ! This is only needed while setting up the unweighting envelopes.
+    ! f(5)=|V|/virtual_fraction on that fraction of the points and zero
+    ! elsewhere, so its mean already excludes the enhancement. This is
+    ! the same seed as ans(5) in reset_upper_bounding_envelope.
+    if(imode.ne.1)return
+    do kchan=1,nchans
+       if(ymax_virt(kchan).ne.0d0)cycle
+       candidate=vtot(5,kchan)
+       if(.not.ieee_is_finite(candidate))cycle
+       if(candidate.gt.0d0)ymax_virt(kchan)=candidate
+    enddo
+  end subroutine bootstrap_virtual_envelopes
+
   subroutine accumulate_the_point(x)
     implicit none
     integer :: i

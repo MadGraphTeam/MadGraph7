@@ -1,4 +1,1 @@
-      INTEGER IASO, AMP_SPLIT_ORDERS(2, NSPLITORDERS)
-      DATA (AMP_SPLIT_ORDERS(1, IASO), IASO=1,NSPLITORDERS) / 4, 0 /
-      DATA (AMP_SPLIT_ORDERS(2, IASO), IASO=1,NSPLITORDERS) / 4, 2 /
-
+../../_shared/IOExportEWSudTest%test_pptt_ewsudakovSA%%SubProcesses%P0_bbx_ttx%amp_split_orders.inc

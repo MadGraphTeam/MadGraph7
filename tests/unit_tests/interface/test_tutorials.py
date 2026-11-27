@@ -630,7 +630,7 @@ class TestTutorialsAreWalkable(_TutorialTestCase):
         titles = [step.title for step in tutorial.steps]
         lesson = titles.index('excluding particles and s-channels')
 
-        for extra in ('generate p p > e+ e- $ a', 'generate p p > e+ e- $$ a'):
+        for extra in ('generate p p > e+ e- $ z', 'generate p p > e+ e- $$ z'):
             session = TutorialSession(tutorial)
             session.index = lesson
             found = session.step_for(extra)
@@ -661,8 +661,8 @@ class TestTutorialsAreWalkable(_TutorialTestCase):
             _curr_amps = []
             options = {}
 
-        single = step.render(_Interface(), 'generate p p > e+ e- $ a')
-        double = step.render(_Interface(), 'generate p p > e+ e- $$ a')
+        single = step.render(_Interface(), 'generate p p > e+ e- $ z')
+        double = step.render(_Interface(), 'generate p p > e+ e- $$ z')
         self.assertNotEqual(single, double)
         self.assertIn('on-shell', single)
         self.assertIn('dropped', double)
@@ -950,7 +950,7 @@ class TestExercises(unittest.TestCase):
              'a bare `=` means `<=`'),
             ('decay chains', 'generate p p > t t~ > w+ b w- b~',
              'The separator is a **comma**'),
-            ('forbidding a particle', 'generate p p > e+ e- $ a',
+            ('forbidding a particle', 'generate p p > e+ e- $$ a',
              'To forbid the photon *anywhere*'),
             ('excluding a resonance', 'generate p p > e+ e- / z',
              'forbids the Z everywhere'),

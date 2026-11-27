@@ -155,9 +155,16 @@ Pythia's matching veto had to throw the difference away.
 The rule is madevent's, from the "Check xqcut for vertices with jet daughters
 only" block of `Template/LO/SubProcesses/reweight.f`: walking the clustering
 history that was just selected, any step whose daughter is still a bare
-final-state jet has to be at or above `xqcut`, or the event is dropped. The
-test does not ask whether the vertex was a QCD one, and it reuses the same
-"still a bare external leg" bookkeeping the emission scheme already needs.
+final-state merging jet has to be at or above `xqcut`, or the event is dropped.
+It reuses the same "still a bare external leg" bookkeeping the emission scheme
+already needs. Only merging jets are tested, as in madevent: under
+`scale_scheme = "madevent"` they are the legs madevent's `iqjets` keeps (jets
+emitted at a jet vertex along a parton line, and gluons); under
+`"clustering_mean"` they are the jet daughters of a QCD vertex. Either way a
+light parton produced at an electroweak vertex, such as a VBF tagging jet or a
+quark from a W decay, is exempt. `p p > h j j QCD=0` with `ptj = 10`,
+`xqcut = 30` (`auto_ptj_mjj = false`) keeps the full cross section in madevent
+and in both mg7 schemes, although 37% of its events have a parton below 30 GeV.
 
 The clustering only runs for events that already passed the phase-space cuts,
 so the veto comes back as a weight (1 or 0) that multiplies the event weight,

@@ -19,6 +19,9 @@ struct DecayData {
     std::vector<Value> min_masses;
     std::optional<Value> max_mass;
     std::vector<Value> max_mass_subtract;
+    // the e_max of an ancestor without a sampled mass yet, less the minimum
+    // masses of the other branches below it
+    std::vector<Value> max_mass_caps;
     std::optional<Value> momentum;
     std::optional<Value> computed_mass;
 
@@ -51,7 +54,10 @@ void update_mass_min_max(
 
     // Go up the decay tree until propagator with known mass m_i is found. Keep track of
     // all the other nodes branching off. The maximum mass is given by m_max = M_i -
-    // sum_{other nodes j} m_{min,j}
+    // sum_{other nodes j} m_{min,j}. An ancestor on the way whose mass is still to be
+    // sampled within an energy window bounds it the same way by its e_max, as the W
+    // of t > b W+ with the top on shell: sampled first up to m_max, the W could
+    // leave the top no room in its window.
     auto& start_decay = decay_data.at(decay_index);
     auto current_decay = &start_decay;
     while (!current_decay->mass && current_decay->decay.index != 0) {
@@ -67,6 +73,11 @@ void update_mass_min_max(
                 child_min_masses.begin(),
                 child_min_masses.end()
             );
+        }
+        if (!current_decay->mass && current_decay->decay.e_max > 0.) {
+            start_decay.max_mass_caps.push_back(fb.sub(
+                current_decay->decay.e_max, fb.sum(start_decay.max_mass_subtract)
+            ));
         }
     }
     start_decay.max_mass =
@@ -913,6 +924,9 @@ Mapping::Result PhaseSpaceMapping::build_forward_impl(
         update_mass_min_max(fb, decay_data, decay_index);
         auto s_min = fb.square(fb.sum(data.min_masses));
         auto sqrt_s_max = fb.sub(data.max_mass.value(), fb.sum(data.max_mass_subtract));
+        for (auto& cap : data.max_mass_caps) {
+            sqrt_s_max = fb.min(sqrt_s_max, cap);
+        }
         if (data.decay.e_max > 0.) {
             sqrt_s_max = fb.min(sqrt_s_max, data.decay.e_max);
         }
@@ -1327,6 +1341,9 @@ Mapping::Result PhaseSpaceMapping::build_inverse_impl(
         update_mass_min_max(fb, decay_data, decay_index);
         auto s_min = fb.square(fb.sum(data.min_masses));
         auto sqrt_s_max = fb.sub(data.max_mass.value(), fb.sum(data.max_mass_subtract));
+        for (auto& cap : data.max_mass_caps) {
+            sqrt_s_max = fb.min(sqrt_s_max, cap);
+        }
         if (data.decay.e_max > 0.) {
             sqrt_s_max = fb.min(sqrt_s_max, data.decay.e_max);
         }

@@ -1,0 +1,190 @@
+{
+ "note": "g g > chic1(1|3P11) chib0(1|3P01). born: the one-loop output (loop_sm_onia-c_mass, TIRust da7902b + v16) with MC = 1.755, MB = 4.93 (M = m1 + m2 = 3.51, 9.86), CTModeRun 1, at the check point of the tree output (sm_onia-c_mass, output standalone_fortran, its check_sa.f point printed in full), against that tree output with the same MC and MB. tree_default: the tree acceptance reference (test_cmd.py, test_quarkonium_standalone), MC = 1.55, MB = 4.7 with the physical masses 3.51, 9.86 (M != m1 + m2), which the loop layer does not use. dp: the virtual with the default masses (M = 3.1, 9.4) at the seed-1 points of 20 GeV, qp_check.py, MLStabThres 1d99.",
+ "tree_mc1755_mb493": 1.869858332541873e-16,
+ "tree_default": 3.13227517248048e-16,
+ "born": {
+  "point": [
+   [
+    500.0,
+    0.0,
+    0.0,
+    500.0
+   ],
+   [
+    500.0,
+    0.0,
+    0.0,
+    -500.0
+   ],
+   [
+    499.9575502499999,
+    110.91213356524271,
+    444.78206179117666,
+    -199.53107048471657
+   ],
+   [
+    500.0424497500001,
+    -110.91213356524273,
+    -444.7820617911767,
+    199.5310704847165
+   ]
+  ],
+  "tree": 1.869858332541873e-16,
+  "result": {
+   "born": 1.869858332541873e-16,
+   "finite": 2.7767114496586552e-14,
+   "single": -8.240239171732244e-16,
+   "double": -2.1068263163517537e-17,
+   "accuracy": -1.0,
+   "ret_code": 110,
+   "ao2pi": 0.01878028328484365,
+   "mu": 1000.0,
+   "time": 45.02162,
+   "predicted_single_norm": -4.691949482221129,
+   "predicted_double_norm": -6.0,
+   "finite_norm": 7907.148736451722,
+   "single_norm": -234.65454706441466,
+   "double_norm": -5.999539148121392
+  }
+ },
+ "dp": {
+  "output": "P0_gg_chic113P11chib013P01",
+  "masses": [
+   0.0,
+   0.0,
+   3.1,
+   9.4
+  ],
+  "modes": [
+   "1",
+   "2"
+  ],
+  "note": "The quadruple-precision path of a two-P-wave output against its double\nprecision: the virtual at points in CTModeRun 1 (double precision), 4\n(quadruple precision) and 5 (quadruple precision, loop direction reversed),\nwith MLStabThres 1d99, and in CTModeRun -1 with MLStabThres 1d-30, so that\nMadLoop's stability test sends every point to quadruple precision (the\nrescue: return code 2xx when the two quadruple-precision passes agree).\n`--thres X` sets the MLStabThres of CTModeRun -1 instead (MadLoop's default\nis 1.0d-3).\nEach point prints the poles in units of Born * alpha_s/(2 pi) against\nONIA_IR_POLES, the finite parts, the differences between the passes, the\nreturn codes and the times.\n\n    qp_check.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--modes 1,4,5,-1] [--thres 1.0d-30]\n\nThe points are those of fixtures.py and acceptance.py (seed 1).\n",
+  "records": [
+   {
+    "energy": 20.0,
+    "point": 0,
+    "momenta": [
+     [
+      "0x1.4000000000000p+3",
+      "0x0.0p+0",
+      "0x0.0p+0",
+      "0x1.4000000000000p+3"
+     ],
+     [
+      "0x1.4000000000000p+3",
+      "0x0.0p+0",
+      "0x0.0p+0",
+      "-0x1.4000000000000p+3"
+     ],
+     [
+      "0x1.00fffffffffffp+3",
+      "0x1.78600f3245efep+2",
+      "-0x1.c90df721791d7p+1",
+      "-0x1.5fdac4d7669b9p+1"
+     ],
+     [
+      "0x1.7f00000000000p+3",
+      "-0x1.78600f3245efep+2",
+      "0x1.c90df721791d7p+1",
+      "0x1.5fdac4d7669b9p+1"
+     ]
+    ],
+    "ctmode1": {
+     "born": 3.542930816390704e-09,
+     "finite": 5.1367867182344585e-09,
+     "single": -1.0390744602146056e-09,
+     "double": -3.992234663425949e-10,
+     "accuracy": -1.0,
+     "ret_code": 110,
+     "ao2pi": 0.01878028328484365,
+     "mu": 20.0,
+     "time": 46.15839,
+     "predicted_single_norm": -15.616433619010898,
+     "predicted_double_norm": -5.999999999999999,
+     "finite_norm": 77.20167502118656,
+     "single_norm": -15.61643361900653,
+     "double_norm": -6.000000000001143
+    },
+    "ctmode2": {
+     "born": 3.542930816390704e-09,
+     "finite": 5.1367867182314956e-09,
+     "single": -1.0390744602140855e-09,
+     "double": -3.992234663425232e-10,
+     "accuracy": -1.0,
+     "ret_code": 110,
+     "ao2pi": 0.01878028328484365,
+     "mu": 20.0,
+     "time": 51.58161,
+     "predicted_single_norm": -15.616433619010898,
+     "predicted_double_norm": -5.999999999999999,
+     "finite_norm": 77.20167502114202,
+     "single_norm": -15.616433618998714,
+     "double_norm": -6.000000000000065
+    }
+   },
+   {
+    "energy": 20.0,
+    "point": 1,
+    "momenta": [
+     [
+      "0x1.4000000000000p+3",
+      "0x0.0p+0",
+      "0x0.0p+0",
+      "0x1.4000000000000p+3"
+     ],
+     [
+      "0x1.4000000000000p+3",
+      "0x0.0p+0",
+      "0x0.0p+0",
+      "-0x1.4000000000000p+3"
+     ],
+     [
+      "0x1.00fffffffffffp+3",
+      "-0x1.1fdb1bc31b22dp+0",
+      "0x1.0e51ea19065a6p-1",
+      "-0x1.d3741ebe9bab7p+2"
+     ],
+     [
+      "0x1.7f00000000000p+3",
+      "0x1.1fdb1bc31b22dp+0",
+      "-0x1.0e51ea19065a6p-1",
+      "0x1.d3741ebe9bab7p+2"
+     ]
+    ],
+    "ctmode1": {
+     "born": 4.145193121308027e-07,
+     "finite": 5.767368474766088e-07,
+     "single": -1.1360355699848615e-07,
+     "double": -4.670874065311916e-08,
+     "accuracy": -1.0,
+     "ret_code": 110,
+     "ao2pi": 0.01878028328484365,
+     "mu": 20.0,
+     "time": 45.62502,
+     "predicted_single_norm": -14.593014764679303,
+     "predicted_double_norm": -6.0,
+     "finite_norm": 74.0850863558396,
+     "single_norm": -14.59301476468389,
+     "double_norm": -5.999999999998606
+    },
+    "ctmode2": {
+     "born": 4.145193121308027e-07,
+     "finite": 5.767368474755483e-07,
+     "single": -1.1360355699849245e-07,
+     "double": -4.6708740653129895e-08,
+     "accuracy": -1.0,
+     "ret_code": 110,
+     "ao2pi": 0.01878028328484365,
+     "mu": 20.0,
+     "time": 66.037,
+     "predicted_single_norm": -14.593014764679303,
+     "predicted_double_norm": -6.0,
+     "finite_norm": 74.08508635570337,
+     "single_norm": -14.593014764684698,
+     "double_norm": -5.999999999999985
+    }
+   }
+  ]
+ }
+}

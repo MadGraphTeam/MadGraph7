@@ -16,6 +16,7 @@
 
 from __future__ import absolute_import
 import copy
+import filecmp
 import fractions
 import os
 import re
@@ -327,6 +328,7 @@ class IOExportFKSTest(IOTests.IOTestManager):
             opt = dict(interface.options)
             opt['ninja'] = None
             opt['collier'] = None
+            opt['ninjars'] = None
             with misc.TMP_variable(interface, 'options', opt):
                 interface.exec_cmd(cmd, errorhandling=False, printcmd=False, 
                                precmd=True, postcmd=True)
@@ -352,33 +354,45 @@ class IOExportFKSTest(IOTests.IOTestManager):
 
     @IOTests.createIOTest()
     def testIO_test_pptt_fksreal(self):
-        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]"""
+        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]
+        Template files identical in every subprocess directory: compare one.
+        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f|density_matrix_wrapper\.f)$]"""
         self.generate(['p p > t t~ QED^2=0 QCD^2=4 [real=QCD]'], 'sm')
 
     @IOTests.createIOTest()
     def testIO_test_ppw_fksall(self):
-        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]"""
+        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]
+        Template files identical in every subprocess directory: compare one.
+        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f|density_matrix_wrapper\.f)$]"""
         self.generate(['p p > w+ QED^2=2 QCD^2=0 [QCD]'], 'sm')
 
     @IOTests.createIOTest()
     def testIO_test_tdecay_fksreal(self):
-        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]"""
+        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]
+        Template files identical in every subprocess directory: compare one.
+        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f|density_matrix_wrapper\.f)$]"""
         self.generate(['t > j j b QED^2=4 QCD^2=0 [real=QCD]'], 'sm')
 
     @IOTests.createIOTest()
     def testIO_test_pptt_fks_loonly(self):
-        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]"""
+        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]
+        Template files identical in every subprocess directory: compare one.
+        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f|density_matrix_wrapper\.f)$]"""
         self.generate(['p p > t t~ QED^2=0 QCD^2=4 [LOonly=QCD]'], 'sm')
 
     @IOTests.createIOTest()
     def testIO_test_wprod_fksew(self):
-        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]"""
+        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]
+        Template files identical in every subprocess directory: compare one.
+        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f|density_matrix_wrapper\.f)$]"""
         self.generate(['p p > e+ ve QED^2=4 QCD^2=0 [QED]'], 'loop_qcd_qed_smCMS')
 
     @IOTests.createIOTest()
     def testIO_test_pptt_fksrealew(self):
-        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]"""
-        self.generate(['p p > t t~ QED^2=0 QCD^2=4 [real=QED]'], 'sm',
+        r""" target: SubProcesses/[P0.*\/.+\.(inc|f)]
+        Template files identical in every subprocess directory: compare one.
+        once: SubProcesses/[P0\w*/(sborn_sf\.f|maxparticles\.inc|has_ewsudakov\.inc|extra_cnt_wrapper\.f|ewsudakov_haslo\.inc|rescale_alpha_tagged\.f|boost_to_frame\.f|a0Gmuconv\.inc|numder_born\.f|density_matrix_wrapper\.f)$]"""
+        self.generate(['p p > t t~ QED^2=0 QCD^2=4 [real=QED]'], 'sm', 
                       multiparticles = ['p = u u~ d d~ s s~ c c~ g a'])
 
     @IOTests.createIOTest()
@@ -411,51 +425,110 @@ class TestFKSOutput(unittest.TestCase):
         run_cmd('set low_mem_multicore_nlo_generation False')
         run_cmd('set OLP MadLoop')
 
+    # what differs between two outputs of the same process: the dates, the
+    # timings, the command history (which has the option itself) and the
+    # pickled model (a copy of the model of the session)
+    ignored_files = ['amcatnlo.tar.gz', 'index.html',
+                     os.path.join('Cards', 'proc_card_mg5.dat')]
+    ignored_patterns = [r'_debug\.log$', r'\.pkl$']
+
+    def output_both_modes(self, commands, name='PROC', output_options=''):
+        """Run the commands (the generation) and the output, with the
+        low_mem_multicore_nlo_generation mode and then without it. Returns
+        the two output directories, in this order (they have the same name,
+        in different directories: {dir} in the commands), written with the
+        output_options"""
+        import multiprocessing
+        path = tempfile.mkdtemp('', 'TMPLowMemTest', None)
+        self.addCleanup(shutil.rmtree, path, True)
+
+        def output(mode):
+            def run_cmd(cmd):
+                interface.exec_cmd(cmd, errorhandling=False, printcmd=False,
+                                   precmd=True, postcmd=True)
+            interface = MGCmd.MasterCmd()
+            run_cmd('set low_mem_multicore_nlo_generation %s' % (mode == 'low_mem'))
+            for command in commands:
+                run_cmd(command.replace('{dir}', os.path.join(path, mode)))
+            run_cmd('output %s %s' % (os.path.join(path, mode, name), output_options))
+
+        outputs = []
+        for mode in ['low_mem', 'serial']:
+            os.mkdir(os.path.join(path, mode))
+            # each in a process of its own, forked from this one, so that both
+            # start from the same state: a session keeps some traces of what it
+            # did (e.g. the merged Lorentz structures of the model, whose names
+            # are numbered). One after the other: the first output of a fresh
+            # installation also downloads the model and compiles CutTools and
+            # IREGI in it, which two outputs would do at the same time.
+            process = multiprocessing.get_context('fork').Process(
+                                                  target=output, args=(mode,))
+            process.start()
+            process.join()
+            self.assertEqual(process.exitcode, 0,
+                             'the output failed in the %s mode' % mode)
+            outputs.append(os.path.join(path, mode, name))
+        return outputs
+
+    def assert_same_output(self, new, old):
+        """The two output directories have the same directories, links and
+        files, with the same content"""
+        def tree(top):
+            entries = {}
+            for dirpath, dirnames, filenames in os.walk(top):
+                for name in dirnames + filenames:
+                    path = os.path.join(dirpath, name)
+                    rel = os.path.relpath(path, top)
+                    if rel in self.ignored_files or \
+                       any(re.search(p, rel) for p in self.ignored_patterns):
+                        continue
+                    if os.path.islink(path):
+                        entries[rel] = ('link', os.readlink(path))
+                    elif os.path.isdir(path):
+                        entries[rel] = ('dir', None)
+                    else:
+                        entries[rel] = ('file', path)
+            return entries
+
+        new_tree = tree(new)
+        old_tree = tree(old)
+        self.assertEqual(sorted(new_tree), sorted(old_tree))
+        different = []
+        for rel in sorted(old_tree):
+            (kind, value), (new_kind, new_value) = old_tree[rel], new_tree[rel]
+            if kind != new_kind or \
+               (kind == 'link' and value != new_value) or \
+               (kind == 'file' and not filecmp.cmp(value, new_value, shallow=False)):
+                different.append(rel)
+        if different:
+            import difflib
+            diffs = []
+            for rel in different[:3]:
+                if old_tree[rel][0] == new_tree[rel][0] == 'file':
+                    with open(old_tree[rel][1], errors='replace') as stream:
+                        old_lines = stream.readlines()
+                    with open(new_tree[rel][1], errors='replace') as stream:
+                        new_lines = stream.readlines()
+                    diffs.extend(list(difflib.unified_diff(old_lines, new_lines,
+                                    'serial/' + rel, 'low_mem/' + rel))[:40])
+            self.fail('%s differ:\n%s' % (', '.join(different), ''.join(diffs)))
+
     def test_w_nlo_gen_qcd(self):
         """check that the new (memory and cpu efficient) and old generation
-        mode at NLO give the same results for p p > e+ ve [QCD]
+        mode at NLO give the same results for p p > e+ ve [QCD], including
+        the private DP terminal updaters of the loop directories, which the
+        processes writing the directories leave for the parent to prove
         """
-        path = tempfile.mkdtemp('', 'TMPWTest', None)
-
-        def run_cmd(cmd):
-            interface.exec_cmd(cmd, errorhandling=False, printcmd=False, 
-                               precmd=True, postcmd=True)
-
-        interface = MGCmd.MasterCmd()
-        
-        run_cmd('set low_mem_multicore_nlo_generation True')
-        run_cmd('generate p p > e+ ve QED^2=4 QCD^2=0 [QCD]')
-        run_cmd('output %s' % os.path.join(path, 'W-newway'))
-        run_cmd('set low_mem_multicore_nlo_generation False')
-        run_cmd('generate p p > e+ ve QED^2=4 QCD^2=0 [QCD]')
-        run_cmd('output %s' % os.path.join(path, 'W-oldway'))
-        
-        # the P0 dirs
-        for oldf in \
-          (glob.glob(os.path.join(path, 'W-oldway', 'SubProcesses', 'P0*', '*.inc')) + \
-           glob.glob(os.path.join(path, 'W-oldway', 'SubProcesses', 'P0*', '*.f')) + \
-           [os.path.join(path, 'W-oldway', 'SubProcesses', 'proc_characteristics')]):
-            
-            if os.path.islink(oldf): 
-                continue
-
-            newf = oldf.replace('oldway', 'newway')
-
-            for old_l, new_l in zip(open(oldf), open(newf)):
-                self.assertEqual(old_l, new_l)
-
-        # the V0 dirs
-        for oldf in \
-          (glob.glob(os.path.join(path, 'W-oldway', 'SubProcesses', 'P0*', 'V0*', '*.inc')) + \
-           glob.glob(os.path.join(path, 'W-oldway', 'SubProcesses', 'P0*', 'V0*', '*.f'))):
-            
-            if os.path.islink(oldf): 
-                continue
-
-            newf = oldf.replace('oldway', 'newway')
-
-            for old_l, new_l in zip(open(oldf), open(newf)):
-                self.assertEqual(old_l, new_l)
+        outputs = self.output_both_modes(
+                ['generate p p > e+ ve QED^2=4 QCD^2=0 [QCD]'], 'W')
+        for output in outputs:
+            batches = glob.glob(os.path.join(output, 'SubProcesses', 'P*', 'V*',
+                                             'coef_construction_*.f'))
+            self.assertTrue(batches)
+            for batch in batches:
+                with open(batch) as stream:
+                    self.assertIn('CALL DP_TERMINAL_WL_1_1(', stream.read(), batch)
+        self.assert_same_output(*outputs)
 
 
 #    @test_manager.bypass_for_py3
@@ -463,208 +536,272 @@ class TestFKSOutput(unittest.TestCase):
         """check that the new (memory and cpu efficient) and old generation
         mode at NLO give the same results for p p > e+ ve [QED]
         """
-        path = tempfile.mkdtemp('', 'TMPWTest', None)
-
-        def run_cmd(cmd):
-            interface.exec_cmd(cmd, errorhandling=False, printcmd=False, 
-                               precmd=True, postcmd=True)
-
-        interface = MGCmd.MasterCmd()
-        
-        run_cmd('set low_mem_multicore_nlo_generation True')
-        run_cmd('generate p p > e+ ve QED^2=4 QCD^2=0 [QED]')
-        run_cmd('output %s' % os.path.join(path, 'W-newway'))
-        run_cmd('set low_mem_multicore_nlo_generation False')
-        run_cmd('generate p p > e+ ve QED^2=4 QCD^2=0 [QED]')
-        run_cmd('output %s' % os.path.join(path, 'W-oldway'))
-        
-        # the P0 dirs
-        for oldf in \
-          (glob.glob(os.path.join(path, 'W-oldway', 'SubProcesses', 'P0*', '*.inc')) + \
-           glob.glob(os.path.join(path, 'W-oldway', 'SubProcesses', 'P0*', '*.f')) + \
-           [os.path.join(path, 'W-oldway', 'SubProcesses', 'proc_characteristics')]):
-            
-            if os.path.islink(oldf): 
-                continue
-
-            newf = oldf.replace('oldway', 'newway')
-
-            for old_l, new_l in zip(open(oldf), open(newf)):
-                self.assertEqual(old_l, new_l)
-
-        # the V0 dirs
-        for oldf in \
-          (glob.glob(os.path.join(path, 'W-oldway', 'SubProcesses', 'P0*', 'V0*', '*.inc')) + \
-           glob.glob(os.path.join(path, 'W-oldway', 'SubProcesses', 'P0*', 'V0*', '*.f'))):
-            
-            if os.path.islink(oldf): 
-                continue
-
-            newf = oldf.replace('oldway', 'newway')
-
-            for old_l, new_l in zip(open(oldf), open(newf)):
-                self.assertEqual(old_l, new_l)
+        self.assert_same_output(*self.output_both_modes(
+                ['generate p p > e+ ve QED^2=4 QCD^2=0 [QED]'], 'W'))
 
 
  #   @test_manager.bypass_for_py3
     def test_z_nlo_gen_qed(self):
         """check that the new (memory and cpu efficient) and old generation
         mode at NLO give the same results for p p > e+ e- [QED], in particular
-        that b-initiated processes are NOT combined with d-s ones
+        that b-initiated processes are NOT combined with d-s ones (they have
+        the born of the d-s ones, not their virtual: they are combined in a
+        second round, after the photon-initiated one, but the matrix elements
+        must stay in the order of the serial mode). Also that both modes give
+        the same uid to each matrix element: its position, from 1.
+        Process.shell_string ends the names longer than 64 characters with it,
+        and here with it always: the b-initiated matrix elements must not get
+        the uid of another one.
         """
-        path = tempfile.mkdtemp('', 'TMPWTest', None)
-
-        def run_cmd(cmd):
-            interface.exec_cmd(cmd, errorhandling=False, printcmd=False, 
-                               precmd=True, postcmd=True)
-
-        interface = MGCmd.MasterCmd()
-        
-        run_cmd('define p3 = d s b d~ s~ b~ a')
-        run_cmd('set low_mem_multicore_nlo_generation True')
-        run_cmd('generate p3 p3 > e+ e- QED^2=4 QCD^2=0 [QED]')
-        run_cmd('output %s' % os.path.join(path, 'Z-newway'))
-        run_cmd('set low_mem_multicore_nlo_generation False')
-        run_cmd('generate p3 p3 > e+ e- QED^2=4 QCD^2=0 [QED]')
-        run_cmd('output %s' % os.path.join(path, 'Z-oldway'))
-        
-        # the P0 dirs
-        for oldf in \
-          (glob.glob(os.path.join(path, 'Z-oldway', 'SubProcesses', 'P0*', '*.inc')) + \
-           glob.glob(os.path.join(path, 'Z-oldway', 'SubProcesses', 'P0*', '*.f')) + \
-           [os.path.join(path, 'Z-oldway', 'SubProcesses', 'proc_characteristics')]):
-            
-            if os.path.islink(oldf): 
-                continue
-
-            newf = oldf.replace('oldway', 'newway')
-
-            for old_l, new_l in zip(open(oldf), open(newf)):
-                self.assertEqual(old_l, new_l)
-
-        # the V0 dirs
-        for oldf in \
-          (glob.glob(os.path.join(path, 'Z-oldway', 'SubProcesses', 'P0*', 'V0*', '*.inc')) + \
-           glob.glob(os.path.join(path, 'Z-oldway', 'SubProcesses', 'P0*', 'V0*', '*.f'))):
-            
-            if os.path.islink(oldf): 
-                continue
-
-            newf = oldf.replace('oldway', 'newway')
-
-            for old_l, new_l in zip(open(oldf), open(newf)):
-                self.assertEqual(old_l, new_l)
+        from unittest import mock
+        shell_string = base_objects.Process.shell_string
+        def shell_string_with_uid(proc, *args, **opts):
+            name = shell_string(proc, *args, **opts)
+            main = opts.get('main', args[2] if len(args) > 2 else True)
+            if main and not name.endswith('_%d' % proc['uid']):
+                name += '_%d' % proc['uid']
+            return name
+        with mock.patch.object(base_objects.Process, 'shell_string',
+                               shell_string_with_uid):
+            new, old = self.output_both_modes(
+                    ['define p3 = d s b d~ s~ b~ a',
+                     'generate p3 p3 > e+ e- QED^2=4 QCD^2=0 [QED]'], 'Z')
+        with open(os.path.join(old, 'SubProcesses', 'subproc.mg')) as stream:
+            names = [line.strip() for line in stream]
+        self.assertEqual([name.rsplit('_', 1)[1] for name in names],
+                         [str(uid) for uid in range(1, len(names) + 1)])
+        self.assertTrue([name for name in names if name.startswith('P0_bbx_emep_')])
+        self.assert_same_output(new, old)
 
 #    @test_manager.bypass_for_py3
     def test_z_nlo_gen_qcd(self):
         """check that the new (memory and cpu efficient) and old generation
-        mode at NLO give the same results for p p > e+ e- [QED], in particular
-        that the aa initiated folder is generated without virtuals
+        mode at NLO give the same results for p p > e+ e- [QCD]
         """
-        path = tempfile.mkdtemp('', 'TMPWTest', None)
-
-        def run_cmd(cmd):
-            interface.exec_cmd(cmd, errorhandling=False, printcmd=False, 
-                               precmd=True, postcmd=True)
-
-        interface = MGCmd.MasterCmd()
-        
-        run_cmd('define p3 = d s b d~ s~ b~')
-        run_cmd('set low_mem_multicore_nlo_generation True')
-        run_cmd('generate p3 p3 > e+ e- QED^2=4 QCD^2=0 [QCD]')
-        run_cmd('output %s' % os.path.join(path, 'Z-newway'))
-        run_cmd('set low_mem_multicore_nlo_generation False')
-        run_cmd('generate p3 p3 > e+ e- QED^2=4 QCD^2=0 [QCD]')
-        run_cmd('output %s' % os.path.join(path, 'Z-oldway'))
-        
-        # the P0 dirs
-        for oldf in \
-          (glob.glob(os.path.join(path, 'Z-oldway', 'SubProcesses', 'P0*', '*.inc')) + \
-           glob.glob(os.path.join(path, 'Z-oldway', 'SubProcesses', 'P0*', '*.f')) + \
-           [os.path.join(path, 'Z-oldway', 'SubProcesses', 'proc_characteristics')]):
-            
-            if os.path.islink(oldf): 
-                continue
-
-            newf = oldf.replace('oldway', 'newway')
-
-            for old_l, new_l in zip(open(oldf), open(newf)):
-                self.assertEqual(old_l, new_l)
-
-        # the V0 dirs
-        for oldf in \
-          (glob.glob(os.path.join(path, 'Z-oldway', 'SubProcesses', 'P0*', 'V0*', '*.inc')) + \
-           glob.glob(os.path.join(path, 'Z-oldway', 'SubProcesses', 'P0*', 'V0*', '*.f'))):
-            
-            if os.path.islink(oldf): 
-                continue
-
-            newf = oldf.replace('oldway', 'newway')
-
-            for old_l, new_l in zip(open(oldf), open(newf)):
-                self.assertEqual(old_l, new_l)
+        self.assert_same_output(*self.output_both_modes(
+                ['define p3 = d s b d~ s~ b~',
+                 'generate p3 p3 > e+ e- QED^2=4 QCD^2=0 [QCD]'], 'Z'))
 
 #    @test_manager.bypass_for_py3
     def test_wj_loonly_gen(self):
         """check that the new (memory and cpu efficient) and old generation
-        mode at NLO give the same results for p p > w j [LOonly=QCD]
+        mode at NLO give the same results for p p > w j [LOonly=QCD], in
+        particular the initial states of the borns (there are no reals)
         """
+        new, old = self.output_both_modes(['generate p p > w+ j [LOonly=QCD]'], 'W')
+        with open(os.path.join(new, 'SubProcesses', 'initial_states_map.dat')) as stream:
+            self.assertTrue(stream.read().strip())
+        # an [LOonly] directory gets its trivial real_from_born_configs.inc
+        # (the borns, as the reals of the fake FKS configuration)
+        for path in glob.glob(os.path.join(new, 'SubProcesses', 'P0_*',
+                                           'real_from_born_configs.inc')):
+            with open(path) as stream:
+                self.assertIn('DATA (REAL_FROM_BORN_CONF(IRFBC,1)', stream.read())
+        self.assert_same_output(new, old)
+
+    def test_add_process_nlo_gen(self):
+        """check that the new (memory and cpu efficient) and old generation
+        mode at NLO give the same results when a process with the same
+        multiplicity is added: fks_j_from_i is found from the borns of the
+        process definition of each real only, so that u g > t t~ u and
+        d g > t t~ d stay combined in the g g > t t~ directory
+        """
+        self.assert_same_output(*self.output_both_modes(
+                ['generate g g > t t~ [QCD]',
+                 'add process u u~ > t t~ [QCD]'], 'TT'))
+
+    def test_nlo_mixed_expansion_false_gen(self):
+        """check that the new (memory and cpu efficient) and old generation
+        mode at NLO give the same virtual with nlo_mixed_expansion False:
+        the orders of the loops are those of the borns (no EW loop)
+        """
+        self.assert_same_output(*self.output_both_modes(
+                ['import model loop_qcd_qed_sm',
+                 'set nlo_mixed_expansion False',
+                 'generate u u~ > w+ w- [QCD]'], 'WW'))
+        
+    def test_splitting_types_nlo_gen(self):
+        """check that the new (memory and cpu efficient) and old generation
+        mode at NLO give the same results when only some matrix elements have
+        QED splittings (here g g > t t~, not g a > t t~ and a g > t t~ which
+        come after it), and that real_from_born_configs.inc of a directory
+        has the mapping of the borns to the reals of each of its FKS
+        configurations, QCD or QED, whatever the other ones and the other
+        directories (for the H events, also with --allow_qed_ps)
+        """
+        new, old = self.output_both_modes(
+                ['import model loop_qcd_qed_sm',
+                 'define p = g a',
+                 'generate p p > t t~ [QCD QED]'], 'TT')
+        with open(os.path.join(old, 'SubProcesses', 'subproc.mg')) as stream:
+            self.assertEqual([line.strip() for line in stream],
+                             ['P0_gg_ttx', 'P0_ga_ttx', 'P0_ag_ttx'])
+        for directory in ['P0_gg_ttx', 'P0_ga_ttx', 'P0_ag_ttx']:
+            path = os.path.join(old, 'SubProcesses', directory)
+            # the FKS configurations of the directory and those of the others
+            # which its MC histories reach, all in real_from_born_configs.inc
+            with open(os.path.join(path, 'nFKSconfigs.inc')) as stream:
+                nconfigs = int(re.search(r'FKS_CONFIGS\s*=\s*(\d+)',
+                                         stream.read(), re.I).group(1))
+            with open(os.path.join(path, 'real_from_born_configs.inc')) as stream:
+                mapped = [int(config) for config in re.findall(
+                              r'REAL_FROM_BORN_CONF\(IRFBC,(\d+)\)',
+                              stream.read(), re.I)]
+            self.assertEqual(mapped, list(range(1, nconfigs + 1)), directory)
+        self.assert_same_output(new, old)
+
+    def test_add_process_other_orders_nlo_gen(self):
+        """check that the new (memory and cpu efficient) and old generation
+        mode at NLO give the same results when two process definitions have
+        a real process with other orders (g u > t t~ u, QCD^2=6 QED^2=2 for
+        g g > t t~ and QCD^2=4 QED^2=4 for g a > t t~): each born has the real
+        matrix element of its own definition
+        """
+        new, old = self.output_both_modes(
+                ['import model loop_qcd_qed_sm',
+                 'generate g g > t t~ [real=QCD QED]',
+                 'add process g a > t t~ [real=QCD QED]'], 'TT')
+        reals = ''
+        for path in glob.glob(os.path.join(old, 'SubProcesses', 'P0_ga_ttx',
+                                           'matrix_*.f')):
+            with open(path) as stream:
+                reals += stream.read()
+        self.assertIn('g u > t t~ u [ real = QCD QED ] QCD^2=4 QED^2=4', reals)
+        self.assertNotIn('g u > t t~ u [ real = QCD QED ] QCD^2=6', reals)
+        self.assert_same_output(new, old)
+
+    def test_reals_of_each_definition_nlo_gen(self):
+        """check that the new (memory and cpu efficient) and old generation
+        mode at NLO give the same results when two process definitions have a
+        real process in common, in different NLO modes (u g > t t~ u, of
+        g g > t t~ [QCD] and of u u~ > t t~ [real=QCD]): each born has the
+        real matrix element of its own definition"""
+        new, old = self.output_both_modes(
+                ['generate g g > t t~ [QCD]',
+                 'add process u u~ > t t~ [real=QCD]'], 'TT')
+        reals = ''
+        for path in glob.glob(os.path.join(old, 'SubProcesses', 'P0_uux_ttx',
+                                           'matrix_*.f')):
+            with open(path) as stream:
+                reals += stream.read()
+        self.assertIn('[ real = QCD', reals)
+        self.assertNotIn('[ all = QCD', reals)
+        self.assert_same_output(new, old)
+
+    def test_loop_filter_of_added_process_nlo_gen(self):
+        """check that the new (memory and cpu efficient) and old generation
+        mode at NLO give the same results when a process added later has a
+        --loop_filter: the virtual of each born is generated with the filter
+        of its process definition (the filter of d d~ > e+ e- removes all the
+        loops of u u~ > e+ e-)"""
+        new, old = self.output_both_modes(
+                ['import model loop_sm',
+                 'generate u u~ > e+ e- [QCD]',
+                 'add process d d~ > e+ e- [QCD] --loop_filter="not 2 in loop_pdgs"'],
+                'Z')
+        for directory in ['P0_uux_emep', 'P0_ddx_emep']:
+            self.assertTrue(glob.glob(os.path.join(old, 'SubProcesses',
+                                                   directory, 'V*')), directory)
+        self.assert_same_output(new, old)
+
+    def test_output_after_add_process_nlo_gen(self):
+        """check that the new (memory and cpu efficient) and old generation
+        mode at NLO give the same results for an output after another one and
+        an 'add process': the old mode, which keeps the matrix elements of an
+        output for the next one, generates them again"""
+        new, old = self.output_both_modes(
+                ['generate u u~ > e+ e- [real=QCD]',
+                 'output {dir}/FIRST',
+                 'add process d d~ > e+ e- [real=QCD]'], 'Z')
+        with open(os.path.join(old, 'SubProcesses', 'subproc.mg')) as stream:
+            self.assertEqual([line.strip() for line in stream],
+                             ['P0_uux_emep', 'P0_ddx_emep'])
+        self.assert_same_output(new, old)
+
+    def test_ewsudakov_added_process_nlo_gen(self):
+        """check that the new (memory and cpu efficient) and old generation
+        mode at NLO give the same results when a process with the EW Sudakov
+        corrections is added to one without them: their matrix elements are
+        not combined (c c~ > z z keeps its Sudakov), whichever comes first"""
+        new, old = self.output_both_modes(
+                ['import model loop_qcd_qed_sm_Gmu_forSudakov',
+                 'generate u u~ > z z [LOonly=QCD]',
+                 'add process c c~ > z z [LOonly=QCD] --ewsudakov'], 'ZZ')
+        with open(os.path.join(old, 'SubProcesses', 'subproc.mg')) as stream:
+            self.assertEqual([line.strip() for line in stream],
+                             ['P0_uux_zz', 'P0_ccx_zz'])
+        self.assert_same_output(new, old)
+
+    def test_fks_standalone_info_page(self):
+        """check that the new (memory and cpu efficient) and old generation
+        mode give the same standalone FKS output (output --fks), whose info
+        page lists all the P directories: it is made before they are stripped
+        down to what the Born check needs"""
+        new, old = self.output_both_modes(
+                ['generate u u~ > e+ e- [real=QCD]',
+                 'add process d d~ > e+ e- [real=QCD]'], 'Z', '--fks')
+        with open(os.path.join(old, 'HTML', 'info.html')) as stream:
+            info = stream.read()
+        for directory in ['P0_uux_emep', 'P0_ddx_emep']:
+            self.assertIn(directory, info)
+            self.assertFalse(glob.glob(os.path.join(old, 'SubProcesses',
+                                                    directory, 'matrix_*.f')))
+        self.assert_same_output(new, old)
+
+    def test_madanalysis5_card_processes(self):
+        """the default MadAnalysis5 card of an NLO output gets the born
+        processes of the matrix elements, also in the
+        low_mem_multicore_nlo_generation mode (which has no matrix element
+        any more when it finalizes the output)"""
+        from unittest import mock
+        import madgraph.iolibs.export_v4 as export_v4
+        path = tempfile.mkdtemp('', 'TMPMA5Test', None)
+        self.addCleanup(shutil.rmtree, path, True)
+        processes = {}
+        for low_mem in [True, False]:
+            interface = MGCmd.MasterCmd()
+            def run_cmd(cmd):
+                interface.exec_cmd(cmd, errorhandling=False, printcmd=False,
+                                   precmd=True, postcmd=True)
+            run_cmd('set low_mem_multicore_nlo_generation %s' % low_mem)
+            run_cmd('generate p p > e+ e- [real=QCD]')
+            interface.options['madanalysis5_path'] = 'MA5'
+            with mock.patch.object(export_v4.ProcessExporterFortran,
+                                   'create_default_madanalysis5_cards') as cards:
+                run_cmd('output %s' % os.path.join(path, str(low_mem)))
+            processes[low_mem] = [process.nice_string() for process in \
+                                  cards.call_args[0][2][0]]
+        self.assertTrue(processes[False])
+        self.assertEqual(processes[True], processes[False])
+
+    def test_low_mem_failed_generation_keeps_the_output(self):
+        """the low_mem_multicore_nlo_generation mode generates the real and
+        virtual amplitudes at the output: before the output directory is
+        replaced, which a failure leaves as it was"""
+        from unittest import mock
         path = tempfile.mkdtemp('', 'TMPWTest', None)
+        self.addCleanup(shutil.rmtree, path, True)
 
         def run_cmd(cmd):
             interface.exec_cmd(cmd, errorhandling=False, printcmd=False, 
                                precmd=True, postcmd=True)
 
         interface = MGCmd.MasterCmd()
-        
-
         run_cmd('set low_mem_multicore_nlo_generation True')
-        run_cmd('generate p p > w+ j [LOonly=QCD]')
-        run_cmd('output %s' % os.path.join(path, 'W-newway'))
-        run_cmd('set low_mem_multicore_nlo_generation False')
-        run_cmd('generate p p > w+ j [LOonly=QCD]')
-        run_cmd('output %s' % os.path.join(path, 'W-oldway'))
-                
-        # the P0 dirs
-        for oldf in \
-          (glob.glob(os.path.join(path, 'W-oldway', 'SubProcesses', 'P0*', '*.inc')) + \
-           glob.glob(os.path.join(path, 'W-oldway', 'SubProcesses', 'P0*', '*.f')) + \
-           [os.path.join(path, 'W-oldway', 'SubProcesses', 'proc_characteristics')]):
-            
-            if os.path.islink(oldf): 
-                continue
-
-            newf = oldf.replace('oldway', 'newway')
-
-            for old_l, new_l in zip(open(oldf), open(newf)):
-                self.assertEqual(old_l, new_l)
-
-        # the V0 dirs
-        for oldf in \
-          (glob.glob(os.path.join(path, 'W-oldway', 'SubProcesses', 'P0*', 'V0*', '*.inc')) + \
-           glob.glob(os.path.join(path, 'W-oldway', 'SubProcesses', 'P0*', 'V0*', '*.f'))):
-            
-            if os.path.islink(oldf): 
-                continue
-
-            newf = oldf.replace('oldway', 'newway')
-
-            for old_l, new_l in zip(open(oldf), open(newf)):
-                self.assertEqual(old_l, new_l)
-
-        # the Source dir 
-        for oldf in \
-          (glob.glob(os.path.join(path, 'W-oldway', 'Source', '*.inc')) + \
-           glob.glob(os.path.join(path, 'W-oldway', 'Source', '*.f'))):
-            
-            if os.path.islink(oldf): 
-                continue
-
-            newf = oldf.replace('oldway', 'newway')
-
-            for old_l, new_l in zip(open(oldf), open(newf)):
-                self.assertEqual(old_l, new_l)
-
+        run_cmd('generate u u~ > e+ e- [real=QCD]')
+        output = os.path.join(path, 'Z')
+        run_cmd('output %s' % output)
+        def fail(args):
+            raise fks_common.FKSProcessError('the born failed')
+        with mock.patch.object(fks_helas, 'async_generate_born', fail):
+            self.assertRaises(fks_common.FKSProcessError, run_cmd,
+                              'output %s -f' % output)
+        self.assertTrue(os.path.exists(os.path.join(output, 'SubProcesses',
+                                                    'subproc.mg')))
+        self.assertNotIn('tmpdir', interface._curr_matrix_elements)
+        run_cmd('output %s -f' % output)
+        self.assertTrue(os.path.exists(os.path.join(output, 'SubProcesses',
+                                                    'subproc.mg')))
 
     def test_polarised_default_frame_is_the_massive_final_state(self):
         """The partonic c.m., me_frame = [1, 2], has no infrared-safe meaning
@@ -739,43 +876,42 @@ class TestFKSOutput(unittest.TestCase):
             shutil.rmtree(path, ignore_errors=True)
 
 
-    def test_low_mem_gen_with_respawning_pool(self):
-        """the low-memory NLO generation reuses a maxtasksperchild=1 pool for
-        several map_async calls. Between two calls its workers have exited and
-        are replaced by the pool's handler thread, so len(pool._pool) can be
-        zero, and without an explicit chunksize CPython divides by it
-        (intermittent ZeroDivisionError). Simulate that state for every
-        map_async call: the generation must not depend on it.
-        """
-        import multiprocessing.pool
+    def test_low_mem_output_twice(self):
+        """a second output of the same generation in the
+        low_mem_multicore_nlo_generation mode generates the matrix elements
+        again: the files of the first one are removed with it. Only the worker
+        processes load these files (the matrix elements), also for the records
+        from which the exporter assigns the Born providers, before the
+        directories are written: the parent process never holds them"""
         from unittest import mock
-
-        map_async = multiprocessing.pool.Pool._map_async
-        def map_async_while_respawning(pool, *args, **opts):
-            workers, pool._pool = pool._pool, []
-            try:
-                return map_async(pool, *args, **opts)
-            finally:
-                pool._pool = workers
-
         path = tempfile.mkdtemp('', 'TMPWTest', None)
+        self.addCleanup(shutil.rmtree, path, True)
 
         def run_cmd(cmd):
             interface.exec_cmd(cmd, errorhandling=False, printcmd=False,
                                precmd=True, postcmd=True)
 
+        parent = os.getpid()
+        load_tmpfile = fks_helas.load_tmpfile
+        def load_in_worker(*args):
+            if os.getpid() == parent:
+                raise AssertionError('a file was loaded in the parent process')
+            return load_tmpfile(*args)
+
         interface = MGCmd.MasterCmd()
-        try:
-            run_cmd('set low_mem_multicore_nlo_generation True')
-            run_cmd('generate p p > w+ [QCD]')
-            with mock.patch.object(multiprocessing.pool.Pool, '_map_async',
-                                   map_async_while_respawning):
-                run_cmd('output %s' % os.path.join(path, 'W-newway'))
-            self.assertTrue(glob.glob(os.path.join(path, 'W-newway',
-                                                   'SubProcesses', 'P0*', 'V0*')))
-        finally:
-            run_cmd('set low_mem_multicore_nlo_generation False')
-            shutil.rmtree(path)
+        run_cmd('set low_mem_multicore_nlo_generation True')
+        run_cmd('generate p p > e+ ve QED^2=4 QCD^2=0 [QCD]')
+        subprocs = []
+        for name in ['W1', 'W2']:
+            with mock.patch.object(fks_helas, 'load_tmpfile', load_in_worker):
+                run_cmd('output %s' % os.path.join(path, name))
+            self.assertNotIn('tmpdir', interface._curr_matrix_elements)
+            with open(os.path.join(path, name, 'SubProcesses', 'subproc.mg')) as stream:
+                subprocs.append(stream.read())
+            self.assertTrue(glob.glob(os.path.join(path, name, 'SubProcesses',
+                                                   'P*', 'born_support.json')))
+        self.assertTrue(subprocs[0])
+        self.assertEqual(subprocs[0], subprocs[1])
 
     @test_manager.bypass_for_py3
     def test_w_nlo_gen_gosam(self):

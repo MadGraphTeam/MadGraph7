@@ -60,7 +60,12 @@ struct PdfGrid {
  *
  * Interpolates a @ref PdfGrid at the sampled @f$(x, q)@f$, returning
  * @f$x f(x, q)@f$ for the requested flavours; the numerical output agrees with
- * LHAPDF to double precision [1] (Sec. 3.2.3 of [2]). With a @ref CustomPdf,
+ * LHAPDF to double precision [1] (Sec. 3.2.3 of [2]). Outside of the grid the
+ * densities continue as with the continuation extrapolator of LHAPDF, its
+ * default: linearly in log x below the first x knot and in log q^2 above the
+ * last q knot, and below the first q knot with the anomalous dimension at that
+ * knot, going over into x f vanishing like q^2. Above the last x knot, where
+ * LHAPDF stops with an error, they are zero. With a @ref CustomPdf,
  * the user-supplied library is called for each requested flavour instead.
  *
  * `batch` is the leading batch dimension.
@@ -273,6 +278,55 @@ private:
 };
 
 /**
+ * Two-beam luminosity read from a two-dimensional table.
+ *
+ * Some luminosities do not factorize into one density per beam, not even as
+ * a sum of factorized terms as @ref EELuminosity: the two-photon luminosity
+ * of ultra-peripheral collisions (gamma-UPC) carries the probability that the
+ * beams do not interact hadronically, which depends on both photon energies
+ * at once. Such a luminosity is tabulated as a function of both momentum
+ * fractions, @f$x_1 x_2 L(x_1, x_2)@f$ (the @f$x f@f$ convention of the
+ * densities), and interpolated here.
+ *
+ * The table is an LHAPDF-format @ref PdfGrid with a single flavour whose x
+ * axis is @f$x_1@f$ and whose q axis is @f$x_2@f$: the interpolation, bicubic
+ * in @f$\log x@f$ and @f$\log q^2 = 2 \log x_2@f$, is the one of the parton
+ * densities. The grid should cover @f$x_2@f$ up to 1 and down to the
+ * smallest fraction the phase space reaches; below its first q knot the
+ * continuation of @ref PartonDensity, made for a scale, would apply.
+ *
+ * The interpolation is only as good as the knots: with 20 knots per decade
+ * the gamma-UPC luminosity of protons is reproduced to a few 1e-6, that of
+ * lead to ~1e-5 up to W_gamma-gamma ~ 100 GeV, 0.1-1% for 200-500 GeV and
+ * a few % above, where the form-factor dips of the flux are not resolved
+ * (and the luminosity is negligible). Values below zero, which the bicubic
+ * interpolation can give there, are set to zero.
+ *
+ * `batch` is the leading batch dimension.
+ *
+ * **Arguments**
+ * - `x1`, `x2` – `float`, shape `(batch,)` – momentum fractions.
+ *
+ * **Returns**
+ * - `luminosity` – `float`, shape `(batch,)` – @f$x_1 x_2 L(x_1, x_2)@f$.
+ */
+class TabulatedLuminosity : public FunctionGenerator {
+public:
+    /**
+     * @param grid    The table, see above.
+     * @param prefix  Prefix for the grid global names.
+     */
+    TabulatedLuminosity(const PdfGrid& grid, const std::string& prefix = "");
+
+private:
+    NamedVector<Value> build_function_impl(
+        FunctionBuilder& fb, const NamedVector<Value>& args
+    ) const override;
+
+    PartonDensity _density;
+};
+
+/**
  * A strong-coupling grid in the LHAPDF format, loaded from a file.
  *
  * Holds the @f$\alpha_s(q)@f$ knots of an LHAPDF `.info` set;
@@ -293,7 +347,10 @@ struct AlphaSGrid {
     AlphaSGrid(const std::string& file);
     /// Number of scale knots, counting the knots shared by two regions once.
     std::size_t q_count() const;
-    /// Fill @p tensor with the interpolation coefficients.
+    /// Fill @p tensor with the interpolation coefficients, and the padding
+    /// segments with the extrapolation: below the grid @f$\alpha_s@f$ at the
+    /// first knot and the logarithmic gradient to the next knot of another q,
+    /// above it the last value at both ends.
     void initialize_coefficients(Tensor tensor) const;
     /// Fill @p tensor with the `log(q^2)` knots.
     void initialize_logq2(Tensor tensor) const;
@@ -309,7 +366,9 @@ struct AlphaSGrid {
  * Strong-coupling interpolation as a compute-graph function.
  *
  * Interpolates an @ref AlphaSGrid to return @f$\alpha_s(q)@f$ at the sampled
- * scale (Sec. 3.2.3 of [1]).
+ * scale (Sec. 3.2.3 of [1]). Outside of the grid it continues as the
+ * interpolated @f$\alpha_s@f$ of LHAPDF: below the first knot with the
+ * logarithmic gradient to the next knot, above the last knot with the last value.
  *
  * `batch` is the leading batch dimension.
  *

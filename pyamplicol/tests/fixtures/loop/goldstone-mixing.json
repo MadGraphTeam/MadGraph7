@@ -1,0 +1,1009 @@
+{
+ "source": "MadLoop/MG5_aMC 3.7.0 standalone exports of tools/loop_reference/required_processes.json (gt_tttx_ew, gb_ttxb_ew_mb; loop_qcd_qed_sm_Gmu, 't Hooft-Feynman gauge, real on-shell masses, widths zero), the Born x CT interference split by tools/loop_reference/madloop_ct_selection.py",
+ "provenance": {
+  "references": "reference/runs/required/<name>/reference.json of the workspace (tools/loop_reference/madloop_export.py and run_required.sh <name> madloop): Born and full virtual; points and scales are the reference's",
+  "components": "tools/loop_reference/madloop_ct_selection.py --work reference/runs/required/<name> --orders 2 4 2 6 --alpha-s 0.118 --group 'mixing=C_UV(G0Z|AG0|GPWM|GMWP)MASS' --group 'r2=\\bR2_' (gt_tttx_ew), --group 'neutral=C_UV(G0Z|AG0)MASS' --group 'charged=C_UV(GPWM|GMWP)MASS' --group 'r2=\\bR2_' (gb_ttxb_ew_mb): the generated SKIPLOOPEVAL switch and a selection of CT interference indices in a copy of loop_matrix.f, the export unchanged; ct = every CT amplitude, r2 = the amplitudes with an R2 coupling, mixing/neutral/charged = the Goldstone-vector mixing counterterms V_UVG0ZMassEW, V_UVAG0MassEW, V_UVGpWmMassEW, V_UVGmWpMassEW; r2_g0tt and omitted_r2 (gt_tttx_ew): the same tool with --group 'G0TT=\\bR2_G0TT\\b' --group 'G0TT_B=\\bR2_G0TT_B\\b' --group 'HTT=\\bR2_HTT\\b' --group 'HTT_B=\\bR2_HTT_B\\b' --group 'r2=\\bR2_(?!(G0TT|G0TT_B|HTT|HTT_B)\\b)' (ct and the R2 groups' sum equal the components above; R2_G0TT_B selects no amplitude)",
+  "ttx_ttx_ew": "required/ttx_ttx_ew.json (MadLoop and Recola); components: tools/loop_reference/madloop_ct_selection.py --work reference/runs/required/ttx_ttx_ew --orders 0 4 0 6 --alpha-s 0.118 --group 'r2=\\bR2_' --group 'mixing=C_UV(G0Z|AG0|GPWM|GMWP)MASS'; the export's helas_calls_ampb_1.f calls R2_G0TT, R2_HTT and R2_HTT_B 4 times each and R2_G0TT_B never",
+  "ttx_zh_ew": "required/ttx_zh_ew.json (MadLoop and Recola); components: tools/loop_reference/madloop_ct_selection.py --work reference/runs/required/ttx_zh_ew --orders 0 4 0 6 --alpha-s 0.118 --group 'r2=\\bR2_' --group 'mixing=C_UV(G0Z|AG0|GPWM|GMWP)MASS'; the export's helas_calls_ampb_1.f calls R2_G0TT once, R2_HTT and R2_HTT_B twice each and R2_G0TT_B never"
+ },
+ "scope": "Correctness references only, MadLoop in double precision (return code 110 for the CT selections). The UV counterterm component (ct - r2, the mixings included) is the oracle of the Goldstone-vector mixings' sign (WP3.2 EWI-7b): the mixings make 0.3 to 3 % of it in gt_tttx_ew and 150 % at point 0 of gb_ttxb_ew_mb, which pyAmpliCol does not generate yet (an EW ghost vertex read through no conjugate rule). In gt_tttx_ew the bare part (virtual - ct) and the whole virtual are oracles too, with MadLoop's omitted R2_G0tt_b added (omitted_r2, r2_g0tt).",
+ "convention": "MadLoop/BLHA C_eps=(4pi)^eps/Gamma(1-eps); F_MadLoop=F_Recola+pi^2/6*D; OpenLoops truepoles=1, polenorm=0; physical couplings, no alpha extraction; initial spin/colour average and final identical-particle factor included",
+ "processes": {
+  "gt_tttx_ew": {
+   "process": "g t > t t t~ QCD=1 QED=2 [virt=QCD QED] QCD^2==2 QED^2==6",
+   "pdgs": [
+    21,
+    6,
+    6,
+    6,
+    -6
+   ],
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 1,
+    "QED": 4
+   },
+   "correction": "EW",
+   "scheme": "ew-gmu",
+   "scheme_description": "Full NLO EW (all one-loop graphs of the selected order, QCD-EW mixed included) in the G_mu scheme with on-shell real masses, matching OpenLoops ew_scheme=1/ew_renorm_scheme=1 and the MG5 loop_qcd_qed_sm_Gmu default restriction (massless light fermions, diagonal CKM). Real on-shell mass renormalization (MadLoop complex_mass_scheme False, Recola set_on_shell_scheme, OpenLoops complex_mass_scheme=0) with all widths zero; stable top; Feynman gauge. Recola's default complex-mass scheme keeps absorptive self-energy parts in its counterterms even at zero widths and is therefore not used.",
+   "parameters": {
+    "aS": "0.118",
+    "Gf": "0.0000116639",
+    "MZ": "91.188",
+    "MW": "80.419",
+    "MH": "125",
+    "MT": "173",
+    "ymt": "173"
+   },
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0",
+    "WTau": "0"
+   },
+   "normalization": {
+    "initial_average": 96,
+    "final_symmetry": 2,
+    "denominator": 192
+   },
+   "point_construction": {
+    "construction": "binary64 decimals on shell to rounding: point 0 is GT_TTTX_POINT of tests/unit/test_loop_v2_ew_gauge.py; points 1, 2 sequential two-body decays (sqrt(s) = 1200, 2000 GeV; top-pair masses 620, 900 GeV; seeds 7, 11) with the final energies set on shell",
+    "sqrt_s": [
+     "1500",
+     "1200",
+     "2000"
+    ]
+   },
+   "points": [
+    [
+     [
+      "740.0236666666667",
+      "0",
+      "0",
+      "740.0236666666667"
+     ],
+     [
+      "759.9763333333334",
+      "0",
+      "0",
+      "-740.0236666666667"
+     ],
+     [
+      "542.1014268447362",
+      "453.946802621722",
+      "-234.14080644548642",
+      "55.27513124065375"
+     ],
+     [
+      "679.7890319233611",
+      "-642.7918716317638",
+      "125.73449804624319",
+      "-56.51171284339019"
+     ],
+     [
+      "278.1095412319028",
+      "188.84506901004178",
+      "108.40630839924326",
+      "1.2365816027364396"
+     ]
+    ],
+    [
+     [
+      "587.5295833333333",
+      "0.0",
+      "0.0",
+      "587.5295833333333"
+     ],
+     [
+      "612.4704166666667",
+      "0.0",
+      "0.0",
+      "-587.5295833333333"
+     ],
+     [
+      "452.30375000000004",
+      "231.2506950496565",
+      "321.88699647843526",
+      "-132.52003547088685"
+     ],
+     [
+      "249.35059564785706",
+      "127.7856529814001",
+      "-22.81990947244205",
+      "124.08383526361466"
+     ],
+     [
+      "498.34565435214284",
+      "-359.03634803105655",
+      "-299.06708700599313",
+      "8.436200207272165"
+     ]
+    ],
+    [
+     [
+      "992.51775",
+      "0.0",
+      "0.0",
+      "992.51775"
+     ],
+     [
+      "1007.48225",
+      "0.0",
+      "0.0",
+      "-992.51775"
+     ],
+     [
+      "804.9822499999999",
+      "-728.686178720394",
+      "-287.30246335286205",
+      "-67.38820600305289"
+     ],
+     [
+      "427.45506316199555",
+      "43.17798620188472",
+      "177.7758455866396",
+      "345.42762086482134"
+     ],
+     [
+      "767.5626868380045",
+      "685.5081925185095",
+      "109.5266177662225",
+      "-278.0394148617684"
+     ]
+    ]
+   ],
+   "mu_r": [
+    "1000",
+    "700",
+    "1400"
+   ],
+   "ct_amplitude_counts": {
+    "rest": 352,
+    "mixing": 64,
+    "r2": 616
+   },
+   "rows": [
+    {
+     "born": 3.886940318376494e-06,
+     "virtual": {
+      "finite": 1.2573439346251342e-07,
+      "single_pole": 1.3457875627602146e-08,
+      "double_pole": 1.1441724391098297e-23
+     },
+     "virtual_status": 217,
+     "virtual_accuracy": 1.1392193292269055e-13,
+     "ct": {
+      "finite": 7.496490194392803e-08,
+      "single_pole": 5.1290443792361884e-08,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -1.3338326437505428e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "mixing": {
+      "finite": 2.7073912452951106e-10,
+      "single_pole": 8.889967004096628e-11,
+      "double_pole": 0.0
+     },
+     "r2_g0tt": {
+      "finite": -5.6681447474658045e-09,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 9.252124789843452e-06,
+     "virtual": {
+      "finite": 3.2074341165920713e-07,
+      "single_pole": 3.949403239694579e-08,
+      "double_pole": -3.5402494040840724e-22
+     },
+     "virtual_status": 217,
+     "virtual_accuracy": 4.1497096641980563e-14,
+     "ct": {
+      "finite": 2.994224948679906e-07,
+      "single_pole": 1.8465403330370805e-07,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": 6.705057897745801e-10,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "mixing": {
+      "finite": 8.929513165423359e-09,
+      "single_pole": 3.8289648442601005e-09,
+      "double_pole": 0.0
+     },
+     "r2_g0tt": {
+      "finite": -1.3994002605460004e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 5.995047704122672e-06,
+     "virtual": {
+      "finite": 1.1107430982671052e-07,
+      "single_pole": 4.1566320931416136e-08,
+      "double_pole": -8.464464253109147e-22
+     },
+     "virtual_status": 217,
+     "virtual_accuracy": 1.526506089706334e-12,
+     "ct": {
+      "finite": 2.195750510574143e-07,
+      "single_pole": 9.237349165049134e-08,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -1.588498583888804e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "mixing": {
+      "finite": 1.048419258674444e-09,
+      "single_pole": 2.8195514420687416e-10,
+      "double_pole": 0.0
+     },
+     "r2_g0tt": {
+      "finite": -9.261819349869544e-09,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     }
+    }
+   ],
+   "omitted_r2": {
+    "vertex": "V_ttG02",
+    "coupling": "R2_G0tt_b",
+    "loop_particles": [
+     "W+",
+     "b"
+    ],
+    "proportional_to": "R2_G0tt",
+    "madloop_amplitudes": {
+     "R2_G0tt": 16,
+     "R2_G0tt_b": 0
+    },
+    "reason": "MG5_aMC adds an R2 coupling only for a loop whose propagator set equals its loop-particle label (set_LoopCT_vertices); in 't Hooft-Feynman gauge every b loop of the t~ t G0 vertex holds a G+- (G0 has no W W vertex), so R2_G0tt_b ([W+, b]) is never added, while R2_Htt_b is (the H W W triangle). Both couplings multiply V_ttG02's one structure, so the omitted term is (R2_G0tt_b / R2_G0tt) x r2_g0tt, the Born x CT interference of the R2_G0tt amplitudes."
+   }
+  },
+  "gb_ttxb_ew_mb": {
+   "process": "g b > t t~ b QCD=1 QED=2 [virt=QCD QED] QCD^2==2 QED^2==6",
+   "pdgs": [
+    21,
+    5,
+    6,
+    -6,
+    5
+   ],
+   "born_orders": {
+    "QCD": 1,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 1,
+    "QED": 4
+   },
+   "correction": "EW",
+   "scheme": "ew-gmu-b-mass",
+   "scheme_description": "The ew-gmu scheme with a massive b (MB = ymb = 4.5): every fermion line through a chiral W vertex is massive (pyAmpliCol refuses a line joining massive and massless fermions through one). The MadLoop model is a copy of loop_qcd_qed_sm_Gmu_py3 whose restrict_default.dat keeps MB and ymb (4.5); the UFO's own restrict_with_b_mass.dat omits SMINPUTS 1, which MG5 3.7.0 needs.",
+   "parameters": {
+    "aS": "0.118",
+    "Gf": "0.0000116639",
+    "MZ": "91.188",
+    "MW": "80.419",
+    "MH": "125",
+    "MT": "173",
+    "ymt": "173",
+    "MB": "4.5",
+    "ymb": "4.5"
+   },
+   "fixed_parameters": {
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0",
+    "WTau": "0"
+   },
+   "normalization": {
+    "initial_average": 96,
+    "final_symmetry": 1,
+    "denominator": 96
+   },
+   "point_construction": {
+    "construction": "binary64 decimals on shell to rounding: beams along z, sequential two-body decays (sqrt(s) = 1000, 1500, 2200 GeV; top-pair masses 520, 700, 1100 GeV; seeds 3, 5, 9), final energies set on shell",
+    "sqrt_s": [
+     "1000",
+     "1500",
+     "2200"
+    ]
+   },
+   "points": [
+    [
+     [
+      "499.989875",
+      "0.0",
+      "0.0",
+      "499.989875"
+     ],
+     [
+      "500.01012499999996",
+      "0.0",
+      "0.0",
+      "-499.989875"
+     ],
+     [
+      "193.9527268709863",
+      "-28.330392650024578",
+      "-79.96331976259907",
+      "22.17919307664681"
+     ],
+     [
+      "441.2371481290137",
+      "337.64680849898843",
+      "168.20588122091652",
+      "149.87539865557497"
+     ],
+     [
+      "364.810125",
+      "-309.3164158489639",
+      "-88.24256145831747",
+      "-172.0545917322218"
+     ]
+    ],
+    [
+     [
+      "749.99325",
+      "0.0",
+      "0.0",
+      "749.99325"
+     ],
+     [
+      "750.00675",
+      "0.0",
+      "0.0",
+      "-749.99325"
+     ],
+     [
+      "362.42708249376204",
+      "254.11422811032776",
+      "161.1222016559578",
+      "104.35509249849473"
+     ],
+     [
+      "550.8995008395714",
+      "-224.60368752732995",
+      "410.23691774128383",
+      "-234.13695756233255"
+     ],
+     [
+      "586.6734166666668",
+      "-29.51054058299778",
+      "-571.3591193972417",
+      "129.78186506383784"
+     ]
+    ],
+    [
+     [
+      "1099.9953977272728",
+      "0.0",
+      "0.0",
+      "1099.9953977272728"
+     ],
+     [
+      "1100.0046022727274",
+      "0.0",
+      "0.0",
+      "-1099.9953977272728"
+     ],
+     [
+      "966.9554751626722",
+      "618.0444281987992",
+      "-655.3250697190598",
+      "-306.01311853774797"
+     ],
+     [
+      "408.0399225646004",
+      "-42.18768350310313",
+      "67.1213150323074",
+      "360.94668143023677"
+     ],
+     [
+      "825.0046022727272",
+      "-575.8567446956962",
+      "588.2037546867526",
+      "-54.933562892488816"
+     ]
+    ]
+   ],
+   "mu_r": [
+    "1000",
+    "700",
+    "1400"
+   ],
+   "ct_amplitude_counts": {
+    "rest": 256,
+    "neutral": 32,
+    "charged": 16,
+    "r2": 408
+   },
+   "rows": [
+    {
+     "born": 1.216971838689918e-05,
+     "virtual": {
+      "finite": 2.601203253446841e-07,
+      "single_pole": 3.54884732858037e-08,
+      "double_pole": -1.2581255198092992e-22
+     },
+     "virtual_status": 217,
+     "virtual_accuracy": 2.2571620750160184e-13,
+     "ct": {
+      "finite": -8.271643806425502e-08,
+      "single_pole": 8.224871385590423e-08,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -4.2875303715404265e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "neutral": {
+      "finite": 3.3134022399441726e-11,
+      "single_pole": 1.0871503942392174e-11,
+      "double_pole": 0.0
+     },
+     "charged": {
+      "finite": 5.910166903973481e-08,
+      "single_pole": 1.527524207140807e-08,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 2.309564219221832e-06,
+     "virtual": {
+      "finite": -1.5404360361377272e-08,
+      "single_pole": 8.949669647170009e-09,
+      "double_pole": -1.8030688622020915e-22
+     },
+     "virtual_status": 217,
+     "virtual_accuracy": 1.6493144218556996e-12,
+     "ct": {
+      "finite": 1.1292870349437686e-08,
+      "single_pole": 2.9269548350039987e-08,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -1.0570178370346143e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "neutral": {
+      "finite": 7.583465487377653e-14,
+      "single_pole": 3.248520697711015e-14,
+      "double_pole": 0.0
+     },
+     "charged": {
+      "finite": 1.952234632782876e-09,
+      "single_pole": 6.18624812212323e-10,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 1.0086076281235265e-05,
+     "virtual": {
+      "finite": -2.0122538799315516e-07,
+      "single_pole": 6.608401051799376e-08,
+      "double_pole": 0.0
+     },
+     "virtual_status": 329,
+     "virtual_accuracy": 0.0,
+     "ct": {
+      "finite": -8.852716456140039e-07,
+      "single_pole": -1.0318108082925528e-07,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -8.102083879759982e-08,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "neutral": {
+      "finite": 2.9970776036859647e-12,
+      "single_pole": 8.055077526582469e-13,
+      "double_pole": 0.0
+     },
+     "charged": {
+      "finite": 7.742472255051417e-09,
+      "single_pole": 1.7046170817400994e-09,
+      "double_pole": 0.0
+     }
+    }
+   ]
+  },
+  "ttx_ttx_ew": {
+   "process": "t t~ > t t~ QCD=0 QED=2 [virt=QCD QED] QCD^2==0 QED^2==6",
+   "pdgs": [
+    6,
+    -6,
+    6,
+    -6
+   ],
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "correction": "EW",
+   "scheme": "ew-gmu",
+   "scheme_description": "Full NLO EW (all one-loop graphs of the selected order, QCD-EW mixed included) in the G_mu scheme with on-shell real masses, matching OpenLoops ew_scheme=1/ew_renorm_scheme=1 and the MG5 loop_qcd_qed_sm_Gmu default restriction (massless light fermions, diagonal CKM). Real on-shell mass renormalization (MadLoop complex_mass_scheme False, Recola set_on_shell_scheme, OpenLoops complex_mass_scheme=0) with all widths zero; stable top; Feynman gauge. Recola's default complex-mass scheme keeps absorptive self-energy parts in its counterterms even at zero widths and is therefore not used.",
+   "parameters": {
+    "aS": "0.118",
+    "Gf": "0.0000116639",
+    "MZ": "91.188",
+    "MW": "80.419",
+    "MH": "125",
+    "MT": "173",
+    "ymt": "173"
+   },
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0",
+    "WTau": "0"
+   },
+   "normalization": {
+    "initial_average": 36,
+    "final_symmetry": 1,
+    "denominator": 36
+   },
+   "point_construction": {
+    "construction": "massive beams along z in the centre-of-mass frame: E = m (k + 1/k)/2, |p| = m (k - 1/k)/2 with k = 4, 5/2, 8; final pair at the Pythagorean polar/azimuthal angles; mass shells and momentum conservation exact",
+    "sqrt_s": [
+     "735.25",
+     "501.7",
+     "1405.625"
+    ]
+   },
+   "points": [
+    [
+     [
+      "367.625",
+      "0",
+      "0",
+      "324.375"
+     ],
+     [
+      "367.625",
+      "0",
+      "0",
+      "-324.375"
+     ],
+     [
+      "367.625",
+      "259.5",
+      "0",
+      "194.625"
+     ],
+     [
+      "367.625",
+      "-259.5",
+      "0",
+      "-194.625"
+     ]
+    ],
+    [
+     [
+      "250.85",
+      "0",
+      "0",
+      "181.65"
+     ],
+     [
+      "250.85",
+      "0",
+      "0",
+      "-181.65"
+     ],
+     [
+      "250.85",
+      "139.5072",
+      "104.6304",
+      "-50.862"
+     ],
+     [
+      "250.85",
+      "-139.5072",
+      "-104.6304",
+      "50.862"
+     ]
+    ],
+    [
+     [
+      "702.8125",
+      "0",
+      "0",
+      "681.1875"
+     ],
+     [
+      "702.8125",
+      "0",
+      "0",
+      "-681.1875"
+     ],
+     [
+      "702.8125",
+      "143.8668",
+      "-191.8224",
+      "637.5915"
+     ],
+     [
+      "702.8125",
+      "-143.8668",
+      "191.8224",
+      "-637.5915"
+     ]
+    ]
+   ],
+   "mu_r": [
+    "1000",
+    "700",
+    "1400"
+   ],
+   "ct_amplitude_counts": {
+    "rest": 56,
+    "r2": 122,
+    "mixing": 16
+   },
+   "rows": [
+    {
+     "born": 2.3180693517730955,
+     "virtual": {
+      "finite": 0.04563175799683493,
+      "single_pole": 0.004270553210710089,
+      "double_pole": 0.0
+     },
+     "virtual_status": 216,
+     "virtual_accuracy": 6.079941561954554e-14,
+     "ct": {
+      "finite": 0.3115614630089944,
+      "single_pole": 0.08254644689297634,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": 0.04015087049942092,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "mixing": {
+      "finite": 0.003473240998401461,
+      "single_pole": 0.001140470477871369,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 1.6767268705395109,
+     "virtual": {
+      "finite": 0.10504838955506615,
+      "single_pole": 0.004207990772162643,
+      "double_pole": 0.0
+     },
+     "virtual_status": 216,
+     "virtual_accuracy": 3.3581015046464763e-15,
+     "ct": {
+      "finite": 0.24979695729413137,
+      "single_pole": 0.08200725722163237,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": 0.03530751323753981,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "mixing": {
+      "finite": 0.002144376500114053,
+      "single_pole": 0.0009195061454848052,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 19.341383426331667,
+     "virtual": {
+      "finite": -1.4485306137790033,
+      "single_pole": 0.02266837838203993,
+      "double_pole": 0.0
+     },
+     "virtual_status": 216,
+     "virtual_accuracy": 2.780653254651591e-12,
+     "ct": {
+      "finite": -0.6263976077133994,
+      "single_pole": -0.13874412560936988,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": 0.11855836112410266,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "mixing": {
+      "finite": 0.006309831956170898,
+      "single_pole": 0.0016969256949483033,
+      "double_pole": 0.0
+     }
+    }
+   ]
+  },
+  "ttx_zh_ew": {
+   "process": "t t~ > z h QCD=0 QED=2 [virt=QCD QED] QCD^2==0 QED^2==6",
+   "pdgs": [
+    6,
+    -6,
+    23,
+    25
+   ],
+   "born_orders": {
+    "QCD": 0,
+    "QED": 2
+   },
+   "loop_orders": {
+    "QCD": 0,
+    "QED": 4
+   },
+   "correction": "EW",
+   "scheme": "ew-gmu",
+   "scheme_description": "Full NLO EW (all one-loop graphs of the selected order, QCD-EW mixed included) in the G_mu scheme with on-shell real masses, matching OpenLoops ew_scheme=1/ew_renorm_scheme=1 and the MG5 loop_qcd_qed_sm_Gmu default restriction (massless light fermions, diagonal CKM). Real on-shell mass renormalization (MadLoop complex_mass_scheme False, Recola set_on_shell_scheme, OpenLoops complex_mass_scheme=0) with all widths zero; stable top; Feynman gauge. Recola's default complex-mass scheme keeps absorptive self-energy parts in its counterterms even at zero widths and is therefore not used.",
+   "parameters": {
+    "aS": "0.118",
+    "Gf": "0.0000116639",
+    "MZ": "91.188",
+    "MW": "80.419",
+    "MH": "125",
+    "MT": "173",
+    "ymt": "173"
+   },
+   "fixed_parameters": {
+    "MB": "0",
+    "ymb": "0",
+    "MTA": "0",
+    "ymtau": "0",
+    "WT": "0",
+    "WW": "0",
+    "WZ": "0",
+    "WH": "0",
+    "WTau": "0"
+   },
+   "normalization": {
+    "initial_average": 36,
+    "final_symmetry": 1,
+    "denominator": 36
+   },
+   "point_construction": {
+    "construction": "tools/loop_reference/supplied_points.py: deterministic sequential construction at 60 digits, printed on a common quantum of 30 significant digits of sqrt(s); momentum conservation exact in the printed decimals (the last final particle takes the rounding residual), mass shells to the recorded defects",
+    "cuts": {
+     "min_2pipj_over_s": "1/1000",
+     "resonance_exclusion": "|s_ij-M^2| >= M^2/10 for final particle-antiparticle pairs (regular family)",
+     "resonances": [
+      "91.188",
+      "80.419",
+      "125",
+      "173"
+     ]
+    },
+    "sqrt_s": [
+     "4000",
+     "800",
+     "1750"
+    ],
+    "family": "regular",
+    "family_values": [],
+    "rotation": null,
+    "madloop_qp_point": null,
+    "point_labels": [
+     "regular",
+     "regular",
+     "regular"
+    ],
+    "precision": {
+     "construction_digits": 60,
+     "printed_digits": 30,
+     "max_relative_mass_shell_defect": [
+      "1.442e-30",
+      "1.047e-30",
+      "6.637e-30"
+     ],
+     "max_relative_momentum_conservation_defect": [
+      "0.000e+3",
+      "0.000e+3",
+      "0.000e+3"
+     ]
+    }
+   },
+   "points": [
+    [
+     [
+      "2000",
+      "0",
+      "0",
+      "1992.50370137673771900764682471"
+     ],
+     [
+      "2000",
+      "0",
+      "0",
+      "-1992.50370137673771900764682471"
+     ],
+     [
+      "1999.086281418",
+      "1056.71594980803672252157867973",
+      "792.5369623560275418911840098",
+      "-1497.75407658614853435974296279"
+     ],
+     [
+      "2000.913718582",
+      "-1056.71594980803672252157867973",
+      "-792.5369623560275418911840098",
+      "1497.75407658614853435974296279"
+     ]
+    ],
+    [
+     [
+      "400",
+      "0",
+      "0",
+      "360.653573391419483936168833679"
+     ],
+     [
+      "400",
+      "0",
+      "0",
+      "-360.653573391419483936168833679"
+     ],
+     [
+      "395.43140709",
+      "238.2155886530827069856309383",
+      "89.585349578937086387758643463",
+      "288.580222525145046582625697145"
+     ],
+     [
+      "404.56859291",
+      "-238.2155886530827069856309383",
+      "-89.585349578937086387758643463",
+      "-288.580222525145046582625697145"
+     ]
+    ],
+    [
+     [
+      "875",
+      "0",
+      "0",
+      "857.72722936840474307961951461"
+     ],
+     [
+      "875",
+      "0",
+      "0",
+      "-857.72722936840474307961951461"
+     ],
+     [
+      "872.911500384",
+      "365.85499906626332076577332475",
+      "-274.39124929969749057432999356",
+      "-737.91517000575463045874490169"
+     ],
+     [
+      "877.088499616",
+      "-365.85499906626332076577332475",
+      "274.39124929969749057432999356",
+      "737.91517000575463045874490169"
+     ]
+    ]
+   ],
+   "mu_r": [
+    "1000",
+    "700",
+    "1400"
+   ],
+   "ct_amplitude_counts": {
+    "rest": 28,
+    "r2": 46,
+    "mixing": 6
+   },
+   "rows": [
+    {
+     "born": 0.38333299637715024,
+     "virtual": {
+      "finite": -0.061896115596078945,
+      "single_pole": 0.00216002462009714,
+      "double_pole": 0.0
+     },
+     "virtual_status": 217,
+     "virtual_accuracy": 1.0622028811368822e-13,
+     "ct": {
+      "finite": -0.014793116137392169,
+      "single_pole": -0.003272927133734026,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.005660952001211913,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "mixing": {
+      "finite": -3.460125845322062e-05,
+      "single_pole": -1.1361639972940918e-05,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.30885738654848527,
+     "virtual": {
+      "finite": 0.004544672496238909,
+      "single_pole": 0.0006521380992047637,
+      "double_pole": 0.0
+     },
+     "virtual_status": 216,
+     "virtual_accuracy": 4.310971654533489e-12,
+     "ct": {
+      "finite": -0.015807471522742016,
+      "single_pole": -0.004020632644220796,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.005335598783730592,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "mixing": {
+      "finite": -0.0005216259550240667,
+      "single_pole": -0.0002236726019257807,
+      "double_pole": 0.0
+     }
+    },
+    {
+     "born": 0.5765754433283665,
+     "virtual": {
+      "finite": -0.01578950764496699,
+      "single_pole": 0.0022217763540251017,
+      "double_pole": -1.2362491950113883e-17
+     },
+     "virtual_status": 217,
+     "virtual_accuracy": 8.571535875578706e-12,
+     "ct": {
+      "finite": -0.03131300314380202,
+      "single_pole": -0.006033533253196735,
+      "double_pole": 0.0
+     },
+     "r2": {
+      "finite": -0.008941537391661904,
+      "single_pole": 0.0,
+      "double_pole": 0.0
+     },
+     "mixing": {
+      "finite": -0.00032797638236935596,
+      "single_pole": -8.820386255048387e-05,
+      "double_pole": 0.0
+     }
+    }
+   ]
+  }
+ }
+}

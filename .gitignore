@@ -1,4 +1,28 @@
 *~
+.ninjars-build/
+.tirust-build/
+# Local TIRust benchmark workspace, restored from the release bundle
+# (docs/tirust-benchmarks.md), except the files of the quarkonium one-loop
+# report (docs/onia_loop.md).
+/docs/benchmarkfolder/*
+!/docs/benchmarkfolder/README.md
+!/docs/benchmarkfolder/benchmark.typ
+!/docs/benchmarkfolder/benchmark.pdf
+!/docs/benchmarkfolder/style.typ
+!/docs/benchmarkfolder/data/
+!/docs/benchmarkfolder/scripts/
+!/docs/benchmarkfolder/research/
+!/docs/benchmarkfolder/figures/
+vendor/tirust/target/
+vendor/tirust/*.so
+vendor/tirust/smoke
+vendor/tirust/tirust-native-libs.txt
+vendor/tirust/tirust-link-before.txt
+vendor/tirust/exported-unexpected.txt
+vendor/ninjars/target/
+vendor/ninjars/smoke
+vendor/ninjars/ninjars-native-libs.txt
+vendor/ninjars/ninjars-link-before.txt
 __pycache__
 *.o
 *.pyc
@@ -83,6 +107,9 @@ tests/input_files/IOTestsComparison/**/*.BackUp
 # output of ./tests/test_manager.py
 UNITTEST_proc/
 
+# Local development references.
+/references/
+
 # LHAPDF-format re-tabulations of the dressed-lepton densities, produced from
 # the shipped eepdf.f by vendor/eepdfgrid/gen_eepdf_lhagrid.py in under a
 # second. ~8 MB each, so generated on demand rather than committed.
@@ -93,6 +120,7 @@ Template/Common/Source/PDF/lep_densities/*/*ll.json
 models/*
 !models/sm/
 !models/loop_sm/
+!models/loop_sm_onia/
 !models/MSSM_SLHA2/
 !models/taudecay_UFO/
 !models/hgg_plugin/

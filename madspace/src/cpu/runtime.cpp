@@ -835,7 +835,9 @@ void op_batch_split_by_index(
     auto& indices = locals[instruction.input_indices[0]];
     std::size_t count = locals[instruction.input_indices[1]].index_value();
     auto indices_view_flat = indices.flat_view<me_int_t, 1>(0);
-    device.submit([indices_view_flat, count, &locals, &instruction, &device]() mutable {
+    // the job can run after the dispatch loop has dropped its device, so it
+    // allocates its outputs on the CPU device directly
+    device.submit([indices_view_flat, count, &locals, &instruction]() mutable {
         std::vector<std::size_t> sizes(count);
         TensorView<me_int_t, 1> indices_view(indices_view_flat);
         for (std::size_t i = 0; i < indices_view.size(); ++i) {
@@ -845,7 +847,7 @@ void op_batch_split_by_index(
         views.reserve(count);
         for (auto [size, output_index] : zip(sizes, instruction.output_indices)) {
             auto& output = locals[output_index];
-            output = Tensor(DataType::dt_int32, {size}, device);
+            output = Tensor(DataType::dt_int32, {size});
             views.push_back(output.view<me_int_t, 1>());
         }
         std::fill(sizes.begin(), sizes.end(), 0);

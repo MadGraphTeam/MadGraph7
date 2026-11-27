@@ -1,7 +1,1 @@
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-c      written by the UFO converter
-ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
-
-      MP__MU_R=MU_R
-      MP__AS=AS
-      MP__G=G
+../../_shared/short_ML_SMQCD_LoopInduced%gg_hh%%..%..%Source%MODEL%actualize_mp_ext_params.inc

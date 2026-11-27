@@ -30,12 +30,115 @@ import copy
 import logging
 import array
 import fractions
+import itertools
+import multiprocessing
+import multiprocessing.connection
+import os
+import signal
+import traceback
 if madgraph.ordering:
     set = misc.OrderedSet    
+logger = logging.getLogger('madgraph.fks_common')
     
 class FKSProcessError(Exception):
     """Exception for MadFKS"""
     pass
+
+
+# the processes of the ncores_for_proc_gen mode (low_mem_multicore_nlo_generation)
+
+class RemoteTraceback(Exception):
+    """The traceback of an error raised in a process of low_mem_map"""
+    def __str__(self):
+        return self.args[0]
+
+
+def run_low_mem_task(function, arg, connection):
+    """What a process of low_mem_map runs: function(arg), whose result, or
+    the error it raises, it sends to the parent process"""
+    try:
+        output = ('result', function(arg))
+    except Exception as error:
+        output = ('error', (error, traceback.format_exc()))
+    except BaseException:
+        # (e.g. SystemExit): an error in the parent process
+        output = ('error', (None, traceback.format_exc()))
+    try:
+        connection.send(output)
+    except Exception:
+        # the result or the error cannot be pickled
+        connection.send(('error', (None, output[1][1] if output[0] == 'error' \
+                                         else traceback.format_exc())))
+    connection.close()
+
+
+def low_mem_map(function, args, ncores):
+    """[function(arg) for arg in args], each computed by a process forked from
+    this one, which exits after it (freeing its memory), at most ncores (all
+    the cores if not positive) at a time.
+    The processes get the function and its argument through the fork (only
+    the results are pickled), from this thread (not while another thread of
+    the pool would fork them, possibly holding a lock which the process would
+    then wait for). They ignore ctrl+c: the KeyboardInterrupt here stops them.
+    An error raised in one of them, or its death (e.g. killed when out of
+    memory), stops the others and is raised here."""
+    context = multiprocessing.get_context('fork')
+    nprocesses = ncores if ncores > 0 else (os.cpu_count() or 1)
+    args = list(args)
+    results = [None] * len(args)
+    tasks = iter(enumerate(args))
+    running = {}
+    try:
+        while True:
+            for index, arg in itertools.islice(tasks, nprocesses - len(running)):
+                receiver, sender = context.Pipe(duplex=False)
+                process = context.Process(target=run_low_mem_task,
+                                          args=(function, arg, sender))
+                original_sigint_handler = signal.signal(signal.SIGINT,
+                                                        signal.SIG_IGN)
+                try:
+                    process.start()
+                except BaseException:
+                    receiver.close()
+                    raise
+                finally:
+                    signal.signal(signal.SIGINT, original_sigint_handler)
+                    # (the process has its own copy)
+                    sender.close()
+                running[receiver] = (index, process)
+            if not running:
+                return results
+
+            for receiver in multiprocessing.connection.wait(list(running)):
+                index, process = running.pop(receiver)
+                try:
+                    kind, value = receiver.recv()
+                except EOFError:
+                    # it died without sending anything
+                    process.join()
+                    raise FKSProcessError(
+                        'A process of the low_mem_multicore_nlo_generation ' + \
+                        'mode died (exit code %s)%s' % (process.exitcode,
+                            ': it may have been killed when out of memory' \
+                            if process.exitcode == -signal.SIGKILL else ''))
+                finally:
+                    receiver.close()
+                process.join()
+                if kind == 'error':
+                    error, remote_traceback = value
+                    if error is None:
+                        raise FKSProcessError(
+                            'Error in a process of the ' + \
+                            'low_mem_multicore_nlo_generation mode:\n' + \
+                            remote_traceback)
+                    raise error from RemoteTraceback(remote_traceback)
+                results[index] = value
+    finally:
+        # after an error or a KeyboardInterrupt
+        for receiver, (index, process) in running.items():
+            process.terminate()
+            process.join()
+            receiver.close()
 
 
 def external_leg_identity(leg):
@@ -99,6 +202,16 @@ class FKSDiagramTag(diagram_generation.DiagramTag): #test written
         return [((leg.get('id'), leg.get('number')), leg.get('number'))]
 
 
+class FKSTopologyTag(FKSDiagramTag):
+    """The diagram tags of link_rb_configs without the interactions (and
+    thus the internal particles): those of the topologies of the diagrams"""
+
+    @staticmethod
+    def vertex_id_from_vertex(vertex, last_vertex, model, ninitial):
+        """The same vertex id for all the vertices"""
+        return ((0, ()), (), {})
+
+
 def get_qed_qcd_orders_from_weighted(nexternal, hierarchy, weighted):
     """computes the QED/QCD orders from the knowledge of the n of ext particles
     and of the weighted orders"""
@@ -115,8 +228,10 @@ def get_qed_qcd_orders_from_weighted(nexternal, hierarchy, weighted):
 def link_rb_configs(born_amp, real_amp, i, j, ij):
     """finds the real configurations that match the born ones, i.e.  for
     each born configuration, the real configuration that has the ij ->
-    i j splitting.  i, j and ij are integers, and refer to the leg
-    position in the real process (i, j) and in the born process (ij).
+    i j splitting (or, when the real amplitude has no such diagram, see
+    below, another one with the splitting).  i, j and ij are integers, and
+    refer to the leg position in the real process (i, j) and in the born
+    process (ij).
     """
     # find diagrams with 3 point functions and use them as configurations
     id_ij = born_amp['process']['legs'][ij - 1]['id']
@@ -223,7 +338,7 @@ def link_rb_configs(born_amp, real_amp, i, j, ij):
                 counts.append([l['number'] for v in diag['diagram']['vertices'] for l in v['legs']].count(il+1))
             # normally all the occurrences should be odd (and !=0)
             # (each entry should be 1 for the external leg +2 for each internal one)
-            even_list = [c / 2 * 2 == c for c in counts]
+            even_list = [c % 2 == 0 for c in counts]
             if any(even_list):
                 if not even_list.count(True) == 2:
                     raise FKSProcessError('Linking: Don\'t know what to do in this case')
@@ -259,34 +374,57 @@ def link_rb_configs(born_amp, real_amp, i, j, ij):
             kept_diags.append(d)
     good_diags = kept_diags
 
-    # and compare them
-    if len(born_tags) != len(real_tags):
-        print('\n'.join([str(r) for r in real_tags]) + '\n')
-        raise FKSProcessError('Cannot map born/real configurations between \
-                %s and %s (i,j=%d,%d): not same number of configurations: %d %d' % \
-                (born_amp.get('process').nice_string().replace('Process:',''), 
-                 real_amp.get('process').nice_string().replace('Process:',''),
-                               i,j,
-                               len(born_tags),
-                               len(real_tags)))
-    
-    links = []
+    # and compare them: each born configuration gets the real one of its
+    # diagram with the ij -> i j splitting
+    all_good_diags = list(good_diags)
+    real_confs_of_borns = {}
     for ib, btag in enumerate(born_tags):
-        try:
+        if btag in real_tags:
             ir = real_tags.index(btag)
-            links.append({'real_conf': good_diags[ir]['number'],
-                          'born_conf': born_confs[ib]['number']})
-            real_tags.remove(btag)
+            real_confs_of_borns[ib] = good_diags[ir]['number']
+            real_tags.pop(ir)
             good_diags.pop(ir)
-        except ValueError:
-            print(real_tags, i, j, ij)
-            print('\n'.join( d['diagram'].nice_string() for d in good_diags))
-            raise FKSProcessError('Linking %s to %s: could not link born diagram %s' % \
+    
+    # The orders of the real amplitude can exclude this diagram, in an
+    # output with mixed QCD and QED orders: e.g. for the photon emission of
+    # u u~ > t t~ [QCD QED] (born QCD^2=4 QED^2=0, so that the amplitudes go
+    # up to QCD^2=6 QED^2=2), the real diagrams of the borns with an s-channel
+    # photon or Z (QED^2=4 in the interference with the gluon one) are beyond
+    # QED^2=2, those with a gluon emission are not. Such a born configuration
+    # gets the first real configuration of its topology (the same propagators
+    # and vertices, those of other particles), with the splitting, of the
+    # amplitude at these orders, else (a topology of the EW diagrams only,
+    # e.g. the t-channel W of b b~ > t t~) the first one with the splitting.
+    # (The H events take from it the s-channel propagators which they may
+    # write as resonances, when their momenta are close to the pole.)
+    unlinked = [ib for ib in range(len(born_tags)) if ib not in real_confs_of_borns]
+    if unlinked:
+        if not all_good_diags:
+            raise FKSProcessError('Linking %s to %s (i,j=%d,%d): no real configuration with the splitting' % \
                  (born_amp.get('process').nice_string().replace('Process:',''), 
                   real_amp.get('process').nice_string().replace('Process:',''),
-                                  born_confs[ib]['diagram'].nice_string()) )
+                  i, j))
+        real_topologies = [FKSTopologyTag(d['diagram'],
+                                          real_amp.get('process').get('model')) \
+                           for d in all_good_diags]
+        other_topologies = []
+        for ib in unlinked:
+            topology = FKSTopologyTag(born_confs[ib]['diagram'],
+                                      born_amp.get('process').get('model'))
+            if topology in real_topologies:
+                real_confs_of_borns[ib] = \
+                        all_good_diags[real_topologies.index(topology)]['number']
+            else:
+                real_confs_of_borns[ib] = all_good_diags[0]['number']
+                other_topologies.append(ib)
+        logger.debug('Linking %s to %s (i,j=%d,%d): born configuration(s) %s linked to a real one of another diagram (%s of another topology)' % \
+                     (born_amp.get('process').nice_string().replace('Process:',''),
+                      real_amp.get('process').nice_string().replace('Process:',''),
+                      i, j, ', '.join(str(born_confs[ib]['number'] + 1) for ib in unlinked),
+                      ', '.join(str(born_confs[ib]['number'] + 1) for ib in other_topologies) or 'none'))
 
-    return links
+    return [{'real_conf': real_confs_of_borns[ib],
+             'born_conf': born_confs[ib]['number']} for ib in range(len(born_tags))]
 
 
 

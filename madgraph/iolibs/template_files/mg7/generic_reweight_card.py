@@ -73,7 +73,7 @@ CLASSIC_ONLY_CHANGE_OPTIONS = frozenset({
     "keep_ordering", "use_eventid", "allow_missing_finalstate", "boost",
     "virtual_path", "tree_path", "output", "rwgt_dir", "systematics",
     "soft_threshold", "multicore", "identical_particle_in_prod_and_decay",
-    "include_sudakov",
+    "include_sudakov", "sudakov_xi",
     # density-matrix reweighting (reweight_interface.DensityInterface)
     "helicity_direction", "boost_choice", "order_helicities",
     "symmetrise_initial_state", "axis_referential", "matrix_normalisation",

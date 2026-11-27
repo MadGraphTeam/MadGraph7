@@ -1,0 +1,2178 @@
+{
+ "note": "g g > chic0(1|3P01) chic0(1|3P01) [virt=QCD] regenerated from onia_loop HEAD on TIRust da7902b + bridge v16 (poles-only, oneloop cdbc912), seed-1 points of the benchmark (docs/benchmarkfolder/data/raw/two_pwave, TIRust 4f1b06c + v9). dp: qp_check.py, MLStabThres 1d99 for modes 1 and 2, 1.0d-3 for -1; qp: qp_point.py, CTModeRun 4. comparison: against the benchmark (c1_vs_old, fin_vs_old relative). attribution_50gev: the same HEAD output linked against each TIRust version (fixtures.py-patched copies, FX_DUMP unset), modes 1 and 2.",
+ "dp": {
+  "dpA": {
+   "output": "P0_gg_chic013P01chic013P01",
+   "masses": [
+    0.0,
+    0.0,
+    3.1,
+    3.1
+   ],
+   "modes": [
+    "1",
+    "2",
+    "-1"
+   ],
+   "note": "The quadruple-precision path of a two-P-wave output against its double\nprecision: the virtual at points in CTModeRun 1 (double precision), 4\n(quadruple precision) and 5 (quadruple precision, loop direction reversed),\nwith MLStabThres 1d99, and in CTModeRun -1 with MLStabThres 1d-30, so that\nMadLoop's stability test sends every point to quadruple precision (the\nrescue: return code 2xx when the two quadruple-precision passes agree).\n`--thres X` sets the MLStabThres of CTModeRun -1 instead (MadLoop's default\nis 1.0d-3).\nEach point prints the poles in units of Born * alpha_s/(2 pi) against\nONIA_IR_POLES, the finite parts, the differences between the passes, the\nreturn codes and the times.\n\n    qp_check.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--modes 1,4,5,-1] [--thres 1.0d-30]\n\nThe points are those of fixtures.py and acceptance.py (seed 1).\n",
+   "records": [
+    {
+     "energy": 8.0,
+     "point": 0,
+     "momenta": [
+      [
+       "0x1.0000000000000p+2",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.0000000000000p+2"
+      ],
+      [
+       "0x1.0000000000000p+2",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.0000000000000p+2"
+      ],
+      [
+       "0x1.0000000000000p+2",
+       "0x1.00d545973c1a7p+1",
+       "-0x1.37e333ef8b58ep+0",
+       "-0x1.e0337a04b91f5p-1"
+      ],
+      [
+       "0x1.0000000000000p+2",
+       "-0x1.00d545973c1a7p+1",
+       "0x1.37e333ef8b58ep+0",
+       "0x1.e0337a04b91f5p-1"
+      ]
+     ],
+     "ctmode1": {
+      "born": 1.3212352237942511e-08,
+      "finite": 3.191614374790338e-08,
+      "single": -5.240485751214214e-10,
+      "double": -1.4887903073263642e-09,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 8.0,
+      "time": 97.48958,
+      "predicted_single_norm": -2.1119773787306038,
+      "predicted_double_norm": -6.000000000000003,
+      "finite_norm": 128.6258122081284,
+      "single_norm": -2.111977378718669,
+      "double_norm": -6.0000000000007025
+     },
+     "ctmode2": {
+      "born": 1.3212352237942511e-08,
+      "finite": 3.19161437478983e-08,
+      "single": -5.240485751319463e-10,
+      "double": -1.4887903073267807e-09,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 8.0,
+      "time": 100.4352,
+      "predicted_single_norm": -2.1119773787306038,
+      "predicted_double_norm": -6.000000000000003,
+      "finite_norm": 128.62581220810793,
+      "single_norm": -2.1119773787610856,
+      "double_norm": -6.000000000002381
+     },
+     "ctmode-1": {
+      "born": 1.3212352237942511e-08,
+      "finite": 3.191614374790084e-08,
+      "single": -5.240485751266838e-10,
+      "double": -1.4887903073265724e-09,
+      "accuracy": 6.5179e-11,
+      "ret_code": 213,
+      "ao2pi": 0.01878028328484365,
+      "mu": 8.0,
+      "time": 183.3587,
+      "predicted_single_norm": -2.1119773787306038,
+      "predicted_double_norm": -6.000000000000003,
+      "finite_norm": 128.62581220811816,
+      "single_norm": -2.1119773787398772,
+      "double_norm": -6.000000000001542
+     }
+    },
+    {
+     "energy": 8.0,
+     "point": 1,
+     "momenta": [
+      [
+       "0x1.0000000000000p+2",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.0000000000000p+2"
+      ],
+      [
+       "0x1.0000000000000p+2",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.0000000000000p+2"
+      ],
+      [
+       "0x1.0000000000000p+2",
+       "-0x1.88db861f89fbdp-2",
+       "0x1.70ecccc831054p-3",
+       "-0x1.3efbd1bf09e50p+1"
+      ],
+      [
+       "0x1.0000000000000p+2",
+       "0x1.88db861f89fbdp-2",
+       "-0x1.70ecccc831054p-3",
+       "0x1.3efbd1bf09e50p+1"
+      ]
+     ],
+     "ctmode1": {
+      "born": 1.1760023362576266e-06,
+      "finite": 2.895259656145047e-06,
+      "single": -1.1432254986779982e-07,
+      "double": -1.3251394211142524e-07,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 8.0,
+      "time": 96.32222,
+      "predicted_single_norm": -5.176325511721957,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 131.09230364813118,
+      "single_norm": -5.176325511699605,
+      "double_norm": -6.000000000003991
+     },
+     "ctmode2": {
+      "born": 1.1760023362576266e-06,
+      "finite": 2.8952596422333372e-06,
+      "single": -1.1432254986662024e-07,
+      "double": -1.3251394211348526e-07,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 8.0,
+      "time": 138.5217,
+      "predicted_single_norm": -5.176325511721957,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 131.09230301823325,
+      "single_norm": -5.176325511646196,
+      "double_norm": -6.000000000097264
+     },
+     "ctmode-1": {
+      "born": 1.1760023362576266e-06,
+      "finite": 2.895259649189192e-06,
+      "single": -1.1432254986721003e-07,
+      "double": -1.3251394211245524e-07,
+      "accuracy": 1.5762e-08,
+      "ret_code": 213,
+      "ao2pi": 0.01878028328484365,
+      "mu": 8.0,
+      "time": 230.0661,
+      "predicted_single_norm": -5.176325511721957,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 131.0923033331822,
+      "single_norm": -5.1763255116729,
+      "double_norm": -6.000000000050627
+     }
+    },
+    {
+     "energy": 12.0,
+     "point": 0,
+     "momenta": [
+      [
+       "0x1.8000000000000p+2",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.8000000000000p+2"
+      ],
+      [
+       "0x1.8000000000000p+2",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.8000000000000p+2"
+      ],
+      [
+       "0x1.7ffffffffffffp+2",
+       "0x1.04f844cddb6bcp+2",
+       "-0x1.3ce9347dffb31p+1",
+       "-0x1.e7ef7bf4e1d5cp+0"
+      ],
+      [
+       "0x1.7ffffffffffffp+2",
+       "-0x1.04f844cddb6bcp+2",
+       "0x1.3ce9347dffb31p+1",
+       "0x1.e7ef7bf4e1d5cp+0"
+      ]
+     ],
+     "ctmode1": {
+      "born": 3.158884910510845e-09,
+      "finite": 1.018049788097347e-08,
+      "single": 5.873468185224238e-10,
+      "double": -3.5594852090158077e-10,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 12.0,
+      "time": 154.5479,
+      "predicted_single_norm": 9.90053534218277,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 171.60623994477808,
+      "single_norm": 9.900535342041955,
+      "double_norm": -5.999999999998497
+     },
+     "ctmode2": {
+      "born": 3.158884910510845e-09,
+      "finite": 1.0180497626830036e-08,
+      "single": 5.873468185200358e-10,
+      "double": -3.5594852090163485e-10,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 12.0,
+      "time": 128.0651,
+      "predicted_single_norm": 9.90053534218277,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 171.6062356608423,
+      "single_norm": 9.900535342001703,
+      "double_norm": -5.9999999999994085
+     },
+     "ctmode-1": {
+      "born": 3.158884910510845e-09,
+      "finite": 1.0180497753901753e-08,
+      "single": 5.873468185212297e-10,
+      "double": -3.559485209016078e-10,
+      "accuracy": 7.3228e-08,
+      "ret_code": 213,
+      "ao2pi": 0.01878028328484365,
+      "mu": 12.0,
+      "time": 172.0637,
+      "predicted_single_norm": 9.90053534218277,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 171.60623780281017,
+      "single_norm": 9.900535342021827,
+      "double_norm": -5.999999999998953
+     }
+    },
+    {
+     "energy": 12.0,
+     "point": 1,
+     "momenta": [
+      [
+       "0x1.8000000000000p+2",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.8000000000000p+2"
+      ],
+      [
+       "0x1.8000000000000p+2",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.8000000000000p+2"
+      ],
+      [
+       "0x1.7ffffffffffffp+2",
+       "-0x1.8f2f6386c7324p-1",
+       "0x1.76ddfbef5bf27p-2",
+       "-0x1.441f14bc80084p+2"
+      ],
+      [
+       "0x1.7ffffffffffffp+2",
+       "0x1.8f2f6386c7324p-1",
+       "-0x1.76ddfbef5bf27p-2",
+       "0x1.441f14bc80084p+2"
+      ]
+     ],
+     "ctmode1": {
+      "born": 1.4589820641765627e-05,
+      "finite": 3.9833443479261536e-05,
+      "single": -1.9606201336609644e-06,
+      "double": -1.644005788364134e-06,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 12.0,
+      "time": 131.3394,
+      "predicted_single_norm": -7.15552273879388,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 145.37701908782955,
+      "single_norm": -7.155522739167842,
+      "double_norm": -5.999999999998638
+     },
+     "ctmode2": {
+      "born": 1.4589820641765627e-05,
+      "finite": 3.9833443472784485e-05,
+      "single": -1.960620133679464e-06,
+      "double": -1.6440057883637362e-06,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 12.0,
+      "time": 200.619,
+      "predicted_single_norm": -7.15552273879388,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 145.37701906419076,
+      "single_norm": -7.155522739235359,
+      "double_norm": -5.999999999997186
+     },
+     "ctmode-1": {
+      "born": 1.4589820641765627e-05,
+      "finite": 3.983344347602301e-05,
+      "single": -1.9606201336702144e-06,
+      "double": -1.644005788363935e-06,
+      "accuracy": 5.3791e-10,
+      "ret_code": 213,
+      "ao2pi": 0.01878028328484365,
+      "mu": 12.0,
+      "time": 223.8619,
+      "predicted_single_norm": -7.15552273879388,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 145.37701907601016,
+      "single_norm": -7.155522739201602,
+      "double_norm": -5.999999999997912
+     }
+    }
+   ]
+  },
+  "dpB": {
+   "output": "P0_gg_chic013P01chic013P01",
+   "masses": [
+    0.0,
+    0.0,
+    3.1,
+    3.1
+   ],
+   "modes": [
+    "1",
+    "2",
+    "-1"
+   ],
+   "note": "The quadruple-precision path of a two-P-wave output against its double\nprecision: the virtual at points in CTModeRun 1 (double precision), 4\n(quadruple precision) and 5 (quadruple precision, loop direction reversed),\nwith MLStabThres 1d99, and in CTModeRun -1 with MLStabThres 1d-30, so that\nMadLoop's stability test sends every point to quadruple precision (the\nrescue: return code 2xx when the two quadruple-precision passes agree).\n`--thres X` sets the MLStabThres of CTModeRun -1 instead (MadLoop's default\nis 1.0d-3).\nEach point prints the poles in units of Born * alpha_s/(2 pi) against\nONIA_IR_POLES, the finite parts, the differences between the passes, the\nreturn codes and the times.\n\n    qp_check.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--modes 1,4,5,-1] [--thres 1.0d-30]\n\nThe points are those of fixtures.py and acceptance.py (seed 1).\n",
+   "records": [
+    {
+     "energy": 20.0,
+     "point": 0,
+     "momenta": [
+      [
+       "0x1.4000000000000p+3",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.4000000000000p+3"
+      ],
+      [
+       "0x1.4000000000000p+3",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.4000000000000p+3"
+      ],
+      [
+       "0x1.3ffffffffffffp+3",
+       "0x1.e2fb56247673bp+2",
+       "-0x1.2541aee163b5ap+2",
+       "-0x1.c384084d604c8p+1"
+      ],
+      [
+       "0x1.3ffffffffffffp+3",
+       "-0x1.e2fb56247673bp+2",
+       "0x1.2541aee163b5ap+2",
+       "0x1.c384084d604c8p+1"
+      ]
+     ],
+     "ctmode1": {
+      "born": 2.6924093516985365e-10,
+      "finite": 1.311891266550256e-09,
+      "single": 1.1747319873252523e-10,
+      "double": -3.033852620606801e-11,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 20.0,
+      "time": 94.72402,
+      "predicted_single_norm": 23.23247950875513,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 259.45055952302204,
+      "single_norm": 23.23247964006875,
+      "double_norm": -5.999999999974597
+     },
+     "ctmode2": {
+      "born": 2.6924093516985365e-10,
+      "finite": 1.3118912393536343e-09,
+      "single": 1.174731981874586e-10,
+      "double": -3.033852620694271e-11,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 20.0,
+      "time": 102.1353,
+      "predicted_single_norm": 23.23247950875513,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 259.4505541443912,
+      "single_norm": 23.232479532271828,
+      "double_norm": -6.000000000147586
+     },
+     "ctmode-1": {
+      "born": 2.6924093516985365e-10,
+      "finite": 1.311891252951945e-09,
+      "single": 1.1747319845999191e-10,
+      "double": -3.033852620650536e-11,
+      "accuracy": 5.949e-08,
+      "ret_code": 213,
+      "ao2pi": 0.01878028328484365,
+      "mu": 20.0,
+      "time": 111.1045,
+      "predicted_single_norm": 23.23247950875513,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 259.4505568337066,
+      "single_norm": 23.23247958617029,
+      "double_norm": -6.000000000061092
+     }
+    },
+    {
+     "energy": 20.0,
+     "point": 1,
+     "momenta": [
+      [
+       "0x1.4000000000000p+3",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.4000000000000p+3"
+      ],
+      [
+       "0x1.4000000000000p+3",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.4000000000000p+3"
+      ],
+      [
+       "0x1.4000000000000p+3",
+       "-0x1.7163c68c7b3c4p+0",
+       "0x1.5ae309bdace33p-1",
+       "-0x1.2bedc83355dbep+3"
+      ],
+      [
+       "0x1.4000000000000p+3",
+       "0x1.7163c68c7b3c4p+0",
+       "-0x1.5ae309bdace33p-1",
+       "0x1.2bedc83355dbep+3"
+      ]
+     ],
+     "ctmode1": {
+      "born": 8.019349439313983e-05,
+      "finite": 0.00026357598407091123,
+      "single": -9.93768606443265e-06,
+      "double": -9.036339253833367e-06,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 20.0,
+      "time": 96.10321,
+      "predicted_single_norm": -6.598481401081347,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 175.0106829771254,
+      "single_norm": -6.5984813885043225,
+      "double_norm": -6.000000000003483
+     },
+     "ctmode2": {
+      "born": 8.019349439313983e-05,
+      "finite": 0.0002635759837684171,
+      "single": -9.93768605459926e-06,
+      "double": -9.036339253835896e-06,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 20.0,
+      "time": 134.9732,
+      "predicted_single_norm": -6.598481401081347,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 175.01068277627365,
+      "single_norm": -6.598481381975094,
+      "double_norm": -6.000000000005163
+     },
+     "ctmode-1": {
+      "born": 8.019349439313983e-05,
+      "finite": 0.00026357598391966416,
+      "single": -9.937686059515955e-06,
+      "double": -9.036339253834633e-06,
+      "accuracy": 3.8307e-09,
+      "ret_code": 213,
+      "ao2pi": 0.01878028328484365,
+      "mu": 20.0,
+      "time": 142.1055,
+      "predicted_single_norm": -6.598481401081347,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 175.01068287669955,
+      "single_norm": -6.598481385239708,
+      "double_norm": -6.000000000004324
+     }
+    },
+    {
+     "energy": 20.0,
+     "point": 2,
+     "momenta": [
+      [
+       "0x1.4000000000000p+3",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.4000000000000p+3"
+      ],
+      [
+       "0x1.4000000000000p+3",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.4000000000000p+3"
+      ],
+      [
+       "0x1.4000000000000p+3",
+       "0x1.104f5806bb2d7p+3",
+       "-0x1.6f49e11b3e9b8p+0",
+       "0x1.feaae1de9fe9dp+1"
+      ],
+      [
+       "0x1.4000000000000p+3",
+       "-0x1.104f5806bb2d7p+3",
+       "0x1.6f49e11b3e9b8p+0",
+       "-0x1.feaae1de9fe9dp+1"
+      ]
+     ],
+     "ctmode1": {
+      "born": 4.1935644250297274e-10,
+      "finite": 1.8351979324423195e-09,
+      "single": 1.491416521152106e-10,
+      "double": -4.725379672510133e-11,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 20.0,
+      "time": 87.88743,
+      "predicted_single_norm": 18.937100839504822,
+      "predicted_double_norm": -5.999999999999999,
+      "finite_norm": 233.0222830282399,
+      "single_norm": 18.937100819549993,
+      "double_norm": -5.999999999989952
+     },
+     "ctmode2": {
+      "born": 4.1935644250297274e-10,
+      "finite": 1.835197913303607e-09,
+      "single": 1.4914165227821407e-10,
+      "double": -4.7253796725387714e-11,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 20.0,
+      "time": 94.83522,
+      "predicted_single_norm": 18.937100839504822,
+      "predicted_double_norm": -5.999999999999999,
+      "finite_norm": 233.02228059812248,
+      "single_norm": 18.937100840247183,
+      "double_norm": -6.000000000026316
+     },
+     "ctmode-1": {
+      "born": 4.1935644250297274e-10,
+      "finite": 1.8351979228729632e-09,
+      "single": 1.4914165219671235e-10,
+      "double": -4.725379672524452e-11,
+      "accuracy": 2.9893e-08,
+      "ret_code": 213,
+      "ao2pi": 0.01878028328484365,
+      "mu": 20.0,
+      "time": 100.4687,
+      "predicted_single_norm": 18.937100839504822,
+      "predicted_double_norm": -5.999999999999999,
+      "finite_norm": 233.02228181318117,
+      "single_norm": 18.93710082989859,
+      "double_norm": -6.000000000008134
+     }
+    },
+    {
+     "energy": 20.0,
+     "point": 3,
+     "momenta": [
+      [
+       "0x1.4000000000000p+3",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.4000000000000p+3"
+      ],
+      [
+       "0x1.4000000000000p+3",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.4000000000000p+3"
+      ],
+      [
+       "0x1.3fffffffffffep+3",
+       "0x1.74c463a24a787p+2",
+       "0x1.367e84a43bf5dp+2",
+       "-0x1.6f4100bfa626dp+2"
+      ],
+      [
+       "0x1.3fffffffffffep+3",
+       "-0x1.74c463a24a787p+2",
+       "-0x1.367e84a43bf5dp+2",
+       "0x1.6f4100bfa626dp+2"
+      ]
+     ],
+     "ctmode1": {
+      "born": 2.4431482916822407e-09,
+      "finite": 8.798640411755548e-09,
+      "single": 4.965596910295677e-10,
+      "double": -2.752981021446339e-10,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 20.0,
+      "time": 91.53951,
+      "predicted_single_norm": 10.822298177205337,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 191.7624642473694,
+      "single_norm": 10.822298166716783,
+      "double_norm": -5.999999999925638
+     },
+     "ctmode2": {
+      "born": 2.4431482916822407e-09,
+      "finite": 8.798640395840336e-09,
+      "single": 4.965596898709611e-10,
+      "double": -2.752981021451541e-10,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 20.0,
+      "time": 96.56725,
+      "predicted_single_norm": 10.822298177205337,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 191.76246390050443,
+      "single_norm": 10.822298141465467,
+      "double_norm": -5.999999999936976
+     },
+     "ctmode-1": {
+      "born": 2.4431482916822407e-09,
+      "finite": 8.798640403797943e-09,
+      "single": 4.965596904502644e-10,
+      "double": -2.75298102144894e-10,
+      "accuracy": 5.6789e-09,
+      "ret_code": 213,
+      "ao2pi": 0.01878028328484365,
+      "mu": 20.0,
+      "time": 102.2506,
+      "predicted_single_norm": 10.822298177205337,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 191.76246407393694,
+      "single_norm": 10.822298154091126,
+      "double_norm": -5.999999999931307
+     }
+    }
+   ]
+  },
+  "dpC": {
+   "output": "P0_gg_chic013P01chic013P01",
+   "masses": [
+    0.0,
+    0.0,
+    3.1,
+    3.1
+   ],
+   "modes": [
+    "1",
+    "2",
+    "-1"
+   ],
+   "note": "The quadruple-precision path of a two-P-wave output against its double\nprecision: the virtual at points in CTModeRun 1 (double precision), 4\n(quadruple precision) and 5 (quadruple precision, loop direction reversed),\nwith MLStabThres 1d99, and in CTModeRun -1 with MLStabThres 1d-30, so that\nMadLoop's stability test sends every point to quadruple precision (the\nrescue: return code 2xx when the two quadruple-precision passes agree).\n`--thres X` sets the MLStabThres of CTModeRun -1 instead (MadLoop's default\nis 1.0d-3).\nEach point prints the poles in units of Born * alpha_s/(2 pi) against\nONIA_IR_POLES, the finite parts, the differences between the passes, the\nreturn codes and the times.\n\n    qp_check.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--modes 1,4,5,-1] [--thres 1.0d-30]\n\nThe points are those of fixtures.py and acceptance.py (seed 1).\n",
+   "records": [
+    {
+     "energy": 50.0,
+     "point": 0,
+     "momenta": [
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "0x1.3b0df84a89d0cp+4",
+       "-0x1.7e96da6be412ep+3",
+       "-0x1.2687670622ec6p+3"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "-0x1.3b0df84a89d0cp+4",
+       "0x1.7e96da6be412ep+3",
+       "0x1.2687670622ec6p+3"
+      ]
+     ],
+     "ctmode1": {
+      "born": 5.236844937295006e-12,
+      "finite": 3.775846136646373e-11,
+      "single": 3.117630720994386e-12,
+      "double": -5.900965805241205e-13,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 154.8052,
+      "predicted_single_norm": 31.699263387125054,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 383.9215012548243,
+      "single_norm": 31.699529680131747,
+      "double_norm": -5.9999999174059635
+     },
+     "ctmode2": {
+      "born": 5.236844937295006e-12,
+      "finite": 3.775818619145399e-11,
+      "single": 3.117647376416087e-12,
+      "double": -5.900965384083775e-13,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 168.7964,
+      "predicted_single_norm": 31.699263387125054,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 383.918703322943,
+      "single_norm": 31.699699029577463,
+      "double_norm": -5.999999489180377
+     },
+     "ctmode-1": {
+      "born": 5.236844937295006e-12,
+      "finite": 3.775832377895886e-11,
+      "single": 3.1176390487052365e-12,
+      "double": -5.90096559466249e-13,
+      "accuracy": 2.1735e-05,
+      "ret_code": 213,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 114.2389,
+      "predicted_single_norm": 31.699263387125054,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 383.92010228888364,
+      "single_norm": 31.699614354854603,
+      "double_norm": -5.99999970329317
+     }
+    },
+    {
+     "energy": 50.0,
+     "point": 1,
+     "momenta": [
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "-0x1.e1ea1372b360bp+1",
+       "0x1.c48e7c3e6a35fp+0",
+       "-0x1.874b473fd0038p+4"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "0x1.e1ea1372b360bp+1",
+       "-0x1.c48e7c3e6a35fp+0",
+       "0x1.874b473fd0038p+4"
+      ]
+     ],
+     "ctmode1": {
+      "born": 3.2817248760948724e-05,
+      "finite": 0.00015380564261304087,
+      "single": 1.2484092776218296e-07,
+      "double": -3.6979033700470873e-06,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 164.1112,
+      "predicted_single_norm": 0.202718478424315,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 249.5559681535469,
+      "single_norm": 0.2025595294397673,
+      "double_norm": -5.999999999818729
+     },
+     "ctmode2": {
+      "born": 3.2817248760948724e-05,
+      "finite": 0.0001538059316289827,
+      "single": 1.2486721654403432e-07,
+      "double": -3.6979033697291633e-06,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 219.6894,
+      "predicted_single_norm": 0.202718478424315,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 249.5564370937753,
+      "single_norm": 0.20260218406735467,
+      "double_norm": -5.999999999302884
+     },
+     "ctmode-1": {
+      "born": 3.2817248760948724e-05,
+      "finite": 0.00015380578712101178,
+      "single": 1.2485407215310863e-07,
+      "double": -3.6979033698881255e-06,
+      "accuracy": 6.2963e-06,
+      "ret_code": 213,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 147.927,
+      "predicted_single_norm": 0.202718478424315,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 249.55620262366108,
+      "single_norm": 0.20258085675356094,
+      "double_norm": -5.999999999560806
+     }
+    },
+    {
+     "energy": 200.0,
+     "point": 0,
+     "momenta": [
+      [
+       "0x1.9000000000000p+6",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.9000000000000p+6"
+      ],
+      [
+       "0x1.9000000000000p+6",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.9000000000000p+6"
+      ],
+      [
+       "0x1.8ffffffffffffp+6",
+       "0x1.3d5a374fa2dc4p+6",
+       "-0x1.816131f14c6a0p+5",
+       "-0x1.28ad531c75c63p+5"
+      ],
+      [
+       "0x1.8ffffffffffffp+6",
+       "-0x1.3d5a374fa2dc4p+6",
+       "0x1.816131f14c6a0p+5",
+       "0x1.28ad531c75c63p+5"
+      ]
+     ],
+     "ctmode1": {
+      "born": 1.9537678829777063e-14,
+      "finite": -1.2520954805135587e-11,
+      "single": -1.4863853065877795e-13,
+      "double": -2.2034776402106958e-15,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 200.0,
+      "time": 123.7984,
+      "predicted_single_norm": 32.97407023194855,
+      "predicted_double_norm": -5.999999999999999,
+      "finite_norm": -34124.189326388645,
+      "single_norm": -405.09445488262315,
+      "double_norm": -6.005283889386232
+     },
+     "ctmode2": {
+      "born": 1.9537678829777063e-14,
+      "finite": -5.961135596650734e-12,
+      "single": -3.6764976258091024e-13,
+      "double": -2.213351383144139e-15,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 200.0,
+      "time": 100.1394,
+      "predicted_single_norm": 32.97407023194855,
+      "predicted_double_norm": -5.999999999999999,
+      "finite_norm": -16246.278567905236,
+      "single_norm": -1001.9803041671438,
+      "double_norm": -6.0321934564651505
+     },
+     "ctmode-1": {
+      "born": 1.9537678829777063e-14,
+      "finite": 1.9337922403965208e-13,
+      "single": 1.2098949491745115e-14,
+      "double": -2.2015388589044742e-15,
+      "accuracy": 0.0,
+      "ret_code": 323,
+      "ao2pi": 0.01878028328484365,
+      "mu": 200.0,
+      "time": 6104.006,
+      "predicted_single_norm": 32.97407023194855,
+      "predicted_double_norm": -5.999999999999999,
+      "finite_norm": 527.029236637178,
+      "single_norm": 32.97407023124009,
+      "double_norm": -5.999999999987571
+     }
+    },
+    {
+     "energy": 200.0,
+     "point": 1,
+     "momenta": [
+      [
+       "0x1.9000000000000p+6",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.9000000000000p+6"
+      ],
+      [
+       "0x1.9000000000000p+6",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.9000000000000p+6"
+      ],
+      [
+       "0x1.8ffffffffffffp+6",
+       "-0x1.e56ddec3d8ab1p+3",
+       "0x1.c7db77040bee7p+2",
+       "-0x1.8a25df8499aaap+6"
+      ],
+      [
+       "0x1.8ffffffffffffp+6",
+       "0x1.e56ddec3d8ab1p+3",
+       "-0x1.c7db77040bee7p+2",
+       "0x1.8a25df8499aaap+6"
+      ]
+     ],
+     "ctmode1": {
+      "born": 9.639281978074505e-08,
+      "finite": 3.7179995369608704e-07,
+      "single": 3.8916707667568225e-08,
+      "double": -1.0861710710090183e-08,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 200.0,
+      "time": 122.4141,
+      "predicted_single_norm": 12.93538384470437,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 205.38206092941385,
+      "single_norm": 21.497564875669866,
+      "double_norm": -6.000002175043
+     },
+     "ctmode2": {
+      "born": 9.639281978074505e-08,
+      "finite": 1.1876310400827132e-06,
+      "single": 4.8449385682846615e-08,
+      "double": -1.0861698472626242e-08,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 200.0,
+      "time": 132.9158,
+      "predicted_single_norm": 12.93538384470437,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 656.0466407032208,
+      "single_norm": 26.763410224738276,
+      "double_norm": -5.999995415075604
+     },
+     "ctmode-1": {
+      "born": 9.639281978074505e-08,
+      "finite": 6.78556484791317e-07,
+      "single": 2.341672438542304e-08,
+      "double": -1.0861706772617012e-08,
+      "accuracy": 0.0,
+      "ret_code": 323,
+      "ao2pi": 0.01878028328484365,
+      "mu": 200.0,
+      "time": 5253.613,
+      "predicted_single_norm": 12.93538384470437,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 374.8341760617219,
+      "single_norm": 12.935383844682985,
+      "double_norm": -5.999999999985293
+     }
+    }
+   ]
+  }
+ },
+ "qp": {
+  "20": {
+   "energy": 20.0,
+   "point": 1,
+   "mode": "4",
+   "result": {
+    "born": 8.019349439313983e-05,
+    "finite": 0.00026357598394079234,
+    "single": -9.937686083374047e-06,
+    "double": -9.036339253827951e-06,
+    "accuracy": -1.0,
+    "ret_code": 120,
+    "ao2pi": 0.01878028328484365,
+    "mu": 20.0,
+    "time": 4768.722,
+    "predicted_single_norm": -6.598481401081347,
+    "predicted_double_norm": -6.000000000000001,
+    "finite_norm": 175.01068289072833,
+    "single_norm": -6.59848140108114,
+    "double_norm": -5.999999999999887
+   }
+  },
+  "50": {
+   "energy": 50.0,
+   "point": 1,
+   "mode": "4",
+   "result": {
+    "born": 3.2817248760948724e-05,
+    "finite": 0.00015380461303416142,
+    "single": 1.249388907595689e-07,
+    "double": -3.6979033701591456e-06,
+    "accuracy": -1.0,
+    "ret_code": 120,
+    "ao2pi": 0.01878028328484365,
+    "mu": 50.0,
+    "time": 4711.34,
+    "predicted_single_norm": 0.202718478424315,
+    "predicted_double_norm": -6.000000000000001,
+    "finite_norm": 249.5542976195555,
+    "single_norm": 0.20271847842395627,
+    "double_norm": -6.000000000000548
+   }
+  },
+  "200": {
+   "energy": 200.0,
+   "point": 1,
+   "mode": "4",
+   "result": {
+    "born": 9.639281978074505e-08,
+    "finite": 6.78556484791317e-07,
+    "single": 2.341672438542304e-08,
+    "double": -1.0861706772617012e-08,
+    "accuracy": -1.0,
+    "ret_code": 120,
+    "ao2pi": 0.01878028328484365,
+    "mu": 200.0,
+    "time": 4674.767,
+    "predicted_single_norm": 12.93538384470437,
+    "predicted_double_norm": -6.0,
+    "finite_norm": 374.8341760617219,
+    "single_norm": 12.935383844682985,
+    "double_norm": -5.999999999985293
+   }
+  }
+ },
+ "comparison": {
+  "dp": [
+   {
+    "point": "8/0",
+    "mode": "1",
+    "same_momenta": true,
+    "c1": -2.111977378718669,
+    "pred": -2.1119773787306038,
+    "c2": -6.0000000000007025,
+    "fin": 128.6258122081284,
+    "code": 110,
+    "acc": -1.0,
+    "time": 97.48958,
+    "c1_vs_pred": 5.651053668905232e-12,
+    "c1_vs_old": 5.698364815932595e-14,
+    "pred_vs_old": 1.0513588221219047e-15,
+    "fin_vs_old": 5.303142616708984e-14,
+    "old_code": 110,
+    "old_c1_vs_pred": 5.5930186619241086e-12
+   },
+   {
+    "point": "8/0",
+    "mode": "2",
+    "same_momenta": true,
+    "c1": -2.1119773787610856,
+    "pred": -2.1119773787306038,
+    "c2": -6.000000000002381,
+    "fin": 128.62581220810793,
+    "code": 110,
+    "acc": -1.0,
+    "time": 100.4352,
+    "c1_vs_pred": 1.4432843638325068e-11,
+    "c1_vs_old": 1.9008567503693283e-13,
+    "pred_vs_old": 1.0513588221219047e-15,
+    "fin_vs_old": 7.954713925064952e-14,
+    "old_code": 110,
+    "old_c1_vs_pred": 1.4243809322107564e-11
+   },
+   {
+    "point": "8/0",
+    "mode": "-1",
+    "same_momenta": true,
+    "c1": -2.1119773787398772,
+    "pred": -2.1119773787306038,
+    "c2": -6.000000000001542,
+    "fin": 128.62581220811816,
+    "code": 213,
+    "acc": 6.5179e-11,
+    "time": 183.3587,
+    "c1_vs_pred": 4.390894984709918e-12,
+    "c1_vs_old": 6.665614932224045e-14,
+    "pred_vs_old": 1.0513588221219047e-15,
+    "fin_vs_old": 6.628928270886844e-14,
+    "old_code": 213,
+    "old_c1_vs_pred": 4.325290194209516e-12
+   },
+   {
+    "point": "8/1",
+    "mode": "1",
+    "same_momenta": true,
+    "c1": -5.176325511699605,
+    "pred": -5.176325511721957,
+    "c2": -6.000000000003991,
+    "fin": 131.09230364813118,
+    "code": 110,
+    "acc": -1.0,
+    "time": 96.32222,
+    "c1_vs_pred": 4.3181013364705825e-12,
+    "c1_vs_old": 1.2388417567136648e-13,
+    "pred_vs_old": 5.147541925380171e-16,
+    "fin_vs_old": 5.99902386208749e-11,
+    "old_code": 110,
+    "old_c1_vs_pred": 4.442500266333934e-12
+   },
+   {
+    "point": "8/1",
+    "mode": "2",
+    "same_momenta": true,
+    "c1": -5.176325511646196,
+    "pred": -5.176325511721957,
+    "c2": -6.000000000097264,
+    "fin": 131.09230301823325,
+    "code": 110,
+    "acc": -1.0,
+    "time": 138.5217,
+    "c1_vs_pred": 1.463600595643345e-11,
+    "c1_vs_old": 1.7999238266012687e-13,
+    "pred_vs_old": 5.147541925380171e-16,
+    "fin_vs_old": 2.2105622160599384e-09,
+    "old_code": 110,
+    "old_c1_vs_pred": 1.481651309328344e-11
+   },
+   {
+    "point": "8/1",
+    "mode": "-1",
+    "same_momenta": true,
+    "c1": -5.1763255116729,
+    "pred": -5.176325511721957,
+    "c2": -6.000000000050627,
+    "fin": 131.0923033331822,
+    "code": 213,
+    "acc": 1.5762e-08,
+    "time": 230.0661,
+    "c1_vs_pred": 9.47713943881744e-12,
+    "c1_vs_old": 1.5185248680017733e-13,
+    "pred_vs_old": 5.147541925380171e-16,
+    "fin_vs_old": 1.1352763343166997e-09,
+    "old_code": 213,
+    "old_c1_vs_pred": 9.629506679808687e-12
+   },
+   {
+    "point": "12/0",
+    "mode": "1",
+    "same_momenta": true,
+    "c1": 9.900535342041955,
+    "pred": 9.90053534218277,
+    "c2": -5.999999999998497,
+    "fin": 171.60623994477808,
+    "code": 110,
+    "acc": -1.0,
+    "time": 154.5479,
+    "c1_vs_pred": 1.4223004565517879e-11,
+    "c1_vs_old": 5.5440867025024937e-14,
+    "pred_vs_old": 3.5884056326364627e-16,
+    "fin_vs_old": 8.167780965682744e-11,
+    "old_code": 110,
+    "old_c1_vs_pred": 1.4278086591978852e-11
+   },
+   {
+    "point": "12/0",
+    "mode": "2",
+    "same_momenta": true,
+    "c1": 9.900535342001703,
+    "pred": 9.90053534218277,
+    "c2": -5.9999999999994085,
+    "fin": 171.6062356608423,
+    "code": 110,
+    "acc": -1.0,
+    "time": 128.0651,
+    "c1_vs_pred": 1.8288668147294988e-11,
+    "c1_vs_old": 1.560956450225384e-14,
+    "pred_vs_old": 3.5884056326364627e-16,
+    "fin_vs_old": 3.8194159836599297e-10,
+    "old_code": 110,
+    "old_c1_vs_pred": 1.8272699742229764e-11
+   },
+   {
+    "point": "12/0",
+    "mode": "-1",
+    "same_momenta": true,
+    "c1": 9.900535342021827,
+    "pred": 9.90053534218277,
+    "c2": -5.999999999998953,
+    "fin": 171.60623780281017,
+    "code": 213,
+    "acc": 7.3228e-08,
+    "time": 172.0637,
+    "c1_vs_pred": 1.6256015776688064e-11,
+    "c1_vs_old": 1.9915651261456508e-14,
+    "pred_vs_old": 3.5884056326364627e-16,
+    "fin_vs_old": 2.3180953649328592e-10,
+    "old_code": 213,
+    "old_c1_vs_pred": 1.627557258738594e-11
+   },
+   {
+    "point": "12/1",
+    "mode": "1",
+    "same_momenta": true,
+    "c1": -7.155522739167842,
+    "pred": -7.15552273879388,
+    "c2": -5.999999999998638,
+    "fin": 145.37701908782955,
+    "code": 110,
+    "acc": -1.0,
+    "time": 131.3394,
+    "c1_vs_pred": 5.2262037058001693e-11,
+    "c1_vs_old": 3.883867575486312e-12,
+    "pred_vs_old": 4.964995302913873e-16,
+    "fin_vs_old": 3.2230699501758905e-12,
+    "old_code": 110,
+    "old_c1_vs_pred": 5.614640113323639e-11
+   },
+   {
+    "point": "12/1",
+    "mode": "2",
+    "same_momenta": true,
+    "c1": -7.155522739235359,
+    "pred": -7.15552273879388,
+    "c2": -5.999999999997186,
+    "fin": 145.37701906419076,
+    "code": 110,
+    "acc": -1.0,
+    "time": 200.619,
+    "c1_vs_pred": 6.169763825654179e-11,
+    "c1_vs_old": 3.028647134589684e-13,
+    "pred_vs_old": 4.964995302913873e-16,
+    "fin_vs_old": 1.463699172925231e-10,
+    "old_code": 110,
+    "old_c1_vs_pred": 6.200099946954986e-11
+   },
+   {
+    "point": "12/1",
+    "mode": "-1",
+    "same_momenta": true,
+    "c1": -7.155522739201602,
+    "pred": -7.15552273879388,
+    "c2": -5.999999999997912,
+    "fin": 145.37701907601016,
+    "code": 213,
+    "acc": 5.3791e-10,
+    "time": 223.8619,
+    "c1_vs_pred": 5.69800238445956e-11,
+    "c1_vs_old": 2.093117894702268e-12,
+    "pred_vs_old": 4.964995302913873e-16,
+    "fin_vs_old": 7.479649362065321e-11,
+    "old_code": 213,
+    "old_c1_vs_pred": 5.907363823895184e-11
+   },
+   {
+    "point": "20/0",
+    "mode": "1",
+    "same_momenta": true,
+    "c1": 23.23247964006875,
+    "pred": 23.23247950875513,
+    "c2": -5.999999999974597,
+    "fin": 259.45055952302204,
+    "code": 110,
+    "acc": -1.0,
+    "time": 94.72402,
+    "c1_vs_pred": 5.65215690749117e-09,
+    "c1_vs_old": 4.722173444288576e-13,
+    "pred_vs_old": 1.2998210655227114e-14,
+    "fin_vs_old": 5.744579796903427e-13,
+    "old_code": 110,
+    "old_c1_vs_pred": 5.652642123048996e-09
+   },
+   {
+    "point": "20/0",
+    "mode": "2",
+    "same_momenta": true,
+    "c1": 23.232479532271828,
+    "pred": 23.23247950875513,
+    "c2": -6.000000000147586,
+    "fin": 259.4505541443912,
+    "code": 110,
+    "acc": -1.0,
+    "time": 102.1353,
+    "c1_vs_pred": 1.0122336668141686e-09,
+    "c1_vs_old": 2.5982658472803853e-12,
+    "pred_vs_old": 1.2998210655227114e-14,
+    "fin_vs_old": 2.169882512884937e-12,
+    "old_code": 110,
+    "old_c1_vs_pred": 1.0148449308747543e-09
+   },
+   {
+    "point": "20/0",
+    "mode": "-1",
+    "same_momenta": true,
+    "c1": 23.23247958617029,
+    "pred": 23.23247950875513,
+    "c2": -6.000000000061092,
+    "fin": 259.4505568337066,
+    "code": 213,
+    "acc": 5.949e-08,
+    "time": 111.1045,
+    "c1_vs_pred": 3.332195287152669e-09,
+    "c1_vs_old": 1.5351651333271531e-12,
+    "pred_vs_old": 1.2998210655227114e-14,
+    "fin_vs_old": 7.977122523760515e-13,
+    "old_code": 213,
+    "old_c1_vs_pred": 3.3337434505018124e-09
+   },
+   {
+    "point": "20/1",
+    "mode": "1",
+    "same_momenta": true,
+    "c1": -6.5984813885043225,
+    "pred": -6.598481401081347,
+    "c2": -6.000000000003483,
+    "fin": 175.0106829771254,
+    "code": 110,
+    "acc": -1.0,
+    "time": 96.10321,
+    "c1_vs_pred": 1.9060483754532296e-09,
+    "c1_vs_old": 2.89397571752364e-10,
+    "pred_vs_old": 4.0381037653053253e-16,
+    "fin_vs_old": 3.19723089301572e-11,
+    "old_code": 110,
+    "old_c1_vs_pred": 2.1954463503806127e-09
+   },
+   {
+    "point": "20/1",
+    "mode": "2",
+    "same_momenta": true,
+    "c1": -6.598481381975094,
+    "pred": -6.598481401081347,
+    "c2": -6.000000000005163,
+    "fin": 175.01068277627365,
+    "code": 110,
+    "acc": -1.0,
+    "time": 134.9732,
+    "c1_vs_pred": 2.89555312910426e-09,
+    "c1_vs_old": 2.7509541592192475e-10,
+    "pred_vs_old": 4.0381037653053253e-16,
+    "fin_vs_old": 1.1042345630040776e-10,
+    "old_code": 110,
+    "old_c1_vs_pred": 2.6204581177135865e-09
+   },
+   {
+    "point": "20/1",
+    "mode": "-1",
+    "same_momenta": true,
+    "c1": -6.598481385239708,
+    "pred": -6.598481401081347,
+    "c2": -6.000000000004324,
+    "fin": 175.01068287669955,
+    "code": 213,
+    "acc": 3.8307e-09,
+    "time": 142.1055,
+    "c1_vs_pred": 2.4008007522787445e-09,
+    "c1_vs_old": 7.1510779751986545e-12,
+    "pred_vs_old": 4.0381037653053253e-16,
+    "fin_vs_old": 7.119788259431242e-11,
+    "old_code": 213,
+    "old_c1_vs_pred": 2.4079522340470994e-09
+   },
+   {
+    "point": "20/2",
+    "mode": "1",
+    "same_momenta": true,
+    "c1": 18.937100819549993,
+    "pred": 18.937100839504822,
+    "c2": -5.999999999989952,
+    "fin": 233.0222830282399,
+    "code": 110,
+    "acc": -1.0,
+    "time": 87.88743,
+    "c1_vs_pred": 1.0537425485295807e-09,
+    "c1_vs_old": 2.5949661499697186e-12,
+    "pred_vs_old": 1.2381995786371239e-14,
+    "fin_vs_old": 4.236869142510771e-12,
+    "old_code": 110,
+    "old_c1_vs_pred": 1.056325132681036e-09
+   },
+   {
+    "point": "20/2",
+    "mode": "2",
+    "same_momenta": true,
+    "c1": 18.937100840247183,
+    "pred": 18.937100839504822,
+    "c2": -6.000000000026316,
+    "fin": 233.02228059812248,
+    "code": 110,
+    "acc": -1.0,
+    "time": 94.83522,
+    "c1_vs_pred": 3.920139865965086e-11,
+    "c1_vs_old": 2.2981734602538057e-12,
+    "pred_vs_old": 1.2381995786371239e-14,
+    "fin_vs_old": 1.662548835206e-10,
+    "old_code": 110,
+    "old_c1_vs_pred": 4.1511954115786924e-11
+   },
+   {
+    "point": "20/2",
+    "mode": "-1",
+    "same_momenta": true,
+    "c1": 18.93710082989859,
+    "pred": 18.937100839504822,
+    "c2": -6.000000000008134,
+    "fin": 233.02228181318117,
+    "code": 213,
+    "acc": 2.9893e-08,
+    "time": 100.4687,
+    "c1_vs_pred": 5.072704811319665e-10,
+    "c1_vs_old": 1.4839634351498893e-13,
+    "pred_vs_old": 1.2381995786371239e-14,
+    "fin_vs_old": 8.100888476735474e-11,
+    "old_code": 213,
+    "old_c1_vs_pred": 5.074064954796261e-10
+   },
+   {
+    "point": "20/3",
+    "mode": "1",
+    "same_momenta": true,
+    "c1": 10.822298166716783,
+    "pred": 10.822298177205337,
+    "c2": -5.999999999925638,
+    "fin": 191.7624642473694,
+    "code": 110,
+    "acc": -1.0,
+    "time": 91.53951,
+    "c1_vs_pred": 9.691614344347404e-10,
+    "c1_vs_old": 5.858106533528037e-13,
+    "pred_vs_old": 9.355900030464687e-15,
+    "fin_vs_old": 2.452926817139208e-13,
+    "old_code": 110,
+    "old_c1_vs_pred": 9.697566009875464e-10
+   },
+   {
+    "point": "20/3",
+    "mode": "2",
+    "same_momenta": true,
+    "c1": 10.822298141465467,
+    "pred": 10.822298177205337,
+    "c2": -5.999999999936976,
+    "fin": 191.76246390050443,
+    "code": 110,
+    "acc": -1.0,
+    "time": 96.56725,
+    "c1_vs_pred": 3.302428850616559e-09,
+    "c1_vs_old": 4.230344075095824e-12,
+    "pred_vs_old": 9.355900030464687e-15,
+    "fin_vs_old": 1.0997412094318622e-13,
+    "old_code": 110,
+    "old_c1_vs_pred": 3.2982078624554157e-09
+   },
+   {
+    "point": "20/3",
+    "mode": "-1",
+    "same_momenta": true,
+    "c1": 10.822298154091126,
+    "pred": 10.822298177205337,
+    "c2": -5.999999999931307,
+    "fin": 191.76246407393694,
+    "code": 213,
+    "acc": 5.6789e-09,
+    "time": 102.2506,
+    "c1_vs_pred": 2.1357950604563513e-09,
+    "c1_vs_old": 1.8221025694705888e-12,
+    "pred_vs_old": 9.355900030464687e-15,
+    "fin_vs_old": 1.7755929483931624e-13,
+    "old_code": 213,
+    "old_c1_vs_pred": 2.1339823137907796e-09
+   },
+   {
+    "point": "50/0",
+    "mode": "1",
+    "same_momenta": true,
+    "c1": 31.699529680131747,
+    "pred": 31.699263387125054,
+    "c2": -5.9999999174059635,
+    "fin": 383.9215012548243,
+    "code": 110,
+    "acc": -1.0,
+    "time": 154.8052,
+    "c1_vs_pred": 8.400605510622725e-06,
+    "c1_vs_old": 3.0884063745924294e-10,
+    "pred_vs_old": 2.3961761358652625e-13,
+    "fin_vs_old": 5.1982386666306996e-12,
+    "old_code": 110,
+    "old_c1_vs_pred": 8.400296427771287e-06
+   },
+   {
+    "point": "50/0",
+    "mode": "2",
+    "same_momenta": true,
+    "c1": 31.699699029577463,
+    "pred": 31.699263387125054,
+    "c2": -5.999999489180377,
+    "fin": 383.918703322943,
+    "code": 110,
+    "acc": -1.0,
+    "time": 168.7964,
+    "c1_vs_pred": 1.3742983459544778e-05,
+    "c1_vs_old": 2.138771531736131e-09,
+    "pred_vs_old": 2.3961761358652625e-13,
+    "fin_vs_old": 2.7904707937554572e-09,
+    "old_code": 110,
+    "old_c1_vs_pred": 1.3745122020853284e-05
+   },
+   {
+    "point": "50/0",
+    "mode": "-1",
+    "same_momenta": true,
+    "c1": 31.699614354854603,
+    "pred": 31.699263387125054,
+    "c2": -5.99999970329317,
+    "fin": 383.92010228888364,
+    "code": 213,
+    "acc": 2.1735e-05,
+    "time": 114.2389,
+    "c1_vs_pred": 1.1071794485027715e-05,
+    "c1_vs_old": 9.149688296916219e-10,
+    "pred_vs_old": 2.3961761358652625e-13,
+    "fin_vs_old": 1.3978293694947633e-09,
+    "old_code": 213,
+    "old_c1_vs_pred": 1.1072709224368322e-05
+   },
+   {
+    "point": "50/1",
+    "mode": "1",
+    "same_momenta": true,
+    "c1": 0.2025595294397673,
+    "pred": 0.202718478424315,
+    "c2": -5.999999999818729,
+    "fin": 249.5559681535469,
+    "code": 110,
+    "acc": -1.0,
+    "time": 164.1112,
+    "c1_vs_pred": 0.0007840873006900398,
+    "c1_vs_old": 2.7577331338212523e-06,
+    "pred_vs_old": 3.351724501642031e-13,
+    "fin_vs_old": 3.943372504754201e-09,
+    "old_code": 110,
+    "old_c1_vs_pred": 0.0007813317225955081
+   },
+   {
+    "point": "50/1",
+    "mode": "2",
+    "same_momenta": true,
+    "c1": 0.20260218406735467,
+    "pred": 0.202718478424315,
+    "c2": -5.999999999302884,
+    "fin": 249.5564370937753,
+    "code": 110,
+    "acc": -1.0,
+    "time": 219.6894,
+    "c1_vs_pred": 0.0005736741803917876,
+    "c1_vs_old": 4.2056920788378343e-05,
+    "pred_vs_old": 3.351724501642031e-13,
+    "fin_vs_old": 2.4603390753994864e-07,
+    "old_code": 110,
+    "old_c1_vs_pred": 0.0005316396190637363
+   },
+   {
+    "point": "50/1",
+    "mode": "-1",
+    "same_momenta": true,
+    "c1": 0.20258085675356094,
+    "pred": 0.202718478424315,
+    "c2": -5.999999999560806,
+    "fin": 249.55620262366108,
+    "code": 213,
+    "acc": 6.2963e-06,
+    "time": 147.927,
+    "c1_vs_pred": 0.0006788807405411191,
+    "c1_vs_old": 2.2409781746976606e-05,
+    "pred_vs_old": 3.351724501642031e-13,
+    "fin_vs_old": 1.249887390982758e-07,
+    "old_code": 213,
+    "old_c1_vs_pred": 0.0006564856708296907
+   },
+   {
+    "point": "200/0",
+    "mode": "1",
+    "same_momenta": true,
+    "c1": -405.09445488262315,
+    "pred": 32.97407023194855,
+    "c2": -6.005283889386232,
+    "fin": -34124.189326388645,
+    "code": 110,
+    "acc": -1.0,
+    "time": 123.7984,
+    "c1_vs_pred": 13.285242678052144,
+    "c1_vs_old": 0.013986938903743269,
+    "pred_vs_old": 3.9726654096915035e-11,
+    "fin_vs_old": 0.001575841768103926,
+    "old_code": 110,
+    "old_c1_vs_pred": 13.115780003855082
+   },
+   {
+    "point": "200/0",
+    "mode": "2",
+    "same_momenta": true,
+    "c1": -1001.9803041671438,
+    "pred": 32.97407023194855,
+    "c2": -6.0321934564651505,
+    "fin": -16246.278567905236,
+    "code": 110,
+    "acc": -1.0,
+    "time": 100.1394,
+    "c1_vs_pred": 31.38691605612964,
+    "c1_vs_old": 2.210096453577123e-08,
+    "pred_vs_old": 3.9726654096915035e-11,
+    "fin_vs_old": 1.0378293029816196e-09,
+    "old_code": 110,
+    "old_c1_vs_pred": 31.386915385756666
+   },
+   {
+    "point": "200/0",
+    "mode": "-1",
+    "same_momenta": true,
+    "c1": 32.97407023124009,
+    "pred": 32.97407023194855,
+    "c2": -5.999999999987571,
+    "fin": 527.029236637178,
+    "code": 323,
+    "acc": 0.0,
+    "time": 6104.006,
+    "c1_vs_pred": 2.1485392630051957e-11,
+    "c1_vs_old": 6.464558946868403e-16,
+    "pred_vs_old": 3.9726654096915035e-11,
+    "fin_vs_old": 6.471377476912996e-16,
+    "old_code": 323,
+    "old_c1_vs_pred": 1.8240615010114835e-11
+   },
+   {
+    "point": "200/1",
+    "mode": "1",
+    "same_momenta": true,
+    "c1": 21.497564875669866,
+    "pred": 12.93538384470437,
+    "c2": -6.000002175043,
+    "fin": 205.38206092941385,
+    "code": 110,
+    "acc": -1.0,
+    "time": 122.4141,
+    "c1_vs_pred": 0.6619193627153767,
+    "c1_vs_old": 0.015000774169669627,
+    "pred_vs_old": 2.0863848947165505e-12,
+    "fin_vs_old": 0.08548730341635025,
+    "old_code": 110,
+    "old_c1_vs_pred": 0.6872291054959476
+   },
+   {
+    "point": "200/1",
+    "mode": "2",
+    "same_momenta": true,
+    "c1": 26.763410224738276,
+    "pred": 12.93538384470437,
+    "c2": -5.999995415075604,
+    "fin": 656.0466407032208,
+    "code": 110,
+    "acc": -1.0,
+    "time": 132.9158,
+    "c1_vs_pred": 1.0690078119092674,
+    "c1_vs_old": 0.008731153727944184,
+    "pred_vs_old": 2.0863848947165505e-12,
+    "fin_vs_old": 0.0023757092486598966,
+    "old_code": 110,
+    "old_c1_vs_pred": 1.0872317532080567
+   },
+   {
+    "point": "200/1",
+    "mode": "-1",
+    "same_momenta": true,
+    "c1": 12.935383844682985,
+    "pred": 12.93538384470437,
+    "c2": -5.999999999985293,
+    "fin": 374.8341760617219,
+    "code": 323,
+    "acc": 0.0,
+    "time": 5253.613,
+    "c1_vs_pred": 1.6532605639139708e-12,
+    "c1_vs_old": 5.493016243597326e-16,
+    "pred_vs_old": 2.0863848947165505e-12,
+    "fin_vs_old": 6.065980371165297e-16,
+    "old_code": 323,
+    "old_c1_vs_pred": 3.7401947602514294e-12
+   }
+  ],
+  "qp": [
+   {
+    "point": "20/1",
+    "mode": "4",
+    "c1": -6.59848140108114,
+    "pred": -6.598481401081347,
+    "c2": -5.999999999999887,
+    "fin": 175.01068289072833,
+    "code": 120,
+    "time": 4768.722,
+    "c1_vs_pred": 3.136260591053804e-14,
+    "c1_vs_old": 6.73017294217576e-16,
+    "fin_vs_old": 6.495994178401036e-16,
+    "old_code": 120,
+    "old_c1_vs_pred": 3.243943358128611e-14
+   },
+   {
+    "point": "50/1",
+    "mode": "4",
+    "c1": 0.20271847842395627,
+    "pred": 0.202718478424315,
+    "c2": -6.000000000000548,
+    "fin": 249.5542976195555,
+    "code": 120,
+    "time": 4711.34,
+    "c1_vs_pred": 1.7696502934533404e-12,
+    "c1_vs_old": 9.58417953902924e-16,
+    "fin_vs_old": 1.025008935184097e-15,
+    "old_code": 120,
+    "old_c1_vs_pred": 2.1038643256630494e-12
+   },
+   {
+    "point": "200/1",
+    "mode": "4",
+    "c1": 12.935383844682985,
+    "pred": 12.93538384470437,
+    "c2": -5.999999999985293,
+    "fin": 374.8341760617219,
+    "code": 120,
+    "time": 4674.767,
+    "c1_vs_pred": 1.6532605639139708e-12,
+    "c1_vs_old": 5.493016243597326e-16,
+    "fin_vs_old": 6.065980371165297e-16,
+    "old_code": 120,
+    "old_c1_vs_pred": 3.7401947602514294e-12
+   }
+  ]
+ },
+ "attribution_50gev": {
+  "v09": {
+   "output": "P0_gg_chic013P01chic013P01",
+   "masses": [
+    0.0,
+    0.0,
+    3.1,
+    3.1
+   ],
+   "modes": [
+    "1",
+    "2"
+   ],
+   "note": "The quadruple-precision path of a two-P-wave output against its double\nprecision: the virtual at points in CTModeRun 1 (double precision), 4\n(quadruple precision) and 5 (quadruple precision, loop direction reversed),\nwith MLStabThres 1d99, and in CTModeRun -1 with MLStabThres 1d-30, so that\nMadLoop's stability test sends every point to quadruple precision (the\nrescue: return code 2xx when the two quadruple-precision passes agree).\n`--thres X` sets the MLStabThres of CTModeRun -1 instead (MadLoop's default\nis 1.0d-3).\nEach point prints the poles in units of Born * alpha_s/(2 pi) against\nONIA_IR_POLES, the finite parts, the differences between the passes, the\nreturn codes and the times.\n\n    qp_check.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--modes 1,4,5,-1] [--thres 1.0d-30]\n\nThe points are those of fixtures.py and acceptance.py (seed 1).\n",
+   "records": [
+    {
+     "energy": 50.0,
+     "point": 0,
+     "momenta": [
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "0x1.3b0df84a89d0cp+4",
+       "-0x1.7e96da6be412ep+3",
+       "-0x1.2687670622ec6p+3"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "-0x1.3b0df84a89d0cp+4",
+       "0x1.7e96da6be412ep+3",
+       "0x1.2687670622ec6p+3"
+      ]
+     ],
+     "ctmode1": {
+      "born": 5.236844937295006e-12,
+      "finite": 3.7758461366660005e-11,
+      "single": 3.1176307200315347e-12,
+      "double": -5.900965805147495e-13,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 94.51444,
+      "predicted_single_norm": 31.699263387125054,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 383.92150125681997,
+      "single_norm": 31.69952967034164,
+      "double_norm": -5.999999917310681
+     },
+     "ctmode2": {
+      "born": 5.236844937295006e-12,
+      "finite": 3.7758186296817103e-11,
+      "single": 3.1176473830840222e-12,
+      "double": -5.900965383494363e-13,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 98.73777,
+      "predicted_single_norm": 31.699263387125054,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 383.91870439425685,
+      "single_norm": 31.699699097375873,
+      "double_norm": -5.999999488581073
+     }
+    },
+    {
+     "energy": 50.0,
+     "point": 1,
+     "momenta": [
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "-0x1.e1ea1372b360bp+1",
+       "0x1.c48e7c3e6a35fp+0",
+       "-0x1.874b473fd0038p+4"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "0x1.e1ea1372b360bp+1",
+       "-0x1.c48e7c3e6a35fp+0",
+       "0x1.874b473fd0038p+4"
+      ]
+     ],
+     "ctmode1": {
+      "born": 3.2817248760948724e-05,
+      "finite": 0.00015380564200652777,
+      "single": 1.248412720410952e-07,
+      "double": -3.697903370024872e-06,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 91.4347,
+      "predicted_single_norm": 0.202718478424315,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 249.5559671694545,
+      "single_norm": 0.2025600880464335,
+      "double_norm": -5.999999999782684
+     },
+     "ctmode2": {
+      "born": 3.2817248760948724e-05,
+      "finite": 0.0001538058937875175,
+      "single": 1.2487246829554196e-07,
+      "double": -3.697903369766906e-06,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 130.0142,
+      "predicted_single_norm": 0.202718478424315,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 249.55637569444477,
+      "single_norm": 0.202610705249736,
+      "double_norm": -5.999999999364123
+     }
+    }
+   ]
+  },
+  "v15": {
+   "output": "P0_gg_chic013P01chic013P01",
+   "masses": [
+    0.0,
+    0.0,
+    3.1,
+    3.1
+   ],
+   "modes": [
+    "1",
+    "2"
+   ],
+   "note": "The quadruple-precision path of a two-P-wave output against its double\nprecision: the virtual at points in CTModeRun 1 (double precision), 4\n(quadruple precision) and 5 (quadruple precision, loop direction reversed),\nwith MLStabThres 1d99, and in CTModeRun -1 with MLStabThres 1d-30, so that\nMadLoop's stability test sends every point to quadruple precision (the\nrescue: return code 2xx when the two quadruple-precision passes agree).\n`--thres X` sets the MLStabThres of CTModeRun -1 instead (MadLoop's default\nis 1.0d-3).\nEach point prints the poles in units of Born * alpha_s/(2 pi) against\nONIA_IR_POLES, the finite parts, the differences between the passes, the\nreturn codes and the times.\n\n    qp_check.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--modes 1,4,5,-1] [--thres 1.0d-30]\n\nThe points are those of fixtures.py and acceptance.py (seed 1).\n",
+   "records": [
+    {
+     "energy": 50.0,
+     "point": 0,
+     "momenta": [
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "0x1.3b0df84a89d0cp+4",
+       "-0x1.7e96da6be412ep+3",
+       "-0x1.2687670622ec6p+3"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "-0x1.3b0df84a89d0cp+4",
+       "0x1.7e96da6be412ep+3",
+       "0x1.2687670622ec6p+3"
+      ]
+     ],
+     "ctmode1": {
+      "born": 5.236844937295006e-12,
+      "finite": 3.7758461355008055e-11,
+      "single": 3.1176307200319257e-12,
+      "double": -5.900965805149248e-13,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 98.72498,
+      "predicted_single_norm": 31.699263387125054,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 383.921501138345,
+      "single_norm": 31.699529670345616,
+      "double_norm": -5.999999917312464
+     },
+     "ctmode2": {
+      "born": 5.236844937295006e-12,
+      "finite": 3.7758186292643615e-11,
+      "single": 3.1176473830843906e-12,
+      "double": -5.900965383494745e-13,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 98.419,
+      "predicted_single_norm": 31.699263387125054,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 383.91870435182153,
+      "single_norm": 31.699699097379618,
+      "double_norm": -5.999999488581461
+     }
+    },
+    {
+     "energy": 50.0,
+     "point": 1,
+     "momenta": [
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "-0x1.e1ea1372b360bp+1",
+       "0x1.c48e7c3e6a35fp+0",
+       "-0x1.874b473fd0038p+4"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "0x1.e1ea1372b360bp+1",
+       "-0x1.c48e7c3e6a35fp+0",
+       "0x1.874b473fd0038p+4"
+      ]
+     ],
+     "ctmode1": {
+      "born": 3.2817248760948724e-05,
+      "finite": 0.00015380564200652777,
+      "single": 1.2484127204114942e-07,
+      "double": -3.6979033700249654e-06,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 92.75897,
+      "predicted_single_norm": 0.202718478424315,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 249.5559671694545,
+      "single_norm": 0.20256008804652145,
+      "double_norm": -5.999999999782835
+     },
+     "ctmode2": {
+      "born": 3.2817248760948724e-05,
+      "finite": 0.00015380589378751792,
+      "single": 1.2487246829556398e-07,
+      "double": -3.6979033697697234e-06,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 127.9235,
+      "predicted_single_norm": 0.202718478424315,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 249.55637569444548,
+      "single_norm": 0.20261070524977176,
+      "double_norm": -5.999999999368694
+     }
+    }
+   ]
+  },
+  "v16": {
+   "output": "P0_gg_chic013P01chic013P01",
+   "masses": [
+    0.0,
+    0.0,
+    3.1,
+    3.1
+   ],
+   "modes": [
+    "1",
+    "2"
+   ],
+   "note": "The quadruple-precision path of a two-P-wave output against its double\nprecision: the virtual at points in CTModeRun 1 (double precision), 4\n(quadruple precision) and 5 (quadruple precision, loop direction reversed),\nwith MLStabThres 1d99, and in CTModeRun -1 with MLStabThres 1d-30, so that\nMadLoop's stability test sends every point to quadruple precision (the\nrescue: return code 2xx when the two quadruple-precision passes agree).\n`--thres X` sets the MLStabThres of CTModeRun -1 instead (MadLoop's default\nis 1.0d-3).\nEach point prints the poles in units of Born * alpha_s/(2 pi) against\nONIA_IR_POLES, the finite parts, the differences between the passes, the\nreturn codes and the times.\n\n    qp_check.py OUTDIR OUT.json ENERGY:NPOINTS [ENERGY:NPOINTS ...] [--modes 1,4,5,-1] [--thres 1.0d-30]\n\nThe points are those of fixtures.py and acceptance.py (seed 1).\n",
+   "records": [
+    {
+     "energy": 50.0,
+     "point": 0,
+     "momenta": [
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "0x1.3b0df84a89d0cp+4",
+       "-0x1.7e96da6be412ep+3",
+       "-0x1.2687670622ec6p+3"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "-0x1.3b0df84a89d0cp+4",
+       "0x1.7e96da6be412ep+3",
+       "0x1.2687670622ec6p+3"
+      ]
+     ],
+     "ctmode1": {
+      "born": 5.236844937295006e-12,
+      "finite": 3.775846136646373e-11,
+      "single": 3.117630720994386e-12,
+      "double": -5.900965805241205e-13,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 102.3662,
+      "predicted_single_norm": 31.699263387125054,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 383.9215012548243,
+      "single_norm": 31.699529680131747,
+      "double_norm": -5.9999999174059635
+     },
+     "ctmode2": {
+      "born": 5.236844937295006e-12,
+      "finite": 3.775818619145399e-11,
+      "single": 3.117647376416087e-12,
+      "double": -5.900965384083775e-13,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 96.54747,
+      "predicted_single_norm": 31.699263387125054,
+      "predicted_double_norm": -6.0,
+      "finite_norm": 383.918703322943,
+      "single_norm": 31.699699029577463,
+      "double_norm": -5.999999489180377
+     }
+    },
+    {
+     "energy": 50.0,
+     "point": 1,
+     "momenta": [
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.9000000000000p+4",
+       "0x0.0p+0",
+       "0x0.0p+0",
+       "-0x1.9000000000000p+4"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "-0x1.e1ea1372b360bp+1",
+       "0x1.c48e7c3e6a35fp+0",
+       "-0x1.874b473fd0038p+4"
+      ],
+      [
+       "0x1.8ffffffffffffp+4",
+       "0x1.e1ea1372b360bp+1",
+       "-0x1.c48e7c3e6a35fp+0",
+       "0x1.874b473fd0038p+4"
+      ]
+     ],
+     "ctmode1": {
+      "born": 3.2817248760948724e-05,
+      "finite": 0.00015380564261304087,
+      "single": 1.2484092776218296e-07,
+      "double": -3.6979033700470873e-06,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 95.74948,
+      "predicted_single_norm": 0.202718478424315,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 249.5559681535469,
+      "single_norm": 0.2025595294397673,
+      "double_norm": -5.999999999818729
+     },
+     "ctmode2": {
+      "born": 3.2817248760948724e-05,
+      "finite": 0.0001538059316289827,
+      "single": 1.2486721654403432e-07,
+      "double": -3.6979033697291633e-06,
+      "accuracy": -1.0,
+      "ret_code": 110,
+      "ao2pi": 0.01878028328484365,
+      "mu": 50.0,
+      "time": 134.8989,
+      "predicted_single_norm": 0.202718478424315,
+      "predicted_double_norm": -6.000000000000001,
+      "finite_norm": 249.5564370937753,
+      "single_norm": 0.20260218406735467,
+      "double_norm": -5.999999999302884
+     }
+    }
+   ]
+  }
+ }
+}

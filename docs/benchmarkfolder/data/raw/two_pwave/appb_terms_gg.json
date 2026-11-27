@@ -1,0 +1,78 @@
+{
+ "output": "P0_gg_chic013P01chic013P01",
+ "masses": [
+  0.0,
+  0.0,
+  3.1,
+  3.1
+ ],
+ "note": "MadLoop's two-P-wave poles against app. B of the two-P-wave manuscript\n(/shared/external/madloop_onia/Manuscript/Quarkonium_FKS/JHEP_2Pwave,\neq. (B.2) = eq:Vpoles of paper.tex).\n\n    appendix_b.py table2 OUTDIR OUT.json MODE m_c:ENERGY[:NPTS] ...\n    appendix_b.py terms  OUTDIR OUT.json ENERGY:NPTS ...\n\ntable2: e+ e- > chic0(1|3P01) hc(1|1P11) [virt=QCD] at the points of the\nmanuscript's table 2 (tab:chic0hc): the computed 1/eps per Born alpha_s/2pi\nand ONIA_IR_POLES, in CTModeRun MODE (MLStabThres 1d99), with m_c set in\nthe param_card (the bound-state masses follow it).\n\nterms: patches OUTDIR in place (pass a copy) so that ONIA_IR_POLES prints\nthe parts of its 1/eps in the order of eq. (B.2):\n  APPB_T1  POLES(1), POLES(2), BORN2   lines 1-4 (point-like quarkonia)\n  APPB_T3  4 f1 Re Z_G, 4 f2 Re Z_V, Im Z_G, Im Z_V, w   line 6 (dipole-dipole)\n  APPB_T2  C1, C2, PDD                 lines 4-5 per state, and line 6\nand evaluates the output in CTModeRun 1 at the points of qp_check.py\n(seed 1), next to the computed 1/eps.\n",
+ "rows": [
+  {
+   "energy": 8.0,
+   "point": 0,
+   "omega": 2.329864724245577,
+   "c1": -2.111977378718789,
+   "c2": -6.000000000000721,
+   "predicted": -2.1119773787306015,
+   "code": 110,
+   "term1": -9.0,
+   "term1_double": -5.999999999999996,
+   "term2": [
+    3.035573609442198,
+    3.0355736094422
+   ],
+   "term3_f1": 2.412145516364573,
+   "term3_f2": -1.5952701139795709,
+   "term3": 0.8168754023850008,
+   "im_z": [
+    -7.783298392875336e-16,
+    8.826060707724235e-16
+   ]
+  },
+  {
+   "energy": 12.0,
+   "point": 0,
+   "omega": 6.492195629552548,
+   "c1": 9.900535342041406,
+   "c2": -5.999999999998606,
+   "predicted": 9.900535342182767,
+   "code": 110,
+   "term1": -9.0,
+   "term1_double": -5.9999999999999964,
+   "term2": [
+    8.169589524122497,
+    8.169589524122506
+   ],
+   "term3_f1": 5.160860883006332,
+   "term3_f2": -2.59950458906857,
+   "term3": 2.561356293937761,
+   "im_z": [
+    1.6929469049676512e-15,
+    3.848204371228929e-15
+   ]
+  },
+  {
+   "energy": 20.0,
+   "point": 0,
+   "omega": 19.81165452653485,
+   "c1": 23.23247964007972,
+   "c2": -5.999999999974394,
+   "predicted": 23.232479508754828,
+   "code": 110,
+   "term1": -9.0,
+   "term1_double": -5.999999999999994,
+   "term2": [
+    13.61979145862861,
+    13.619791458628635
+   ],
+   "term3_f1": 8.589196004337731,
+   "term3_f2": -3.596299412840144,
+   "term3": 4.992896591497587,
+   "im_z": [
+    4.132328008941522e-15,
+    -6.119323704966593e-13
+   ]
+  }
+ ]
+}

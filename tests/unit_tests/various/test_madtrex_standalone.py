@@ -610,7 +610,7 @@ class ClassicVocabularyTest(unittest.TestCase):
     def test_classic_only_lines_are_errors(self):
         for line in ("change output 2.0", "change mode NLO", "change rwgt_dir /tmp",
                      "change particle_in_density_matrix 3", "change process p p > z --add",
-                     "change backend classic"):
+                     "change backend classic", "change sudakov_xi 1 1.5 3.0"):
             with self.assertRaisesRegex(ValueError, "classic", msg=line):
                 self.param.parse_reweight_card(line + "\n" + self.LAUNCH)
             with self.assertRaisesRegex(ValueError, "classic", msg=line):

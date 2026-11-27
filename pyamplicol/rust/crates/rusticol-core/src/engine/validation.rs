@@ -863,9 +863,17 @@ pub(super) fn validate_consistent_source_ir(
         source_ir_by_momentum_slot.insert(source.input_momentum_slot, source.source_ir.clone());
     }
 
-    let identity = &source.source_ir.identity;
+    validate_canonical_source_ir(source_ir_by_canonical_id, index, &source.source_ir)
+}
+
+fn validate_canonical_source_ir(
+    source_ir_by_canonical_id: &mut BTreeMap<String, GenericSourceIrManifest>,
+    index: usize,
+    source_ir: &GenericSourceIrManifest,
+) -> RusticolResult<()> {
+    let identity = &source_ir.identity;
     if let Some(canonical) = source_ir_by_canonical_id.get(&identity.canonical_id)
-        && canonical != &source.source_ir
+        && canonical != source_ir
     {
         return Err(RusticolError::artifact(format!(
             "generic source {index} disagrees with canonical SourceIR metadata for oriented particle {:?}",
@@ -877,7 +885,7 @@ pub(super) fn validate_consistent_source_ir(
     }
     source_ir_by_canonical_id
         .entry(identity.canonical_id.clone())
-        .or_insert_with(|| source.source_ir.clone());
+        .or_insert_with(|| source_ir.clone());
     Ok(())
 }
 
@@ -917,12 +925,10 @@ fn validate_antiparticle_identity_pair(
     Ok(())
 }
 
-pub(super) fn validate_source_wavefunction_metadata(
+fn validate_source_identity(
     index: usize,
-    source: &GenericSourceRecordManifest,
+    identity: &GenericParticleIdentityIrManifest,
 ) -> RusticolResult<()> {
-    let source_ir = &source.source_ir;
-    let identity = &source_ir.identity;
     if identity.canonical_id.is_empty()
         || identity.species_id.is_empty()
         || identity.anti_canonical_id.is_empty()
@@ -949,7 +955,16 @@ pub(super) fn validate_source_wavefunction_metadata(
             "generic source {index} orientation is inconsistent with its antiparticle relation"
         )));
     }
+    Ok(())
+}
 
+pub(super) fn validate_source_wavefunction_metadata(
+    index: usize,
+    source: &GenericSourceRecordManifest,
+) -> RusticolResult<()> {
+    let source_ir = &source.source_ir;
+    let identity = &source_ir.identity;
+    validate_source_identity(index, identity)?;
     if source_ir.component_dimension == 0
         || source_ir.states.is_empty()
         || source_ir.basis.is_empty()

@@ -1,0 +1,169 @@
+{
+ "name": "li_stress_gg_zz_pt",
+ "li_row": "LI-21",
+ "stress": {
+  "base": "li_gg_zz",
+  "kind": "pt",
+  "values": [
+   "1",
+   "0.1",
+   "0.01"
+  ],
+  "energy": "500"
+ },
+ "loop_induced": true,
+ "pdgs": [
+  21,
+  21,
+  23,
+  23
+ ],
+ "initial": 2,
+ "madloop_process": "g g > z z [sqrvirt=QCD]",
+ "loop_orders": {
+  "QCD": 2,
+  "QED": 2
+ },
+ "squared_orders": {
+  "QCD": 4,
+  "QED": 4
+ },
+ "correction": "QCD",
+ "scheme": "qcd",
+ "scheme_data": {
+  "description": "QCD corrections in the MG5 loop_sm-no_b_mass model: alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, massless b/tau/light fermions, all widths zero, five-flavour alpha_s renormalization with decoupled top, six quark flavours in loops, Feynman gauge.",
+  "restriction": "no_b_mass",
+  "madloop_model": "{mg5}/models/loop_sm-no_b_mass",
+  "parameters": {
+   "aS": "0.118",
+   "aEWM1": "132.507",
+   "Gf": "0.0000116639",
+   "MZ": "91.188",
+   "MH": "125",
+   "MT": "173",
+   "ymt": "173"
+  },
+  "fixed_parameters": {
+   "MB": "0",
+   "ymb": "0",
+   "MTA": "0",
+   "ymtau": "0",
+   "WT": "0",
+   "WW": "0",
+   "WZ": "0",
+   "WH": "0"
+  },
+  "electroweak_inputs": "alpha_fixed",
+  "complex_mass_scheme": false,
+  "active_flavours": 5,
+  "loop_quark_flavours": 6
+ },
+ "normalization": {
+  "initial_average": 256,
+  "final_symmetry": 2,
+  "denominator": 512,
+  "convention": "|A_loop|^2 summed over final and averaged over initial helicities and colours, with the final identical-particle factor; physical couplings"
+ },
+ "carriers": [
+  "double",
+  "double-double",
+  "arbitrary"
+ ],
+ "points": [
+  [
+   [
+    "1325.474735088646411895751953125",
+    "0",
+    "0",
+    "1325.474735088646411895751953125"
+   ],
+   [
+    "47.34334310180393865472",
+    "0",
+    "0",
+    "-47.34334310180393865472"
+   ],
+   [
+    "91.193810349825350550471953125",
+    "1",
+    "0",
+    "-0.244340172532526758968046875"
+   ],
+   [
+    "1281.624267840625",
+    "-1",
+    "0",
+    "1278.375732159375"
+   ]
+  ],
+  [
+   [
+    "1325.474735088646411895751953125",
+    "0",
+    "0",
+    "1325.474735088646411895751953125"
+   ],
+   [
+    "47.33770715987144745472",
+    "0",
+    "0",
+    "-47.33770715987144745472"
+   ],
+   [
+    "91.188367767267859350471953125",
+    "0.1",
+    "0",
+    "-0.238897589975035558968046875"
+   ],
+   [
+    "1281.62407448125",
+    "-0.1",
+    "0",
+    "1278.37592551875"
+   ]
+  ],
+  [
+   [
+    "1325.474735088646411895751953125",
+    "0",
+    "0",
+    "1325.474735088646411895751953125"
+   ],
+   [
+    "47.33765080045212254272",
+    "0",
+    "0",
+    "-47.33765080045212254272"
+   ],
+   [
+    "91.188313341442284438471953125",
+    "0.01",
+    "0",
+    "-0.238843164149460646968046875"
+   ],
+   [
+    "1281.62407254765625",
+    "-0.01",
+    "0",
+    "1278.37592745234375"
+   ]
+  ]
+ ],
+ "mu_r": [
+  "1000",
+  "1000",
+  "1000"
+ ],
+ "rows": [
+  {
+   "providers": {}
+  },
+  {
+   "providers": {}
+  },
+  {
+   "providers": {}
+  }
+ ],
+ "source": "PLAN \u00a74.1 stress points (M \u00a74.7; \u00a74.1: gg>VV at pT,V = 1, 0.1, 0.01 GeV): exact decimal points of tools/loop_benchmark/li_manifest.py write_stress; no provider reference in the fixture (the binary64 estimate against double-double and AP, NinjaRS against TIRust, MadLoop QP: stress-madloop)"
+}

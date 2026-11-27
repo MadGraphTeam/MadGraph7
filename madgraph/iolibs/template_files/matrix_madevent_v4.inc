@@ -61,6 +61,37 @@ C
     INTEGER IDUM, NGOOD, J, JJ
     REAL     XRAN1
     EXTERNAL XRAN1
+C   C-parity helicity de-duplication of the init full-sum loop
+C   (see below): FLIP(I) is the helicity row with every
+C   helicity negated (an involution built once). The
+C   de-duplication is ALL-OR-NOTHING per flavor:
+C   CSYMBAD(IFLAV) latches 1 as soon as ANY row fails to pair
+C   up (a self-paired row, FLIP(I)=I, has no distinct partner)
+C   or ANY pair shows |M(I)|^2 != |M(FLIP(I))|^2 at a scan
+C   point. Only when every row is in a genuine matched pair is
+C   the reuse enabled, and then exactly half the rows are
+C   evaluated and each counted twice. That uniformity is what
+C   makes the reuse safe for the multi-channel weight: AMP2(J)
+C   is accumulated inside MATRIX over this same loop, so a
+C   partial (per-row) de-duplication would rescale AMP2
+C   non-uniformly across diagrams and bias AMP2(config)/XTOT
+C   even though the total |M|^2 stays exact. Halving every row
+C   scales AMP2(J) and XTOT by the same 1/2, leaving the ratio
+C   untouched. NCSCAN counts only the passes that actually ran
+C   the scan (NTRY alone is not enough: read_good_hel restores
+C   NTRY above the threshold without ever scanning, and the
+C   random-helicity branch bumps NTRY without a full sum).
+C   CSYMBAD/NCSCAN live in a COMMON block (zero-initialised,
+C   like NTRY above) so write_good_hel/read_good_hel can
+C   persist the verdict across jobs.
+    INTEGER FLIP(NCOMB), JHEL
+    REAL*8 TSMAX
+    LOGICAL DEDUP, CSYM_DONE
+    INTEGER CSYMBAD(MAXFLAVPERPROC), NCSCAN(MAXFLAVPERPROC)
+    COMMON/BLOCK_CSYM/CSYMBAD,NCSCAN
+    SAVE CSYM_DONE
+    DATA CSYM_DONE/.FALSE./
+%(flip_data)s
     INTEGER FLAVOR(NEXTERNAL)
     INTEGER FLAVOR_FOR_SYM(NEXTERNAL)
 C   Per-row FLAVOR lookup used by BROKEN_SYM. The IFLAV-indexed FLAVOR
@@ -100,6 +131,24 @@ C BEGIN CODE
 C ----------
     CALL GET_FLAVOR%(proc_id)s(IFLAV, FLAVOR)
     NTRY(IFLAV)=NTRY(IFLAV)+1
+C   FLIP(I) -- the C-parity partner of each helicity row,
+C   every helicity negated -- is generated DATA (see
+C   _helstate_data); nothing to build.
+    IF (.NOT.CSYM_DONE) THEN
+C     A self-paired row (FLIP(I)=I, every helicity 0) has no
+C     distinct partner, so the loop could not be halved
+C     uniformly: refuse the reuse outright, for every flavor.
+C     The scan below only compares distinct pairs, so it cannot
+C     catch this row itself.
+      DO I=1,NCOMB
+        IF (FLIP(I).EQ.I) THEN
+          DO JHEL=1,MAXFLAVPERPROC
+            CSYMBAD(JHEL)=1
+          ENDDO
+        ENDIF
+      ENDDO
+      CSYM_DONE = .TRUE.
+    ENDIF
     DO I=1,NEXTERNAL
        JC(I) = +1
     ENDDO
@@ -120,9 +169,21 @@ c    WRITE(HEL_BUFF,'(20I5)') (0,I=1,NEXTERNAL)
     ENDDO
 
 !   If the helicity grid status is 0, this means that it is not yet initialized.
+!   C-parity de-duplication of this init full-sum loop is all-or-nothing per
+!   flavor and only kicks in once this flavor has actually completed the scan
+!   (NCSCAN>=20; the scan passes stay within MAXTRIES=25 so the reuse overlaps
+!   the grid build). A crossing is a separate subprocess directory in madevent,
+!   so every IFLAV row here is the uncrossed base process; polarized beams are
+!   self-excluded because the beam_polarization scaling makes the flipped
+!   partner's |M|^2 differ, so the scan latches CSYMBAD.
+    DEDUP = NCSCAN(IFLAV).GE.20 .AND. CSYMBAD(IFLAV).EQ.0
     IF (ISUM_HEL.EQ.0.or.(DS_get_dim_status('Helicity').eq.0)) THEN
         DO I=1,NCOMB
            IF (GOODHEL(I,IFLAV) .OR. NTRY(IFLAV) .LE. MAXTRIES.OR.(ISUM_HEL.NE.0)) THEN
+C            Fast phase: every row is in a matched pair
+C            (all-or-nothing), so the higher-index partner is skipped
+C            and the lower index counted twice.
+             IF (DEDUP.AND.I.GT.FLIP(I)) CYCLE
                T=MATRIX%(proc_id)s(P,NHEL(1,I),IFLAV, IVEC)
             %(beam_polarization)s
              IF (ISUM_HEL.NE.0) then
@@ -130,8 +191,47 @@ c    WRITE(HEL_BUFF,'(20I5)') (0,I=1,NEXTERNAL)
              endif
              ANS=ANS+DABS(T)
              TS(I)=T
+C            The representative carries its skipped partner's identical
+C            contribution: copy |M|^2 to TS(FLIP) (so the per-helicity
+C            CDF and the DS grid pick both members), and count it once
+C            more in ANS.
+             IF (DEDUP.AND.I.LT.FLIP(I)) THEN
+               ANS=ANS+DABS(T)
+               TS(FLIP(I))=T
+               IF (ISUM_HEL.NE.0) call DS_add_entry('Helicity',FLIP(I),T)
+             ENDIF
            ENDIF
         ENDDO
+C       Scan phase: this pass evaluated every row, so it can test
+C       the pairing. A single mismatching pair
+C       (parity/C/polarization breaking) permanently disables the
+C       de-duplication for the whole flavor. A pair of rows that
+C       are BOTH numerically zero differ only by roundoff, and a
+C       purely RELATIVE test on that noise fails at random -- one
+C       such pair then vetoes every real pair, because the verdict
+C       is all-or-nothing. Measured on g g > t t~: rows 1/16 and
+C       4/13 sit at |M|^2 ~ 1e-30 while the scan maximum is
+C       ~1.5e+02, and the de-duplication never engaged. So also
+C       require the difference to be significant against TSMAX,
+C       the largest |M|^2 of this scan point: a row that far down
+C       cannot bias the helicity sum whichever way it is paired,
+C       while a genuine parity violation still shows up at the
+C       relative level.
+        IF (NCSCAN(IFLAV).LT.20) THEN
+          NCSCAN(IFLAV)=NCSCAN(IFLAV)+1
+          TSMAX=0D0
+          DO I=1,NCOMB
+            IF (DABS(TS(I)).GT.TSMAX) TSMAX=DABS(TS(I))
+          ENDDO
+          DO I=1,NCOMB
+            IF (FLIP(I).GT.I) THEN
+              IF (DABS(TS(I)-TS(FLIP(I))).GT.1D-6*(DABS(TS(I))+DABS(TS(FLIP(I))))
+     &            .AND.DABS(TS(I)-TS(FLIP(I))).GT.1D-12*TSMAX) THEN
+                CSYMBAD(IFLAV)=1
+              ENDIF
+            ENDIF
+          ENDDO
+        ENDIF
         IF(NTRY(IFLAV).EQ.(MAXTRIES+1)) THEN
            call reset_cumulative_variable() ! avoid biais of the initialization
         ENDIF

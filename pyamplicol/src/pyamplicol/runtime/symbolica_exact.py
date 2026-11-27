@@ -132,6 +132,8 @@ class _ExactColorContractionEntry:
     right_group_id: int
     weight: _ComplexDecimal
     symmetry_factor: Decimal
+    # N_c degree of the term in a plan graded by power of N_c.
+    nc_degree: int | None = None
 
 
 def _json_integer(value: object) -> int:
@@ -3437,7 +3439,15 @@ def _particle_mass(
         for raw_parameter in cast(
             Sequence[Mapping[str, object]], schema["model_parameters"]
         ):
-            if raw_parameter["name"] == parameter_name:
+            # An external mass by its name; a derived one (an internal mass,
+            # e.g. loop_sm's MW or a complex-mass scheme's line mass) by its
+            # real component, evaluated at the point's parameters (the
+            # record's ``mass`` is its value at generation).
+            if raw_parameter["name"] == parameter_name or (
+                raw_parameter.get("kind") == "derived_parameter_component"
+                and raw_parameter.get("runtime_name") == parameter_name
+                and raw_parameter.get("complex_component") == "real"
+            ):
                 try:
                     return parameters[_json_integer(raw_parameter["parameter_index"])]
                 except IndexError as exc:
@@ -3525,26 +3535,34 @@ def _antiquark_weyl(
     return _complex_zero(), _complex_zero()
 
 
+def _massless_chirality(momentum: Sequence[Decimal], helicity: int) -> int:
+    """Chirality of a massless state: its helicity, reversed for a crossed
+    (negative-energy) momentum, as the native ``ext_quark_dirac_generic``."""
+
+    return helicity if momentum[0] > 0 else -helicity
+
+
+def _chiral_dirac(
+    chirality: int, weyl: Sequence[_ComplexDecimal]
+) -> tuple[_ComplexDecimal, ...]:
+    """A Weyl spinor in the chiral Dirac basis (right-handed block first)."""
+
+    zero = (_complex_zero(), _complex_zero())
+    return (*weyl, *zero) if chirality == 1 else (*zero, *weyl)
+
+
 def _massless_quark_dirac(
     momentum: Sequence[Decimal], helicity: int
 ) -> tuple[_ComplexDecimal, ...]:
-    left, right = _quark_weyl(momentum, helicity, helicity)
-    return (
-        (left, right, _complex_zero(), _complex_zero())
-        if helicity == 1
-        else (_complex_zero(), _complex_zero(), left, right)
-    )
+    chirality = _massless_chirality(momentum, helicity)
+    return _chiral_dirac(chirality, _quark_weyl(momentum, helicity, chirality))
 
 
 def _massless_antiquark_dirac(
     momentum: Sequence[Decimal], helicity: int
 ) -> tuple[_ComplexDecimal, ...]:
-    first, second = _antiquark_weyl(momentum, helicity, helicity)
-    return (
-        (_complex_zero(), _complex_zero(), first, second)
-        if -helicity == 1
-        else (first, second, _complex_zero(), _complex_zero())
-    )
+    chirality = _massless_chirality(momentum, helicity)
+    return _chiral_dirac(chirality, _antiquark_weyl(momentum, helicity, chirality))
 
 
 def _quark_dirac(
@@ -3569,7 +3587,15 @@ def _massive_dirac(
     energy, px, py, pz = momentum
     nsf = (-1 if energy > 0 else 1) if antiquark else (1 if energy > 0 else -1)
     nh = nsf * helicity
-    pp = _sqrt(px * px + py * py + pz * pz, "massive fermion source")
+    # On the z axis |p| is |pz| exactly: the branch below (pp3 = |p| + pz = 0
+    # for a momentum along -z) must not hang on the rounding of sqrt(pz^2),
+    # whose residue gave chi = (~1e-25, 0) instead of (0, -nh) (a vanishing
+    # spinor, e.g. b b~ > w+ w- with 30-digit beam momenta at 50 digits).
+    pp = (
+        abs(pz)
+        if px == 0 and py == 0
+        else _sqrt(px * px + py * py + pz * pz, "massive fermion source")
+    )
     omega1 = _sqrt(abs(energy) + pp, "massive fermion source")
     if omega1 == 0:
         raise EvaluationError("massive fermion source has zero normalization")
@@ -3583,7 +3609,11 @@ def _massive_dirac(
     signed_px, signed_py, signed_pz = (px, py, pz) if energy > 0 else (-px, -py, -pz)
     pp3 = max(pp + signed_pz, _ZERO)
     chi1 = _ONE if pp == 0 else _sqrt(pp3 / (_TWO * pp), "massive fermion source")
-    if pp3 == 0 or pp == 0:
+    if pp == 0:
+        # At rest the helicity axis is +z, the general branch's limit along
+        # +z (HELAS ixxxxx/oxxxxx's rest spinor): chi = (1, 0).
+        chi2 = (_ZERO, _ZERO)
+    elif pp3 == 0:
         chi2 = (-Decimal(nh), _ZERO)
     else:
         denominator = _sqrt(_TWO * pp * pp3, "massive fermion source")
@@ -3882,7 +3912,38 @@ def _validated_color_contraction_entry(
         symmetry_factor=_decimal(
             raw_entry.get("symmetry_factor", 1), "color symmetry factor"
         ),
+        nc_degree=(
+            None
+            if raw_entry.get("nc_degree") is None
+            else _json_integer(raw_entry.get("nc_degree"))
+        ),
     )
+
+
+def _contracted_color_slots(
+    colors: Sequence[Mapping[str, object]],
+) -> dict[int | None, int] | None:
+    """Colour slot of each contraction entry by its N_c degree: the one
+    contracted component (key None), or one per degree of a graded artifact;
+    None if the axis is not contracted."""
+
+    if not colors or any(color.get("kind") == "lc-flow" for color in colors):
+        return None
+    degrees = [color.get("nc_degree") for color in colors]
+    if all(degree is None for degree in degrees):
+        return {None: 0} if len(colors) == 1 else None
+    if any(degree is None for degree in degrees):
+        return None
+    return {_json_integer(degree): index for index, degree in enumerate(degrees)}
+
+
+def _contracted_color_slot(slots: Mapping[int | None, int], degree: int | None) -> int:
+    slot = slots.get(degree)
+    if slot is None:
+        raise ArtifactError(
+            f"color contraction entry of N_c degree {degree} has no color component"
+        )
+    return slot
 
 
 def _reduce_materialized_helicity(
@@ -3988,13 +4049,10 @@ def _reduce_materialized_helicity(
 
     contraction = amplitude_stage.get("color_contraction")
     if isinstance(contraction, Mapping):
-        if (
-            len(colors) != 1
-            or str(physics.get("color_accuracy")) == "lc"
-            or colors[0].get("kind") == "lc-flow"
-        ):
+        slots = _contracted_color_slots(colors)
+        if slots is None or str(physics.get("color_accuracy")) == "lc":
             raise ArtifactError("contracted color reduction requires one color axis")
-        total = _ZERO
+        totals = [_ZERO for _ in colors]
         for entry in _validated_color_contraction_entries(contraction, groups):
             left_id = entry.left_group_id
             right_id = entry.right_group_id
@@ -4004,12 +4062,12 @@ def _reduce_materialized_helicity(
             right = coherent[right_id]
             product_re = left[0] * right[0] + left[1] * right[1]
             product_im = left[1] * right[0] - left[0] * right[1]
-            total += (
+            totals[_contracted_color_slot(slots, entry.nc_degree)] += (
                 normalization
                 * entry.symmetry_factor
                 * (entry.weight[0] * product_re - entry.weight[1] * product_im)
             )
-        return (total,)
+        return tuple(totals)
     if contraction is not None:
         raise ArtifactError("color contraction metadata is not an object")
 
@@ -4121,11 +4179,13 @@ def _reduce_resolved(
         }
         full = [[_ZERO for _ in color_ids] for _ in helicity_ids]
         if isinstance(contraction, Mapping):
-            if len(color_ids) != 1:
+            slots = _contracted_color_slots(colors)
+            if slots is None:
                 raise ArtifactError(
                     "contracted color reduction requires one color axis"
                 )
             for entry in _validated_color_contraction_entries(contraction, groups):
+                slot = _contracted_color_slot(slots, entry.nc_degree)
                 left_id = entry.left_group_id
                 right_id = entry.right_group_id
                 left = coherent[left_id]
@@ -4164,7 +4224,7 @@ def _reduce_resolved(
                 for identifier, member_weight in zip(
                     contracted_members, member_weights, strict=True
                 ):
-                    full[helicity_index[identifier]][0] += (
+                    full[helicity_index[identifier]][slot] += (
                         contribution * member_weight / total_weight
                     )
         else:

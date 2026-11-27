@@ -43,6 +43,38 @@ The built-in model selects the wheel-owned prepared JIT O2 bundle for default
 recurrence or eager execution. It also retains compatibility aliases that an
 arbitrary external model does not automatically inherit.
 
+Changes in November 2026 (the built-in SM now matches the UFO `sm` with its
+`no_masses` restriction at tree level):
+
+- The global coupling factor takes its powers from the coupling orders of the
+  Born amplitudes. Before, it took them from the number of colour-singlet legs,
+  which made every process without coloured legs (`e+ e- > a a`,
+  `e+ e- > mu+ mu-`, ...) too small by the factor
+  1/(8 π α)² = 1/(4 e⁴) ≈ 27.8 (α = 1/132.507). Artifacts written by 1.0.1
+  are refused by 1.0.2 (the runtime admits only artifacts of its own package
+  version): regenerate them. A 1.0.2 artifact generated with a built-in SM
+  source from before these fixes loads with a warning and keeps the old
+  values.
+- The electroweak and Higgs interactions are complete: photon, Z and W
+  exchange between quark lines when the coupling orders allow it
+  (`u u~ > d d~` with `max_coupling_orders = { QCD = 0, QED = 2 }`), the
+  neutrino exchange of `e+ e- > w+ w-`, and the H H V V and four-Higgs
+  contacts.
+- A request whose Born amplitudes carry several coupling orders (for example
+  `u u~ > d d~` with `{ QCD = 2, QED = 2 }`, where gluon and electroweak
+  exchange interfere) is refused with a `GenerationError`: restrict
+  `max_coupling_orders` to one Born order or use a UFO model. The default
+  minimal policy keeps one order (QCD only for `u u~ > d d~`).
+- Concrete charged-current requests such as `u d~ > c s~` are served;
+  inclusive `p`/`j` requests keep a quark-flavour-changing jet subprocess only
+  when the request implies a W.
+- Still refused, with typed errors, as for the UFO `sm`: in the recurrence
+  execution mode, four-quark processes without a gluon exchange (four quark
+  flavours, or `QCD = 0`); in every tree mode, a massive top on a fermion
+  line that ends in a massless b (`dirac-weyl-closure`: single top,
+  `b b~ > w+ w-`, `t~ > b~ w-`), reported by the on-the-fly mode when it
+  evaluates.
+
 ## Built-in scalar HEFT model
 
 Select `built-in-sm-heft` for an independent model containing the packaged
@@ -74,11 +106,28 @@ GeV, and has no runtime dependency on a UFO checkout. The effective coupling
 `GH` depends on model parameters (`G`, `vev`, `MH`, and `MT`), not event
 momenta; the momentum factors in the Hgg and Hggg Lorentz tensors are retained.
 Update those external inputs through a runtime parameter card rather than
-treating the derived `GH` as an independent input. The built-in selector uses
-its canonical default restriction and simplification policy.
+treating the derived `GH` as an independent input. The selector always
+simplifies; it applies the packaged SM's `restrict_default.json` unless
+`restriction` names another of its `restrict_<name>.json` cards (`no_b_mass`,
+`no_masses`, `zeromass_ckm`, ...), for example a massless b quark for the
+five-flavour scheme:
+
+```toml
+[model]
+source = "built-in-sm-heft"
+restriction = "no_b_mass"
+```
+
+or `ModelSource.built_in_sm_heft(restriction="no_b_mass")`, or
+`--model built-in-sm-heft --restriction no_b_mass`. The restriction is part of
+the compiled model's identity (source digest, cache key and the artifact's
+`model.restriction`); `"default"` is the plain selector.
 
 The wheel-owned portable JIT O2 pack makes `eager`, `recurrence`, and
-`on-the-fly` execution available directly from this selector. Compiled mode
+`on-the-fly` execution available directly from this selector with the default
+restriction. For another restriction those modes need an explicitly prepared
+bundle (`ModelSource.built_in_sm_heft(restriction=...).compile(prepared_output=...,
+evaluator=...)`); compiled mode compiles the restricted model directly. Compiled mode
 supports the `jit`, `asm`, and `cpp` evaluator backends. Explicitly prepared
 HEFT bundles can likewise use any of those backends. `builtin_sm_heft`,
 `sm-heft`, and `sm_heft` are accepted as configuration aliases.
@@ -167,11 +216,73 @@ backend = "jit"
 > UFO modules are Python code and execute during loading. Only load a UFO model
 > from a source you trust. Serialize it for portable or automated workflows.
 
+The UFO models shipped with pyAmpliCol (`sm`, `scalars`, `scalar_gravity`, and
+MG5_aMC 3.7.0's one-loop model `loop_sm` with all its restrictions) are
+selected by their bare name, `source = "loop_sm"`, when no file or directory of
+that name exists next to the card (an existing path always wins). See
+[One-loop QCD on loop_sm](loop-sm-and-madloop.md) for one-loop requests on it.
+
 In a TOML card, `restriction` is normally a loader name such as `default`,
 `no_widths`, or `none`. With the typed Python API, an explicit restriction file
 may be supplied. Relative typed-API restriction paths are resolved from the
 model directory; card names select the conventional `restrict_<name>.json` or
 `restrict_<name>.dat` file.
+
+### One-loop source preparation
+
+For a loop-capable UFO, `[loop.preparation]` supplies explicit source preparation
+inputs independently of the physics scheme in `[loop.model]`. The shipped
+`loop_qcd_qed_sm` and `loop_qcd_qed_sm_Gmu` need none (their Goldstone-flag
+defect is repaired automatically; the one-loop engine takes no covariant
+multiplets). For example, this fragment selects the existing compatibility
+profile and covariant partners of the tested `loop_qcd_qed_sm_Gmu_py3` source
+for the source-preparation tools:
+
+```toml
+[loop.preparation]
+compatibility = "gmu_particle_anti"
+
+[loop.preparation.covariant_multiplets]
+"23" = [23, 250, 9000002, -9000002]
+"24" = [24, 251, 9000003, -9000004]
+"-24" = [-24, -251, 9000004, -9000003]
+
+[loop.preparation.fixed_parameters]
+epsUV = "1"
+epsIR = "1"
+GfRedefinitionChoice = "1"
+```
+
+This is a preparation fragment, not a complete generation card. The source
+must also provide compatible UV/R2 rules, and its scheme, remaining restrictions
+and correction orders must be declared. The complete real-mass control inputs
+are recorded in `tools/loop_reference/real_mass_ew_quarks.json`. Compatibility
+profiles validate the actual source declarations and retain repair diagnostics;
+a model name does not select or certify one automatically. One structural
+repair needs no profile: a vertex referencing a constant scalar tensor with
+fewer slots than particles (loop_sm's four-G0 vertex with `SSS1`) is moved to
+the model's unique same-valued tensor of the right slots, recorded as
+`pyamplicol_source_repairs`.
+
+Fixed values use decimal strings or `["real", "imaginary"]` string pairs, so
+inputs are preserved exactly. They are structural model restrictions rather
+than per-event parameters. A conflicting formal-colour parameter tie is an
+error. The same base inputs survive an eligible full-colour `auto` fallback.
+
+Omitting `[loop.preparation]` inherits any preparation record in the source
+sidecar. An explicit empty table clears it. Any supplied record, including a
+partial one, replaces the whole sidecar record. TOML and `--set` preserve this
+distinction; for example, `--set 'loop.preparation={}'` clears it, while setting
+only `loop.preparation.fixed_parameters.Gf` when the section is otherwise absent
+supplies a replacement containing that fixed parameter and no inherited
+compatibility profile or partner map. Ordinary card/CLI precedence still applies
+within an explicitly configured record.
+
+Loop preparation validates scalar expressions through the source frontend.
+Unused normalized-tree function declarations can therefore retain tree
+diagnostics without blocking this separate path. Active unsupported source
+expressions and shared particle/tensor exclusions still fail. Tree generation
+continues to enforce its own model compatibility checks.
 
 ## Model commands
 
@@ -324,6 +435,24 @@ entries = [
 ```
 
 Repetition syntax such as `3*scalar_0` is supported for particle names.
+
+A process has one incoming particle (a 1 -> n decay, n >= 2, MG5_aMC's
+`t > b w+`) or two (a 2 -> n scattering). A tree-level decay is summed over
+the final helicities and colours, averaged over the decaying particle's
+helicities and colours only, and divided by the identical-particle factor
+of the final state; its momenta are those of any frame (the decaying
+particle at rest is the usual one). Multiparticle labels expand as for
+scattering (`w+ > j j`). On UFO models tree-level decays equal MG5_aMC
+standalone (`t > b w+`, `z > e- e+`, `h > b b~` with a massive b,
+`t > b w+ g`, `w+ > u d~ g`, `z > u u~ g`: the same parameter card, to
+rounding). Decay chains (`t > b w+, w+ > e+ ve`), `$` and `@N` are refused
+(`madloop-syntax`): request each decay as its own process. One-loop decays
+(`process.loop_coupling_orders`, QCD and electroweak) are served with the
+same averaging, the decaying particle at its real mass with zero own width
+and MadLoop's conventions for it (amputated loops, its field renormalisation
+real on-shell from the model's counterterms); a loop-induced decay
+(`h > g g`) is routed loop-induced (`process.loop_induced`). The built-in Standard Model serves tree-level
+decays too (`z > e+ e-`, `w+ > e+ ve`).
 
 ## Multiparticles
 

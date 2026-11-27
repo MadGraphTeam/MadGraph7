@@ -906,6 +906,42 @@ def test_native_provenance_digest_implementations_match(tmp_path: Path) -> None:
     assert versions._native_build_inputs_digest(source_root) == changed
 
 
+def test_loop_native_digest_excludes_controls_and_packaged_sdk_sources(
+    tmp_path: Path,
+) -> None:
+    identity = _native_build_identity_module()
+    source_root = _source_root(tmp_path)
+    loop = source_root / "rust/loop-reduction"
+    compiled = loop / "src/lib.rs"
+    compiled.parent.mkdir(parents=True, exist_ok=True)
+    compiled.write_text("pub fn numerical_kernel() {}\n")
+    expected = identity.native_build_inputs_digest(source_root)
+    assert versions._native_build_inputs_digest(source_root) == expected
+    for name in (
+        "README.md",
+        "python/test_consumer.py",
+        "tests/anchors.rs",
+        "sdk/tests/virtual_runtime.rs",
+        "sdk/include/rusticol_virtual.h",
+        "sdk/fortran/rusticol_virtual.f90",
+        "sdk/umami/pyamplicol_umami_virtual_v1.c",
+    ):
+        path = loop / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("packaging or validation only\n")
+    core_test = source_root / (
+        "rust/crates/rusticol-core/tests/compiled_binary64_with_symbolica.rs"
+    )
+    core_test.parent.mkdir(parents=True, exist_ok=True)
+    core_test.write_text("// independently compiled regression\n")
+    assert identity.native_build_inputs_digest(source_root) == expected
+    assert versions._native_build_inputs_digest(source_root) == expected
+    compiled.write_text("pub fn changed_numerical_kernel() {}\n")
+    changed = identity.native_build_inputs_digest(source_root)
+    assert changed != expected
+    assert versions._native_build_inputs_digest(source_root) == changed
+
+
 def test_native_digest_v2_projects_only_native_pyproject_inputs(
     tmp_path: Path,
 ) -> None:

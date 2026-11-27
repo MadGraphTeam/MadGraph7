@@ -19,3 +19,38 @@
 #
 #  [phasespace]
 #  sde_strategy = "denominators"
+#
+#  Cluster mode: off by default, and then left out of Cards/run_card.toml.
+#  The cluster sections set up this site's batch system: unlike the other
+#  sections, they are read whenever a run card is loaded, and a run card
+#  without them takes these values, e.g. when "set cluster.enable true"
+#  writes them out.
+#
+#  [cluster]
+#  enable = false
+#  # options: full (both passes, events combined), gridpack_only
+#  mode = "full"
+#  # options: auto (cluster_type of the MadGraph configuration), local_parallel,
+#  # condor, pbs, sge, lsf, ge, slurm, htcaas, htcaas2, or the batch system
+#  # of a plugin (new_cluster), e.g. a site's own
+#  type = "auto"
+#  parallel_jobs = -1 # jobs at once with type local_parallel; -1 uses every core
+#  # training pass; an empty queue takes cluster_queue of the configuration
+#  train_queue = ""
+#  train_walltime = ""
+#  train_extra_args = "" # e.g. "--gres=gpu:1" for slurm, "request_gpus = 1" for condor
+#  subprocesses_per_job = 1
+#  fix_max_weight = true
+#  # event generation pass
+#  deploy_queue = ""
+#  deploy_walltime = ""
+#  deploy_extra_args = ""
+#  events_per_job = 100000
+#
+#  [cluster_train]
+#  # [run], [generation] or [madnis] settings of the training jobs
+#  run.device = ["cuda"]
+#
+#  [cluster_deploy]
+#  # the same for the event generation jobs
+#  run.cpu_thread_pool_size = 8

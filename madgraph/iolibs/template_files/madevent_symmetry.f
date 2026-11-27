@@ -163,7 +163,7 @@ c
 c     Arguments
 c
       integer mapconfig(0:lmaxconfigs),use_config(0:lmaxconfigs)
-      double precision prwidth(-max_branch:-1,lmaxconfigs) !Propagotor width
+      double precision prwidth(-nexternal:0,lmaxconfigs) !Propagotor width
       integer iforest(2,-max_branch:-1,lmaxconfigs)
       integer sprop(maxsproc,-max_branch:-1,lmaxconfigs)
       integer jcomp

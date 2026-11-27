@@ -17,6 +17,11 @@ drives the two the same way, with the same conventions: momenta in the leg order
 of the process, the open legs as 1-based positions, the density divided by the
 spin/color average and identical-particle factor of the process.
 
+A crossed process folded onto a base (--use_crossing) is evaluated by the
+library of the base at an extended flavor index (cross * nmaxflavor + flavor),
+listed in the table with its pdg combinations; its momenta, open legs and
+helicities stay in its own leg order, as for the Fortran GET_DENSITY_IDX.
+
 Build the libraries first, with build_command() in SubProcesses: the scalar
 backend is the right one for a few points per call. Two outputs loaded into the
 same process must be built with different LIBTAGs (the loader identifies a
@@ -141,13 +146,16 @@ def _address(array_):
 class _Subprocess(object):
     """One library: one subprocess of the output."""
 
-    _info_names = ('npar', 'npari', 'ncomb', 'nmaxflavor', 'ncolor', 'iden')
+    _info_names = ('npar', 'npari', 'ncomb', 'nmaxflavor', 'ncolor', 'iden', 'ncross')
 
     def __init__(self, lib_path, entry, index):
         self.index = index
         self.path = entry['path']
         self.legs = tuple(entry['legs'])
         self.ninitial = entry['ninitial']
+        # the legs whose two states are not helicity states (absent from the
+        # tables written before it was introduced)
+        self.spin_reference = frozenset(entry.get('spin_reference', ()))
         # RTLD_LOCAL: every library exports the same symbol names
         lib = _load(lib_path)
         ptr, size_t, cint = ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int
@@ -173,6 +181,12 @@ class _Subprocess(object):
         lib.madmatrix_process_info(info)
         for name, value in zip(self._info_names, info):
             setattr(self, name, value)
+        # a library built before ncross was reported leaves it 0: no crossing
+        self.ncross = max(1, self.ncross)
+        self.c_iden = getattr(lib, 'madmatrix_iden', None)
+        if self.c_iden is not None:
+            self.c_iden.argtypes = [ctypes.c_uint]
+            self.c_iden.restype = ctypes.c_double
         self.lib = lib
         self.c_density = lib.madmatrix_density
         self.c_matrix_element = lib.madmatrix_matrix_element
@@ -201,6 +215,18 @@ class _Subprocess(object):
         if self.handle is None:
             raise MadDensityError('%s: initialise() (the param card) has to come first'
                                   % self.path)
+
+    def check_open_legs(self, hel):
+        """A density matrix is one in the helicity basis: refuse an open leg
+        whose spin is quantised along a reference (output --axial_gauge=True,
+        IXXXXXR/OXXXXXR). Summing over its two states, as for a closed leg,
+        is fine."""
+        legs = sorted(self.spin_reference.intersection(hel.frozen))
+        if legs:
+            raise MadDensityError(
+                '%s: legs %s are not in a helicity state (output --axial_gauge=True): '
+                'regenerate the output with --fermion_reference=False for their '
+                'density matrix' % (self.path, legs))
 
 
 class _Helicities(object):
@@ -236,6 +262,13 @@ class MadDensityLibrary(object):
                                   % (output_dir, table))
         with open(table) as fsock:
             entries = json.load(fsock)['subprocesses']
+        for entry in entries:
+            if entry.get('crossed') and not entry.get('crossed_flavors'):
+                # an output written before the crossed flavor ids were listed
+                raise MadDensityError(
+                    '%s folds the crossed processes %s onto its base, but %s does '
+                    'not list their flavor ids: write the output again'
+                    % (entry['path'], entry['crossed'], PROCESSES_FILE))
         # The libraries take alpha_s per point and nothing else of the scale:
         # a process whose couplings depend on MU_R as well would silently be
         # evaluated at the param card's MU_R
@@ -255,7 +288,8 @@ class MadDensityLibrary(object):
         # it, and the check of _load has to see it
         _load(common_library_path(output_dir, libtag, backend))
         self.subprocesses = []
-        # raw pdg combination (leg order of the process) -> (subprocess, flavor index)
+        # raw pdg combination (leg order of the process) -> (subprocess, flavor
+        # index), the index an extended one for a crossed process
         self._by_pdgs = {}
         # (raw pdgs, frozen legs) -> (subprocess, flavor index, leg permutation)
         self._dispatch_cache = {}
@@ -282,12 +316,25 @@ class MadDensityLibrary(object):
                     self._by_pdgs.setdefault(tuple(pdgs), (sub, iflavor))
             for pdgs in entry['processes']:
                 self._process_slots.append((tuple(pdgs), sub))
+            # the crossed processes: the base library at the extended index.
+            # They are reached by their pdg codes only, as the Fortran f2py
+            # module reaches them (f77_crossed_*): get_pdg_order lists the
+            # processes of the libraries, not the crossings folded onto them
+            for flavor_id, pdgs in entry.get('crossed_flavors') or []:
+                if not 0 <= flavor_id < sub.ncross * sub.nmaxflavor:
+                    raise MadDensityError('%s: crossed flavor id %s of %s out of the '
+                                          'library\'s table (%s x %s)'
+                                          % (sub.path, flavor_id, pdgs, sub.ncross,
+                                             sub.nmaxflavor))
+                self._by_pdgs.setdefault(tuple(pdgs), (sub, flavor_id))
         # raw |pdg| -> merged code of its leg: the legs of a subprocess carry the
         # merged codes, its flavor combinations the raw ones
         self._merged = {}
-        for pdgs, (sub, _) in self._by_pdgs.items():
-            for leg, pdg in zip(sub.legs, pdgs):
-                self._merged[abs(pdg)] = abs(leg)
+        for entry, sub in zip(entries, self.subprocesses):
+            for combinations in entry['flavors']:
+                for pdgs in combinations:
+                    for leg, pdg in zip(sub.legs, pdgs):
+                        self._merged[abs(pdg)] = abs(leg)
         self._card_alphas = 0.118
         self._beampol = None
 
@@ -342,6 +389,15 @@ class MadDensityLibrary(object):
 
     def get_idens(self):
         return [sub.iden for _, sub in self._process_slots]
+
+    def iden(self, pdgs):
+        """The spin/color average and identical-particle factor the density and
+        |M|^2 of the process pdgs are divided by: the crossed process's own for
+        a crossing (madmatrix_iden), as the Fortran PY_GET_NHEL_IDX reports it."""
+        sub, iflavor, _ = self.dispatch(pdgs)
+        if sub.c_iden is None:
+            return sub.iden
+        return int(round(sub.c_iden(iflavor)))
 
     # ------------------------------------------------------------------
     # dispatch: pdg codes -> library, flavor index and leg order
@@ -443,6 +499,7 @@ class MadDensityLibrary(object):
         sub, iflavor, perm = self.dispatch(pdgs, hel.frozen)
         if sub.handle is None:
             sub.check_initialised()
+        sub.check_open_legs(hel)
         buf = self._pack(momenta, perm)
         sub.alphas.value = self._alphas(alphas)
         sub.flavor.value = iflavor
@@ -485,6 +542,7 @@ class MadDensityLibrary(object):
         for (isub, perm), points in groups.items():
             sub = self.subprocesses[isub]
             sub.check_initialised()
+            sub.check_open_legs(hel)
             index = [k for k, _ in points]
             p = momenta[index]
             if perm is not None:

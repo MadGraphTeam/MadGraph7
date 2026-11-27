@@ -33,7 +33,7 @@ invariant at every step.
 Nothing here knows about fortran or C++: it takes the coefficient matrix and
 gives back the reduced matrix and the definitions. The exporters print that in
 their own language (get_JAMP_lines for fortran, build_jamp_plan for the
-C++/cudacpp writer), and how they print it is what decides which of the
+C++/madmatrix writer), and how they print it is what decides which of the
 optimisations they may use -- see jamp_orbit_allowed and
 jamp_greedy_tail_enabled.
 """

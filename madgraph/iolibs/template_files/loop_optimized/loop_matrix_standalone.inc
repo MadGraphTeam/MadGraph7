@@ -2,7 +2,37 @@ C --=========================================--
 C   Main subroutine
 C --=========================================--
 
-	  SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+## if(ninjars_available) {
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+      IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      %(real_dp_format)s P_USER(0:3,NEXTERNAL),ANS(0:3,*)
+      LOGICAL NRS_RETRY_MODE,NRS_RETRY_USED
+      INTEGER NRS_RETRY_COUNT,NRS_RETRY_PASS,NRS_RETRY_FAIL
+      INTEGER NRS_RETRY_HARD_SKIP
+      REAL*8 NRS_NATIVE_ACC,NRS_COMP_ACC
+      COMMON/%(proc_prefix)sNRS_RETRY_FLAGS/NRS_RETRY_MODE,NRS_RETRY_USED
+      COMMON/%(proc_prefix)sNRS_RETRY_STATS/NRS_RETRY_COUNT,NRS_RETRY_PASS,
+     $ NRS_RETRY_FAIL,NRS_RETRY_HARD_SKIP
+      COMMON/%(proc_prefix)sNRS_RETRY_ACC/NRS_NATIVE_ACC,NRS_COMP_ACC
+      NRS_RETRY_MODE=.FALSE.
+      NRS_RETRY_USED=.FALSE.
+      NRS_RETRY_COUNT=0
+      NRS_RETRY_PASS=0
+      NRS_RETRY_FAIL=0
+      NRS_RETRY_HARD_SKIP=0
+      NRS_NATIVE_ACC=-1D0
+      NRS_COMP_ACC=-1D0
+      CALL %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,ANS)
+C     Guaranteed reset after every ordinary return from the implementation.
+      NRS_RETRY_MODE=.FALSE.
+      END
+
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,ANS)
+## } else {
+      SUBROUTINE %(proc_prefix)sSLOOPMATRIX(P_USER,ANS)
+## }
 C  
 %(info_lines)s
 C
@@ -16,8 +46,27 @@ C Modules
 C
       use %(proc_prefix)sPOLYNOMIAL_CONSTANTS
       USE ALOHA_OBJECT
+## if(OniaPwave) {
+      USE %(proc_prefix)sPW_DUAL, ONLY: PWPL, PWPD, %(proc_prefix)sPW_DUAL_INIT
+## }
+## if(OniaPwaveEP) {
+      USE EP_PRECISION
+## }
 C
+## if(ninjars_available) {
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+## }
       IMPLICIT NONE
+## if(ninjars_available) {
+      LOGICAL NRS_RETRY_MODE,NRS_RETRY_USED
+      INTEGER NRS_RETRY_COUNT,NRS_RETRY_PASS,NRS_RETRY_FAIL
+      INTEGER NRS_RETRY_HARD_SKIP
+      REAL*8 NRS_NATIVE_ACC,NRS_COMP_ACC
+      COMMON/%(proc_prefix)sNRS_RETRY_FLAGS/NRS_RETRY_MODE,NRS_RETRY_USED
+      COMMON/%(proc_prefix)sNRS_RETRY_STATS/NRS_RETRY_COUNT,NRS_RETRY_PASS,
+     $ NRS_RETRY_FAIL,NRS_RETRY_HARD_SKIP
+      COMMON/%(proc_prefix)sNRS_RETRY_ACC/NRS_NATIVE_ACC,NRS_COMP_ACC
+## }
 C
 C USER CUSTOMIZABLE OPTIONS
 C 
@@ -100,16 +149,30 @@ C     These are constants related to the split orders
 	  INTEGER NSQUAREDSOP1
 	  PARAMETER (NSQUAREDSOP1=NSQUAREDSO+1)
 C     The total number of loop reduction libraries
-C     At present, there are only CutTools,PJFry++,IREGI,Golem95,Samurai, Ninja and COLLIER
+C     CutTools, IREGI, Golem95, Samurai, Ninja, COLLIER and NinjaRS are supported.
       INTEGER NLOOPLIB
-      PARAMETER (NLOOPLIB=7)
-C     Only CutTools or possibly Ninja (if installed with qp support) provide QP
-      INTEGER QP_NLOOPLIB
-## if(ninja_supports_quad_prec) {
-      PARAMETER (QP_NLOOPLIB=2)
+      PARAMETER (NLOOPLIB=9)
+C     CutTools, Ninja and NinjaRS can provide QP when installed with support
+      INTEGER QP_NLOOPLIB,TIRUST_QP_COUNT
+## if(tirust_supports_quad_prec) {
+      PARAMETER (TIRUST_QP_COUNT=1)
 ## } else {
-      PARAMETER (QP_NLOOPLIB=1)
+      PARAMETER (TIRUST_QP_COUNT=0)
 ## }
+## if(ninja_supports_quad_prec) {
+## if(ninjars_supports_quad_prec) {
+      PARAMETER (QP_NLOOPLIB=3+TIRUST_QP_COUNT)
+## } else {
+      PARAMETER (QP_NLOOPLIB=2+TIRUST_QP_COUNT)
+## }
+## } else {
+## if(ninjars_supports_quad_prec) {
+      PARAMETER (QP_NLOOPLIB=2+TIRUST_QP_COUNT)
+## } else {
+      PARAMETER (QP_NLOOPLIB=1+TIRUST_QP_COUNT)
+## }
+## }
+
 	  INTEGER MAXSTABILITYLENGTH
 	  DATA MAXSTABILITYLENGTH/20/
 	  common/%(proc_prefix)sstability_tests/maxstabilitylength
@@ -197,6 +260,15 @@ C QP_RES STORES THE QUADRUPLE PRECISION RESULT OBTAINED FROM DIFFERENT EVALUATIO
 ## }
       %(complex_dp_format)s COEFS(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
       %(complex_dp_format)s CFTOT
+## if(not AmplitudeReduction){
+C     Colour factors of the CT amplitudes with each Born amplitude and the
+C     squared split-order index of their interference, tabulated once from
+C     CF_N/CF_D with the very expressions they replace (bit-identical).
+      %(complex_dp_format)s CF_CT(NCTAMPS,NBORNAMPS)
+      INTEGER SQSO_CT(NCTAMPS,NBORNAMPS)
+      SAVE CF_CT,SQSO_CT
+      %(real_dp_format)s ACC_SO(3),ACC_ALL(3)
+## }
 	  LOGICAL FOUNDHELFILTER,FOUNDLOOPFILTER
 	  DATA FOUNDHELFILTER/.TRUE./
 	  DATA FOUNDLOOPFILTER/.TRUE./
@@ -219,7 +291,7 @@ C     For a 1>N process, them BEAMTWO_HELAVGFACTOR would be set to 1.
 	  INTEGER NEPS
 	  DATA NEPS/0/
 C     Below are variables to bypass the checkphase and insure stability check to take place
-      LOGICAL OLD_CHECKPHASE, OLD_HELDOUBLECHECKED
+      LOGICAL OLD_CHECKPHASE, OLD_HELDOUBLECHECKED,BYPASS_FILTERS
 	  INTEGER OLD_GOODHEL(NCOMB)
 	  LOGICAL OLD_GOODAMP(NSQUAREDSO,NLOOPGROUPS)
 	  LOGICAL BYPASS_CHECK, ALWAYS_TEST_STABILITY
@@ -234,6 +306,15 @@ C
       INTEGER %(proc_prefix)sISSAME
       LOGICAL %(proc_prefix)sISZERO
       LOGICAL %(proc_prefix)sIS_HEL_SELECTED
+## if(Onia) {
+      LOGICAL %(proc_prefix)sONIA_HEL_LIVE
+C     The squared finite terms of the counterterm interference of the last
+C     double-precision evaluation, and the accuracy they imply
+      %(real_dp_format)s ONIA_CTSQ, ONIA_CTACC
+## }
+## if(OniaPwave) {
+      LOGICAL %(proc_prefix)sONIA_PW_DIRECTION, %(proc_prefix)sONIA_PW_CT_INPUT
+## }
       INTEGER SET_RET_CODE_U
 ## if(LoopInduced){
 	  %(real_dp_format)s Median
@@ -281,15 +362,27 @@ C     A FLAG TO DENOTE WHETHER THE CORRESPONDING LOOPLIBS ARE AVAILABLE OR NOT
 	  common/%(proc_prefix)sLOOPLIBS_AV/ LOOPLIBS_AVAILABLE
 C     A FLAG TO DENOTE WHETHER THE CORRESPONDING DIRECTION TESTS AVAILABLE OR NOT IN THE LOOPLIBS
       LOGICAL LOOPLIBS_DIRECTEST(NLOOPLIB)
-	  DATA LOOPLIBS_DIRECTEST /.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE.,.TRUE./
+	  DATA LOOPLIBS_DIRECTEST /9*.TRUE./
 C     Specifying for which reduction tool quadruple precision is available.
 C     The index 0 is dummy and simply means that the corresponding loop_library is not available
 C     in which case neither is its quadruple precision version.
-      LOGICAL LOOPLIBS_QPAVAILABLE(0:7)
+      LOGICAL LOOPLIBS_QPAVAILABLE(0:NLOOPLIB)
+      DATA LOOPLIBS_QPAVAILABLE(0:5)/.FALSE.,.TRUE.,4*.FALSE./
 ## if(ninja_supports_quad_prec) {
-	  DATA LOOPLIBS_QPAVAILABLE /.FALSE.,.TRUE.,.FALSE.,.FALSE.,.FALSE.,.FALSE.,.TRUE.,.FALSE./
+      DATA LOOPLIBS_QPAVAILABLE(6)/.TRUE./
 ## } else {
-	  DATA LOOPLIBS_QPAVAILABLE /.FALSE.,.TRUE.,.FALSE.,.FALSE.,.FALSE.,.FALSE.,.FALSE.,.FALSE./
+      DATA LOOPLIBS_QPAVAILABLE(6)/.FALSE./
+## }
+      DATA LOOPLIBS_QPAVAILABLE(7)/.FALSE./
+## if(ninjars_supports_quad_prec) {
+      DATA LOOPLIBS_QPAVAILABLE(8)/.TRUE./
+## } else {
+      DATA LOOPLIBS_QPAVAILABLE(8)/.FALSE./
+## }
+## if(tirust_supports_quad_prec) {
+      DATA LOOPLIBS_QPAVAILABLE(9)/.TRUE./
+## } else {
+      DATA LOOPLIBS_QPAVAILABLE(9)/.FALSE./
 ## }
 C     PS CAN POSSIBLY BE PASSED THROUGH IMPROVE_PS BUT IS NOT MODIFIED FOR THE PURPOSE OF THE STABILITY TEST
 C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT USED ANYWHERE ELSE
@@ -298,6 +391,17 @@ C     EVEN THOUGH THEY ARE PUT IN COMMON BLOCK, FOR NOW THEY ARE NOT USED ANYWHE
 C     AGAIN BELOW, MP_PS IS THE FIXED (POSSIBLY IMPROVED) MP PS POINT AND MP_P IS THE ONE WHICH CAN BE MODIFIED (I.E. ROTATED ETC.) FOR STABILITY PURPOSE
 	  %(real_mp_format)s MP_PS(0:3,NEXTERNAL),MP_P(0:3,NEXTERNAL)
 	  common/%(proc_prefix)sMP_PSPOINT/MP_PS,MP_P
+## if(OniaPwaveEP) {
+C     A P-wave bound state with #PWaveExtendedPrecision: the PS point of the
+C     extended-precision (EP) passes, fixed (EP_PS) and rotated (EP_P), and
+C     whether the current pass is one (ONIA_EP_PASS, for the loop lines)
+	  REAL(EPK) EP_PS(0:3,NEXTERNAL),EP_P(0:3,NEXTERNAL)
+	  common/%(proc_prefix)sEP_PSPOINT/EP_PS,EP_P
+	  LOGICAL EP_PS_SET
+	  DATA EP_PS_SET/.FALSE./
+	  LOGICAL ONIA_EP_PASS
+	  common/%(proc_prefix)sONIA_EP/ONIA_EP_PASS
+## }
 
 	  %(real_dp_format)s LSCALE
 	  INTEGER CTMODE	  
@@ -363,15 +467,43 @@ C     This can be accessed with the SET_FORBID_HEL_DOUBLECHECK subroutine of Mad
 	  %(complex_dp_format)s AMP(NBORNAMPS)
 	  common/%(proc_prefix)sAMPS/AMP
 ## }
+## if(not OniaPwave) {
 	  type(aloha) W(NWAVEFUNCS)
 	  common/%(proc_prefix)sW/W  
+## }
 
+## if(not OniaPwave) {
       type(mp_aloha) MPW(NWAVEFUNCS)
 	  common/%(proc_prefix)sMP_W/MPW
+## }
 
 	  %(complex_dp_format)s WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
 	  %(complex_dp_format)s PL(0:3,-1:NLOOPWAVEFUNCS)
 	  common/%(proc_prefix)sWL/WL,PL
+## if(OniaPwave) {
+C     A P-wave bound state (onia_loop.f): the dual constituent momenta of
+C     the current direction of the relative momentum, the derivatives DWL of
+C     the loop wavefunctions, the dual momenta of the loop lines, and the
+C     polynomials PCOEFS of the propagator derivatives
+      INTEGER ONIA_ILZ, ONIA_PASS
+	  %(complex_dp_format)s DWL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  common/%(proc_prefix)sPW_DWL/DWL
+	  %(complex_dp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+	  common/%(proc_prefix)sPW_PCOEFS/PCOEFS
+## if(OniaPwave2) {
+C     Two P-wave bound states: the derivatives DWL2 (second state) and D2WL
+C     (mixed) of the loop wavefunctions, and the polynomials of the
+C     propagator derivatives
+	  %(complex_dp_format)s DWL2(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  %(complex_dp_format)s D2WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  common/%(proc_prefix)sPW_DWL2/DWL2,D2WL
+	  %(complex_dp_format)s PW2_P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+	  %(complex_dp_format)s PW2_P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
+	  %(complex_dp_format)s PW2_PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
+	  %(complex_dp_format)s PW2_PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
+	  common/%(proc_prefix)sPW2_PCOEFS/PW2_P1,PW2_P2,PW2_PX,PW2_PT
+## }
+## }
 
 ## if(not AmplitudeReduction){
 	  %(complex_dp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
@@ -406,6 +538,14 @@ C This flag is used to prevent the re-computation of the OpenLoop coefficients w
 	  INTEGER CF_D(NCOLORROWS,%(color_matrix_size)s)
 	  INTEGER CF_N(NCOLORROWS,%(color_matrix_size)s)
 	  common/%(proc_prefix)sCF/CF_D,CF_N
+## if(not AmplitudeReduction){
+C     Split-order index tables read by CREATE_LOOP_COEFS: the Born amplitude
+C     split-order indices, and the squared split-order index of (Born split
+C     order, loop amplitude), cached on first use (0 = not yet known).
+	  INTEGER BORNAMP_SO(NBORNAMPS)
+	  INTEGER LOOPAMP_SQSO(NAMPSO,NCOLORROWS)
+	  common/%(proc_prefix)sSOTABLES/BORNAMP_SO,LOOPAMP_SQSO
+## }
 
 	  INTEGER HELC(NEXTERNAL,NCOMB)
 	  common/%(proc_prefix)sHELCONFIGS/HELC
@@ -480,6 +620,7 @@ IF(ML_INIT) THEN
   CALL setMadLoopPath(TMP)
   CALL JOINPATH(MLPATH,PARAMFNAME,PARAMFN)
   CALL MADLOOPPARAMREADER(PARAMFN,.TRUE.)
+  CALL ML_APPLY_LOOP_POLE_MODE()
   IF (FORCED_CHOICE_OF_COLLIER_UV_POLE_COMPUTATION) THEN
     COLLIERComputeUVpoles = COLLIER_UV_POLE_COMPUTATION_CHOICE
   ENDIF
@@ -524,10 +665,38 @@ C Make sure that NROTATIONS_QP and NROTATIONS_DP are set to zero if AUTOMATIC_CA
 
 ENDIF
 
+C Check every evaluation because callers may change the mode at runtime.
+CALL ML_CHECK_LOOP_POLE_MODE()
+IF(.NOT.TIRustComputeFinite) THEN
+  WRITE(*,*) 'Poles-only tensors are not complete amplitudes.'
+  WRITE(*,*) 'Use TIRUST_TENSOR_DIAGNOSTIC for poles-only evaluation.'
+          STOP 1
+ENDIF
+C Learned zero and equivalent-helicity filters belong to the pole convention
+C that produced them.  Diagnostic modes must include cancelling UV/IR loops.
+BYPASS_FILTERS=BYPASS_CHECK.OR.LoopPoleMode.GT.0
+C Legacy COLLIER filters may have been trained without one pole origin.
+C Isolate them when explicit combined poles override those switches.
+IF (LoopPoleMode.EQ.0.AND.ANY(MLReductionLib.EQ.7).AND.(.NOT.COLLIERComputeUVpoles.OR..NOT.COLLIERComputeIRpoles)) THEN
+  BYPASS_FILTERS=.TRUE.
+ENDIF
+
 IF (LOCAL_ML_INIT) THEN
   LOCAL_ML_INIT = .FALSE.
   QP_TOOLS_AVAILABLE=.FALSE.
   INDEX_QP_TOOLS(1:QP_NLOOPLIB+1)=0
+C Explain an explicit NinjaRS-only request before dropping unavailable tools.
+  IF(MLReductionLib(1).EQ.8.AND.MLReductionLib(2).EQ.0.AND..NOT.LOOPLIBS_AVAILABLE(8))THEN
+     WRITE(*,*) 'NinjaRS (MLReductionLib=8) is unavailable in this generated process.'
+     WRITE(*,*) 'Run install ninjars in MadGraph, then regenerate and rebuild this process.'
+     STOP 'Requested NinjaRS backend is unavailable.'
+  ENDIF
+  IF(MLReductionLib(1).EQ.9.AND.MLReductionLib(2).EQ.0.AND..NOT.LOOPLIBS_AVAILABLE(9))THEN
+     WRITE(*,*) 'TIRust (MLReductionLib=9) is unavailable in this generated process.'
+     WRITE(*,*) 'Run install tirust, then regenerate and rebuild this process.'
+     WRITE(*,*) 'Requested TIRust backend is unavailable.'
+          STOP 1
+  ENDIF
 C SKIP THE ONES THAT NOT AVAILABLE
   J=1
   DO I=1,NLOOPLIB
@@ -603,6 +772,22 @@ OPEN(1, FILE=ColorDenomFN, err=106, status='OLD',           action='READ')
   STOP 'Color factors could not be initialized from file %(proc_prefix)sColorDenomFactors.dat. File not found' 
 107  CONTINUE
 CLOSE(1)
+## if(not AmplitudeReduction){
+  DO J=1,NBORNAMPS
+    DO I=1,NCTAMPS
+      CFTOT=DCMPLX(CF_N(I,J)/DBLE(ABS(CF_D(I,J))),0.0d0)
+      IF(CF_D(I,J).LT.0) CFTOT=CFTOT*IMAG1
+      CF_CT(I,J)=CFTOT
+      SQSO_CT(I,J)=%(proc_prefix)sML5SQSOINDEX(%(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP(I),%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(J))
+    ENDDO
+    BORNAMP_SO(J)=%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(J)
+  ENDDO
+  DO I=1,NCOLORROWS
+    DO J=1,NAMPSO
+      LOOPAMP_SQSO(J,I)=0
+    ENDDO
+  ENDDO
+## }
 OPEN(1, FILE=HelConfigFN, err=108, status='OLD',                  action='READ')
   DO H=1,NCOMB
     READ(1,*,END=109) (HELC(I,H),I=1,NEXTERNAL)
@@ -632,6 +817,37 @@ C The index -1 is for the charge-conjugated fermions with flipped fermion flow.
 	  ENDDO
 	ENDDO
   ENDDO
+## if(OniaPwave) {
+C The starting loop wavefunctions do not depend on the relative momentum
+  CALL %(proc_prefix)sPW_DUAL_INIT()
+  DO I=0,3
+    PWPL(I,-1)=0.0d0
+    PWPL(I,0)=0.0d0
+  ENDDO
+  DO I=1,MAXLWFSIZE
+    DO J=0,LOOPMAXCOEFS-1
+	  DO K=1,MAXLWFSIZE
+	    DWL(I,J,K,-1)=(0.0d0,0.0d0)
+	    DWL(I,J,K,0)=(0.0d0,0.0d0)
+## if(OniaPwave2) {
+	    DWL2(I,J,K,-1)=(0.0d0,0.0d0)
+	    DWL2(I,J,K,0)=(0.0d0,0.0d0)
+	    D2WL(I,J,K,-1)=(0.0d0,0.0d0)
+	    D2WL(I,J,K,0)=(0.0d0,0.0d0)
+## }
+	  ENDDO
+	ENDDO
+  ENDDO
+## if(OniaPwaveEP) {
+  IF (PWaveExtendedPrecision.AND.MLReductionLib(1).NE.9) THEN
+    WRITE(*,*) 'WARNING:: #PWaveExtendedPrecision: the extended-precision passes need TIRust (MLReductionLib=9); the passes of other libraries stay in double precision.'
+  ENDIF
+## } else {
+  IF (PWaveExtendedPrecision) THEN
+    WRITE(*,*) 'WARNING:: #PWaveExtendedPrecision is ignored: this output has no extended-precision code (it needs one P-wave bound state and a TIRust installation with extended inputs, raised_power_extended_inputs).'
+  ENDIF
+## }
+## }
   IF(BOOTANDSTOP) THEN
     WRITE(*,*) '##Stopped by user request.'
     stop
@@ -735,7 +951,14 @@ C the split_order summed value I=0 is used in ML5 code.
 DO I=0,NSQSO_BORN
   BORNBUFF(I)=0.0d0
 ENDDO
+## if(Onia) {
+C The Born of the bound states: the projection of the constituent Born
+C amplitudes, which also prepares the effective Born of each constituent
+C helicity configuration (onia_loop.f)
+CALL %(proc_prefix)sONIA_BORN(P_USER,BORNBUFF(0))
+## } else {
 CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))
+## }
 DO I=0,NSQSO_BORN
   ANS(0,I)=BORNBUFF(I)
 ENDDO
@@ -761,6 +984,11 @@ REF=REF+ANS(0,I)
 ENDDO
 ## }
 
+## if(OniaPwaveEP) {
+EP_PS_SET=.FALSE.
+## }
+FPE_IN_DP_REDUCTION=.FALSE.
+FPE_IN_QP_REDUCTION=.FALSE.
 MP_DONE=.FALSE.
 MP_DONE_ONCE=.FALSE.
 MP_PS_SET=.FALSE.
@@ -774,9 +1002,9 @@ ENDDO
 ## if(LoopInduced) {
 C For loop-induced processes, we should make sure not to use the first points
 C to set the filters because it doesn't have a reasonable REF scale yet.
-IF(.NOT.BYPASS_CHECK.AND.NPSPOINTS.GE.1) THEN
+IF(.NOT.BYPASS_FILTERS.AND.NPSPOINTS.GE.1) THEN
 ## } else {
-IF(.NOT.BYPASS_CHECK) THEN
+IF(.NOT.BYPASS_FILTERS) THEN
 ## }
   NTRY=NTRY+1
 ENDIF
@@ -799,7 +1027,7 @@ ENDIF
 
 CHECKPHASE=(NTRY.LE.CHECKCYCLE).AND.(((.NOT.FOUNDLOOPFILTER).AND.USELOOPFILTER).OR.(.NOT.FOUNDHELFILTER))
 
-IF (WriteOutFilters) THEN
+IF (WriteOutFilters.AND..NOT.BYPASS_FILTERS) THEN
 IF ((HelicityFilterLevel.ne.0).AND.(.NOT. CHECKPHASE).AND.(.NOT.FOUNDHELFILTER)) THEN
 OPEN(1, FILE=HelFilterFN, err=110, status='NEW',action='WRITE')
   DO I=1,NCOMB
@@ -821,7 +1049,7 @@ FOUNDLOOPFILTER=.TRUE.
 ENDIF
 ENDIF
 
-IF (BYPASS_CHECK) THEN
+IF (BYPASS_FILTERS) THEN
   OLD_CHECKPHASE = CHECKPHASE
   OLD_HELDOUBLECHECKED = HELDOUBLECHECKED
   CHECKPHASE = .FALSE.
@@ -985,6 +1213,15 @@ DO I=1,NLOOPGROUPS
   ENDDO
 ENDDO
 ## }
+## if(OniaPwave) {
+PCOEFS=(0.0d0,0.0d0)
+## if(OniaPwave2) {
+PW2_P1=(0.0d0,0.0d0)
+PW2_P2=(0.0d0,0.0d0)
+PW2_PX=(0.0d0,0.0d0)
+PW2_PT=(0.0d0,0.0d0)
+## }
+## }
 
 DO I=1,NLOOPGROUPS
   DO J=1,3
@@ -1029,7 +1266,32 @@ C We must skip the double precision computation of both loop amplitudes and CT a
   goto 301
 ## }
 ENDIF
+## if(OniaPwaveEP) {
 
+C A P-wave bound state with #PWaveExtendedPrecision: the double-precision
+C passes (CTMODE 1, 2) are computed in extended precision, as the
+C quadruple-precision ones (EP_COMPUTE_LOOP_COEFS, then EP_TIRUST_LOOP for
+C each loop). The counterterm interference is then in extended precision:
+C its rounding does not limit the accuracy (ONIA_CTSQ).
+ONIA_EP_PASS=PWaveExtendedPrecision.AND.(CTMODE.EQ.1.OR.CTMODE.EQ.2).AND.MLReductionLib(I_LIB).EQ.9
+IF (ONIA_EP_PASS) THEN
+  IF (.NOT.EP_PS_SET) THEN
+C   the EP parameters (masses) of the improvement of the PS point
+    CALL %(proc_prefix)sEP_UPDATE_AS_PARAM()
+    CALL %(proc_prefix)sSET_EP_PS(P_USER)
+    EP_PS_SET=.TRUE.
+  ENDIF
+  ONIA_CTSQ=0.0d0
+  CALL %(proc_prefix)sEP_COMPUTE_LOOP_COEFS(EP_P,BUFFR_BIS)
+  goto 300
+ENDIF
+## }
+
+## if(Onia) {
+C The effective Born amplitudes of the bound states for this PS point
+CALL %(proc_prefix)sONIA_PREPARE(P)
+ONIA_CTSQ=0.0d0
+## }
 DO H=1,NCOMB
   IF ((HELPICKED.EQ.H).OR.((HELPICKED.EQ.-1).AND.(CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED).OR.(GOODHEL(H).GT.-HELOFFSET.AND.GOODHEL(H).NE.0)))) THEN
   
@@ -1037,10 +1299,25 @@ C  Handle the possible requirement of specific polarizations
   IF ((.NOT.CHECKPHASE).AND.HELDOUBLECHECKED.AND.POLARIZATIONS(0,0).eq.0.AND.(.NOT.%(proc_prefix)sIS_HEL_SELECTED(H))) THEN
     CYCLE
   ENDIF
+## if(Onia) {
+C  A constituent helicity configuration without effective Born at this point
+  IF (.NOT.%(proc_prefix)sONIA_HEL_LIVE(H)) CYCLE
+## }
 
   DO I=1,NEXTERNAL
     NHEL(I)=HELC(I,H)
   ENDDO
+## if(OniaPwave) {
+C  A P-wave bound state: the amplitudes and their derivatives along each
+C  direction eps(L_z) of the relative momentum (dual momenta PD); with two
+C  P-wave states along each pair of directions
+## if(OniaPwave2) {
+  DO ONIA_ILZ=1,9
+## } else {
+  DO ONIA_ILZ=1,3
+## }
+  IF (.NOT.%(proc_prefix)sONIA_PW_DIRECTION(P,H,ONIA_ILZ,PWPD)) CYCLE
+## }
   
   UVCT_REQ_SO_DONE=.FALSE.
   CT_REQ_SO_DONE=.FALSE.
@@ -1087,28 +1364,78 @@ c FeynRules, there are none of these type of counterterms.
   %(uvct_helas_calls)s
 3000 CONTINUE
   UVCT_REQ_SO_DONE=.TRUE.
+## if(OniaPwave) {
+C The P-wave bound state: the counterterm amplitudes (pass 1: derivative,
+C pass 2: value) with their effective Born; with two P-wave states the
+C four components of each pair of directions
+## if(OniaPwave2) {
+  DO ONIA_PASS=1,4
+## } else {
+  DO ONIA_PASS=1,2
+## }
+  IF (.NOT.%(proc_prefix)sONIA_PW_CT_INPUT(H,ONIA_PASS,AMP,AMPL)) CYCLE
+## } else {
+## if(Onia) {
+C The bound states: the Born amplitudes are replaced by the effective Born
+C of this constituent helicity configuration
+  CALL %(proc_prefix)sONIA_EFFECTIVE_BORN(H,AMP)
+## }
+## }
 
 ## if(not AmplitudeReduction) {
+C The tabulated factors give the same operations in the same order as the
+C former per-term evaluation. With a single squared split order, every term
+C goes to ANS(K,1) and ANS(K,0): they are accumulated in registers instead.
+  IF (NSQUAREDSO.EQ.1) THEN
+    IF (.NOT.FILTER_SO.OR.SQSO_TARGET.EQ.1) THEN
+      DO K=1,3
+        ACC_SO(K)=ANS(K,1)
+        ACC_ALL(K)=ANS(K,0)
+      ENDDO
+      DO J=1,NBORNAMPS
+        CTEMP = 2.0d0*HEL_MULT*DCONJG(AMP(J))
+        DO I=1,NCTAMPS
+          DO K=1,3
+            TEMP2 = DBLE(CF_CT(I,J)*AMPL(K,I)*CTEMP)
+            ACC_SO(K)=ACC_SO(K)+TEMP2
+            ACC_ALL(K)=ACC_ALL(K)+TEMP2
+## if(Onia) {
+            IF (K.EQ.1) ONIA_CTSQ=ONIA_CTSQ+TEMP2*TEMP2
+## }
+          ENDDO
+        ENDDO
+      ENDDO
+      DO K=1,3
+        ANS(K,1)=ACC_SO(K)
+        ANS(K,0)=ACC_ALL(K)
+      ENDDO
+    ENDIF
+  ELSE
   DO J=1,NBORNAMPS
     CTEMP = 2.0d0*HEL_MULT*DCONJG(AMP(J))
-    DO I=1,NCTAMPS	
-	  CFTOT=DCMPLX(CF_N(I,J)/DBLE(ABS(CF_D(I,J))),0.0d0)
-      IF(CF_D(I,J).LT.0) CFTOT=CFTOT*IMAG1
-      ITEMP = %(proc_prefix)sML5SQSOINDEX(%(proc_prefix)sML5SOINDEX_FOR_LOOP_AMP(I),%(proc_prefix)sML5SOINDEX_FOR_BORN_AMP(J))
+    DO I=1,NCTAMPS
+      ITEMP = SQSO_CT(I,J)
 	  IF (.NOT.FILTER_SO.OR.SQSO_TARGET.EQ.ITEMP) THEN
         DO K=1,3
-          TEMP2 = DBLE(CFTOT*AMPL(K,I)*CTEMP)
+          TEMP2 = DBLE(CF_CT(I,J)*AMPL(K,I)*CTEMP)
           ANS(K,ITEMP)=ANS(K,ITEMP)+TEMP2
           ANS(K,0)=ANS(K,0)+TEMP2
         ENDDO
       ENDIF
     ENDDO
   ENDDO
+  ENDIF
+## }
+## if(OniaPwave) {
+  ENDDO
 ## }
   
   %(coef_construction)s
 4000 CONTINUE
   LOOP_REQ_SO_DONE=.TRUE.
+## if(OniaPwave) {
+  ENDDO
+## }
 
 ## if(AmplitudeReduction) {
   IF(SKIPLOOPEVAL.OR.(.NOT.LOOP_REQ_SO_DONE.AND..NOT.MP_LOOP_REQ_SO_DONE)) THEN
@@ -1680,6 +2007,9 @@ C     If some TIR library would not support the loop direction test (they all do
 	EVAL_DONE(3)=.TRUE.
 	CALL %(proc_prefix)sROTATE_PS(PS,P,1)
 	IF (DOING_QP_EVALS) CALL %(proc_prefix)sMP_ROTATE_PS(MP_PS,MP_P,1)
+## if(OniaPwaveEP) {
+	IF (.NOT.DOING_QP_EVALS.AND.EP_PS_SET) CALL %(proc_prefix)sEP_ROTATE_PS(EP_PS,EP_P,1)
+## }
 	goto 200
   ENDIF
 
@@ -1687,11 +2017,17 @@ C     If some TIR library would not support the loop direction test (they all do
 	EVAL_DONE(4)=.TRUE.
 	CALL %(proc_prefix)sROTATE_PS(PS,P,2)
 	IF (DOING_QP_EVALS) CALL %(proc_prefix)sMP_ROTATE_PS(MP_PS,MP_P,2)
+## if(OniaPwaveEP) {
+	IF (.NOT.DOING_QP_EVALS.AND.EP_PS_SET) CALL %(proc_prefix)sEP_ROTATE_PS(EP_PS,EP_P,2)
+## }
 	goto 200
   ENDIF
 
   CALL %(proc_prefix)sROTATE_PS(PS,P,0)
   IF (DOING_QP_EVALS) CALL %(proc_prefix)sMP_ROTATE_PS(MP_PS,MP_P,0)
+## if(OniaPwaveEP) {
+  IF (EP_PS_SET) CALL %(proc_prefix)sEP_ROTATE_PS(EP_PS,EP_P,0)
+## }
 
 C END OF THE DEFINITIONS OF THE DIFFERENT EVALUATION METHODS
 
@@ -1777,7 +2113,66 @@ C   the result cannot be trusted at all and we hardset all accuracies to 1.0
         ACC(I)=1.0d0
       ENDDO
     ENDIF
+## if(Onia) {
+C   Bound states: the evaluations of the stability test share the
+C   counterterm interference (reversing the loop direction does not change
+C   it), so they cannot measure its rounding. Near a soft jet its terms,
+C   each of them accurate, can be large and cancel: the R2 gluon
+C   self-energy of a heavy quark carries its mass squared, and the projected
+C   sum over the constituent helicities vanishes. Their rounding, about
+C   epsilon times the root of the sum of their squares, bounds the accuracy
+C   from below; a point beyond MLStabThres is then evaluated in quadruple
+C   precision, which computes the counterterms in quadruple precision too.
+    IF (ANS(1,0).NE.0.0d0) THEN
+      ONIA_CTACC=EPSILON(1.0d0)*SQRT(ONIA_CTSQ)/ABS(ANS(1,0))
+    ELSEIF (ONIA_CTSQ.GT.0.0d0) THEN
+      ONIA_CTACC=1.0d0
+    ELSE
+      ONIA_CTACC=0.0d0
+    ENDIF
+    DO I=0,NSQUAREDSO
+      ACC(I)=MAX(ACC(I),ONIA_CTACC)
+    ENDDO
+## }
+## if(ninjars_available) {
+C         One explicit compensated DP retry with the same stability checks.
+          IF(NRS_RETRY_MODE) THEN
+            NRS_COMP_ACC=MAXVAL(ACC)
+            NRS_RETRY_MODE=.FALSE.
+            IF(MAXVAL(ACC).LT.MLSTABTHRES.AND..NOT.FPE_IN_DP_REDUCTION) THEN
+              NRS_RETRY_PASS=NRS_RETRY_PASS+1
+            ELSE
+              NRS_RETRY_FAIL=NRS_RETRY_FAIL+1
+            ENDIF
+          ENDIF
+          IF(MAXVAL(ACC).GE.MLSTABTHRES) THEN
+            IF(MLREDUCTIONLIB(I_LIB).EQ.8.AND..NOT.NRS_RETRY_USED) THEN
+              NRS_NATIVE_ACC=MAXVAL(ACC)
+              IF(.NOT.FPE_IN_DP_REDUCTION.AND.ALL(IEEE_IS_FINITE(ACC)).AND.ALL(IEEE_IS_FINITE(DP_RES(:,:,1:N_DP_EVAL)))) THEN
+                NRS_RETRY_USED=.TRUE.
+                NRS_RETRY_MODE=.TRUE.
+                NRS_RETRY_COUNT=NRS_RETRY_COUNT+1
+                EVAL_DONE(1)=.TRUE.
+                DO I=2,MAXSTABILITYLENGTH
+                  EVAL_DONE(I)=.FALSE.
+                ENDDO
+                STAB_INDEX=0
+                CTMODE=1
+                DP_RES=0D0
+                IF(NROTATIONS_DP.GE.1) THEN
+                  GOTO 200
+                ELSE
+                  GOTO 300
+                ENDIF
+              ELSE
+                NRS_RETRY_HARD_SKIP=NRS_RETRY_HARD_SKIP+1
+              ENDIF
+            ENDIF
+C           Mode is off before advancing a backend or entering genuine QP.
+            NRS_RETRY_MODE=.FALSE.
+## } else {
 	IF(MAXVAL(ACC).GE.MLSTABTHRES) THEN
+## }
 	  I_LIB=I_LIB+1
 	  IF((I_LIB.GT.NLOOPLIB.OR.MLReductionLib(I_LIB).EQ.0).AND.QP_TOOLS_AVAILABLE)THEN
 	        I_LIB=INDEX_QP_TOOLS(1)
@@ -1907,7 +2302,7 @@ NROTATIONS_DP = NROTATIONS_DP_BU
 NROTATIONS_QP = NROTATIONS_QP_BU
 
 C Reinitialize the check phase logicals and the filters if check bypassed
-IF (BYPASS_CHECK) THEN
+IF (BYPASS_FILTERS) THEN
   CHECKPHASE = OLD_CHECKPHASE
   HELDOUBLECHECKED = OLD_HELDOUBLECHECKED
   DO I=1,NCOMB
@@ -1939,6 +2334,9 @@ C     AUTOMATIC_CACHE_CLEARING is set to False. It must then be called after
 C     ech event
 C
         CALL %(proc_prefix)sCLEAR_TIR_CACHE()
+## if(tirust_available){
+        CALL %(proc_prefix)sCLEAR_TIRUST_CACHE()
+## }
 ## if(ninja_available){
         call ninja_clear_integral_cache()
 ## }
@@ -2582,6 +2980,15 @@ C --=========================================--
 C   Definition of additional access routines
 C --=========================================--
 
+      SUBROUTINE %(proc_prefix)sSET_LOOP_POLE_MODE(MODE)
+C     Select bare loop poles: -1 legacy, 0 both, 1 UV, 2 IR, 3 none.
+C     Counterterms and rational R2 contributions are not changed.
+      IMPLICIT NONE
+      INTEGER MODE
+C     All subprocesses share MadLoop's card and initialization state.
+      CALL ML_SET_LOOP_POLE_MODE(MODE)
+      END SUBROUTINE
+
 	  SUBROUTINE %(proc_prefix)sCOLLIER_COMPUTE_UV_POLES(ONOFF)
 C
 C This function can be called by the MadLoop user so as to chose to have COLLIER
@@ -2905,7 +3312,9 @@ C     PREC_FOUND         double  :: Relative accuracy estimated for the result
 C                                   Returns -1 if no stab test could be performed.
 C	  RET_CODE			 integer :: Return code. See below for details
 C
-C     Return code conventions: RET_CODE = H*100 + T*10 + U
+C     Return-code format 2: RET_CODE = H*100 + T*10 + U
+C     PJFry is retired. NinjaRS uses U=2 in both precisions.
+C     Record ML_GET_RETURN_CODE_VERSION() alongside saved return codes.
 C
 C     H == 1
 C         Stability unknown.
@@ -2933,17 +3342,21 @@ C         Not stable.
 C     U == 1
 C         Stable with CutTools in double precision.
 C     U == 2
-C         Stable with PJFry++.
+C         Stable with NinjaRS. T records whether quadruple precision was used.
 C     U == 3
-C         Stable with IREGI.
+C         Stable with IREGI or TIRust (MLReductionLib=3 or 9).
+C         ML_GET_RET_CODE_LIBRARY() tells them apart. T records whether
+C         quadruple precision was used.
 C     U == 4
 C         Stable with Golem95
 C     U == 5
 C         Stable with Samurai
 C     U == 6
 C         Stable with Ninja in double precision
+C     U == 7
+C         Stable with COLLIER.
 C     U == 8
-C         Stable with Ninja in quadruple precision
+C         Stable with Ninja in quadruple precision.
 C     U == 9
 C         Stable with CutTools in quadruple precision.         
 C
@@ -3008,8 +3421,17 @@ C Reset it to default value not to affect next runs
 C The subroutine below perform clean-up duties for MadLoop like de-allocating
 c arrays
 	  SUBROUTINE %(proc_prefix)sEXIT_MADLOOP()
+## if(ninjars_available) {
+        USE MNINJARS, ONLY: NINJARS_FINALIZE
+## }
 ## if(ComputeColorFlows) {
 	    CALL %(proc_prefix)sDEALLOCATE_COLOR_FLOWS()
+## }
+## if(ninjars_available) {
+        CALL NINJARS_FINALIZE()
+## }
+## if(tirust_available) {
+        CALL %(proc_prefix)sFINALIZE_TIRUST()
 ## }
         CONTINUE
 	  END

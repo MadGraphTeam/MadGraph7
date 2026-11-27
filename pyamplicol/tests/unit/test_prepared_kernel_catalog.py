@@ -195,16 +195,19 @@ def test_builtin_chirality_dimensions_and_propagator_coverage(
     )
 
 
-def test_direct_contractions_remain_native_while_vertex_closures_are_catalogued(
+def test_direct_contractions_remain_native_and_no_vertex_closure_is_catalogued(
     builtin_catalog,
 ) -> None:
+    """A vertex closure joins the full current and the sink through one more
+    vertex into a scalar: no diagram of the process. The built-in SM, as the
+    UFO models, has none (its recurrence lane refused h h > h h on one)."""
+
     _model, catalog = builtin_catalog
     kinds = Counter(kernel.contract_kind for kernel in catalog.kernels)
 
     assert "direct-contraction" not in kinds
-    assert kinds["closure"] > 0
-    assert catalog.closure_bindings
-    assert all(binding.projection == "scalar" for binding in catalog.closure_bindings)
+    assert "closure" not in kinds
+    assert not catalog.closure_bindings
 
 
 def test_builtin_catalog_factors_and_deduplicates_linear_coupling_outputs(

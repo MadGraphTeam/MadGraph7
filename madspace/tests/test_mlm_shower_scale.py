@@ -10,6 +10,9 @@ import pytest
 
 import madspace as ms
 
+# host-side LHE events
+pytestmark = pytest.mark.cpu_only
+
 SQRT_S = 13000.0
 IN, OUT, RES = (
     ms.LHEParticle.status_incoming,
@@ -37,17 +40,34 @@ def scales(lhe):
 
 def test_leptons_start_at_mu_f():
     # u g > W(> e+ ve) d: the leptons were at sqrt(s), the jet has its own scale
-    lhe = event(83.0, [(2, IN, 0.), (21, IN, 0.), (24, RES, 0.), (-11, OUT, SQRT_S),
-                       (12, OUT, SQRT_S), (1, OUT, 25.0)])
+    lhe = event(
+        83.0,
+        [
+            (2, IN, 0.0),
+            (21, IN, 0.0),
+            (24, RES, 0.0),
+            (-11, OUT, SQRT_S),
+            (12, OUT, SQRT_S),
+            (1, OUT, 25.0),
+        ],
+    )
     ms.apply_mlm_hardest_shower_scale(lhe, SQRT_S, 4)
-    assert scales(lhe) == [0., 0., 0., 83.0, 83.0, 25.0]
+    assert scales(lhe) == [0.0, 0.0, 0.0, 83.0, 83.0, 25.0]
     assert lhe.scale == 83.0
     assert 'pt_clust_4="83.00000"' in lhe.format()
 
 
 def test_a_jet_harder_than_mu_f_sets_the_scale():
-    lhe = event(83.0, [(2, IN, 0.), (21, IN, 0.), (-11, OUT, SQRT_S), (12, OUT, SQRT_S),
-                       (1, OUT, 150.0)])
+    lhe = event(
+        83.0,
+        [
+            (2, IN, 0.0),
+            (21, IN, 0.0),
+            (-11, OUT, SQRT_S),
+            (12, OUT, SQRT_S),
+            (1, OUT, 150.0),
+        ],
+    )
     ms.apply_mlm_hardest_shower_scale(lhe, SQRT_S, 4)
     assert scales(lhe)[2:] == [150.0, 150.0, 150.0]
 
@@ -55,16 +75,34 @@ def test_a_jet_harder_than_mu_f_sets_the_scale():
 def test_a_core_light_parton_keeps_the_flag():
     # the gluon in the core is not matched by Pythia8 only at sqrt(s), and its
     # flag does not count towards the hardest scale
-    lhe = event(90.0, [(2, IN, 0.), (-2, IN, 0.), (-11, OUT, SQRT_S), (12, OUT, SQRT_S),
-                       (21, OUT, SQRT_S), (1, OUT, 30.0)])
+    lhe = event(
+        90.0,
+        [
+            (2, IN, 0.0),
+            (-2, IN, 0.0),
+            (-11, OUT, SQRT_S),
+            (12, OUT, SQRT_S),
+            (21, OUT, SQRT_S),
+            (1, OUT, 30.0),
+        ],
+    )
     ms.apply_mlm_hardest_shower_scale(lhe, SQRT_S, 4)
     assert scales(lhe)[2:] == [90.0, 90.0, SQRT_S, 30.0]
 
 
 @pytest.mark.parametrize("max_jet_flavor, b_scale", [(4, 210.0), (5, SQRT_S)])
 def test_heavy_quarks_follow_max_jet_flavor(max_jet_flavor, b_scale):
-    lhe = event(210.0, [(21, IN, 0.), (21, IN, 0.), (6, OUT, SQRT_S), (-6, OUT, SQRT_S),
-                        (5, OUT, SQRT_S), (21, OUT, 60.0)])
+    lhe = event(
+        210.0,
+        [
+            (21, IN, 0.0),
+            (21, IN, 0.0),
+            (6, OUT, SQRT_S),
+            (-6, OUT, SQRT_S),
+            (5, OUT, SQRT_S),
+            (21, OUT, 60.0),
+        ],
+    )
     ms.apply_mlm_hardest_shower_scale(lhe, SQRT_S, max_jet_flavor)
     assert scales(lhe)[2:] == [210.0, 210.0, b_scale, 60.0]
 
@@ -73,39 +111,76 @@ def test_the_core_scale_wins_over_a_soft_mu_f():
     # g g > t t~ g with mu_F at the softest clustering scale (clustering_mean
     # without the pdf ladder): the tops carry the core-process scale (210) from
     # the clustering, which must not drop to mu_F (40) or the gluon (45)
-    lhe = event(40.0, [(21, IN, 0.), (21, IN, 0.), (6, OUT, 210.0), (-6, OUT, 210.0),
-                       (21, OUT, 45.0)])
+    lhe = event(
+        40.0,
+        [
+            (21, IN, 0.0),
+            (21, IN, 0.0),
+            (6, OUT, 210.0),
+            (-6, OUT, 210.0),
+            (21, OUT, 45.0),
+        ],
+    )
     ms.apply_mlm_hardest_shower_scale(lhe, SQRT_S, 4)
     assert scales(lhe)[2:] == [210.0, 210.0, 45.0]
 
 
 def test_mu_f_and_jets_above_the_core_scale_still_win():
-    lhe = event(250.0, [(21, IN, 0.), (21, IN, 0.), (6, OUT, 210.0), (-6, OUT, 210.0),
-                        (21, OUT, 45.0)])
+    lhe = event(
+        250.0,
+        [
+            (21, IN, 0.0),
+            (21, IN, 0.0),
+            (6, OUT, 210.0),
+            (-6, OUT, 210.0),
+            (21, OUT, 45.0),
+        ],
+    )
     ms.apply_mlm_hardest_shower_scale(lhe, SQRT_S, 4)
     assert scales(lhe)[2:] == [250.0, 250.0, 45.0]
-    lhe = event(40.0, [(21, IN, 0.), (21, IN, 0.), (6, OUT, 210.0), (-6, OUT, 210.0),
-                       (21, OUT, 300.0)])
+    lhe = event(
+        40.0,
+        [
+            (21, IN, 0.0),
+            (21, IN, 0.0),
+            (6, OUT, 210.0),
+            (-6, OUT, 210.0),
+            (21, OUT, 300.0),
+        ],
+    )
     ms.apply_mlm_hardest_shower_scale(lhe, SQRT_S, 4)
     assert scales(lhe)[2:] == [300.0, 300.0, 300.0]
 
 
 def test_collider_energy_start_puts_sqrt_s_back():
-    lhe = event(40.0, [(21, IN, 0.), (21, IN, 0.), (6, OUT, 210.0), (-6, OUT, 210.0),
-                       (5, OUT, 210.0), (-11, OUT, 210.0), (21, OUT, 45.0), (1, OUT, SQRT_S)])
+    lhe = event(
+        40.0,
+        [
+            (21, IN, 0.0),
+            (21, IN, 0.0),
+            (6, OUT, 210.0),
+            (-6, OUT, 210.0),
+            (5, OUT, 210.0),
+            (-11, OUT, 210.0),
+            (21, OUT, 45.0),
+            (1, OUT, SQRT_S),
+        ],
+    )
     ms.apply_mlm_collider_shower_scale(lhe, SQRT_S, 4)
-    assert scales(lhe) == [0., 0., SQRT_S, SQRT_S, SQRT_S, SQRT_S, 45.0, SQRT_S]
-    lhe = event(40.0, [(21, IN, 0.), (21, IN, 0.), (5, OUT, 210.0), (21, OUT, 45.0)])
+    assert scales(lhe) == [0.0, 0.0, SQRT_S, SQRT_S, SQRT_S, SQRT_S, 45.0, SQRT_S]
+    lhe = event(40.0, [(21, IN, 0.0), (21, IN, 0.0), (5, OUT, 210.0), (21, OUT, 45.0)])
     ms.apply_mlm_collider_shower_scale(lhe, SQRT_S, 5)
     assert scales(lhe)[2:] == [210.0, 45.0]
 
 
 def test_events_without_cluster_scales_are_left_alone():
-    lhe = event(83.0, [(2, IN, 0.), (-1, IN, 0.), (-11, OUT, SQRT_S), (12, OUT, SQRT_S)])
+    lhe = event(
+        83.0, [(2, IN, 0.0), (-1, IN, 0.0), (-11, OUT, SQRT_S), (12, OUT, SQRT_S)]
+    )
     lhe.has_cluster_scales = False
     ms.apply_mlm_hardest_shower_scale(lhe, SQRT_S, 4)
     assert scales(lhe)[2:] == [SQRT_S, SQRT_S]
-    lhe = event(83.0, [(2, IN, 0.), (-1, IN, 0.), (-11, OUT, 83.0), (12, OUT, 83.0)])
+    lhe = event(83.0, [(2, IN, 0.0), (-1, IN, 0.0), (-11, OUT, 83.0), (12, OUT, 83.0)])
     lhe.has_cluster_scales = False
     ms.apply_mlm_collider_shower_scale(lhe, SQRT_S, 4)
     assert scales(lhe)[2:] == [83.0, 83.0]

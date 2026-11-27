@@ -14,6 +14,9 @@ from test_weighting_steps import FULL_ME_OUTPUTS, generate, make_integrand, true
 
 import madspace as ms
 
+# event streams run on a CPU context
+pytestmark = pytest.mark.cpu_only
+
 PT_MINS = (20.0, 60.0)
 
 

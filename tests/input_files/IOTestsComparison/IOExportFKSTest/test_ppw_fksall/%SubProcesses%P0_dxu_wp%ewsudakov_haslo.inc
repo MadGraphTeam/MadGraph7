@@ -1,7 +1,1 @@
-      LOGICAL HAS_LO1, HAS_LO2
-      PARAMETER (HAS_LO1=.FALSE.)
-      PARAMETER (HAS_LO2=.FALSE.)
-      INTEGER LO1_POS, LO2_POS
-      PARAMETER (LO1_POS=-100)
-      PARAMETER (LO2_POS=-100)
-
+../../_shared/IOExportFKSTest%test_gg_chic0g_fksreal%%SubProcesses%P0_gg_chic013P01g%ewsudakov_haslo.inc

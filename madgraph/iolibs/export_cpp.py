@@ -16,6 +16,7 @@
 and C++ Standalone format."""
 
 from __future__ import absolute_import
+import contextlib
 import copy
 import fractions
 import glob
@@ -50,10 +51,11 @@ import madgraph.iolibs.export_v4 as export_v4
 from madgraph.iolibs.export_v4 import VirtualExporter, ProcessExporterFortran
 import madgraph.various.misc as misc
 
+import aloha
 import aloha.create_aloha as create_aloha
 import aloha.aloha_writers as aloha_writers
 _file_path = os.path.split(os.path.dirname(os.path.realpath(__file__)))[0] + '/'
-logger = logging.getLogger('madgraph.export_pythia8')
+logger = logging.getLogger('madgraph.export_cpp')
 pjoin = os.path.join
 
 
@@ -197,8 +199,8 @@ class UFOModelConverterCPP(object):
             # these are the only ones settable by name at runtime (e.g. via
             # the UMAMI set_parameter interface). NB: this list is consumed
             # only by write_set_parameters() below, not by param.expr itself,
-            # since other UFOModelConverterCPP subclasses (e.g. the MadMatrix/
-            # cudacpp backend) read param.expr directly for purposes (like
+            # since other UFOModelConverterCPP subclasses (e.g. the MadMatrix
+            # backend) read param.expr directly for purposes (like
             # generating hardcoded/constexpr parameter mirrors) that require
             # it to remain a single plain assignment.
             self.params_ext_names.append(param.name)
@@ -475,15 +477,20 @@ class UFOModelConverterCPP(object):
         couplings. Single-merged-leg vertices (one merged fermion + an unmerged
         partner, e.g. the electroweak MSSM squark-quark-neutralino vertices) are
         serialized like the Fortran side (the unmerged partner is given flavor
-        index 1) and gated by the merged leg (see get_coupling_def). Dependent
+        index 1, on the side of the vertex it sits on, see
+        FLV_Coupling.get_partner_indices), and the routines read every table
+        in that one F1 -> F2 orientation (see get_coupling_def). Dependent
         flavored couplings (e.g. the SUSY-QCD MSSM gluino-squark-quark vertices)
         are gathered event-by-event into cDPF_* / flvCOUPs_dep (Step 3).
 
         Not yet supported (raises):
 
           * a vertex with more than two merged-flavor legs (never seen so far).
+            The Fortran 'madevent'/'standalone_fortran' output supports it.
+          * a coupling whose table cannot hold its keys (several keys
+            needing one slot, see FLV_Coupling.get_shared_partner_slot). The
+            Fortran output refuses it too.
 
-        The Fortran 'madevent'/'standalone_fortran' output supports the remaining cases.
         See docs/mg7_merged_flavor_mssm_design.md.
         """
         for coupl in params:
@@ -498,6 +505,7 @@ class UFOModelConverterCPP(object):
                     "'output madevent' or 'output standalone_fortran' for this process. "
                     "See docs/mg7_merged_flavor_mssm_design.md for details."
                     % (coupl.name, nb_merged))
+            coupl.assert_table_representable()
 
     def write_flv_couplings(self, params):
         """Write out the lines of independent parameters"""
@@ -705,7 +713,7 @@ class UFOModelConverterGPU(UFOModelConverterCPP):
     def write_process_h_file(self, writer):
         
         replace_dict = UFOModelConverterCPP.write_process_h_file(self, None)
-        replace_dict['include_for_complex'] = '#include "mgOnGpuTypes.h"'
+        replace_dict['include_for_complex'] = '#include "MadMatrixCxtypes.h"'
         if writer:
             file = self.read_template_file(self.process_template_h) % replace_dict
             # Write the file
@@ -793,6 +801,10 @@ class OneProcessExporterCPP(object):
 
         self.process_name = self.get_process_name()
         self.process_class = "CPPProcess"
+        # Emit the crossing-symmetry machinery (extended flavor_id carrying a
+        # crossing). Off by default; ProcessExporterCPP.generate_subprocess_-
+        # directory turns it on for standalone_cpp when --use_crossing is set.
+        self.use_crossing = False
 
         self.path = path
         self.helas_call_writer = cpp_helas_call_writer
@@ -1024,6 +1036,8 @@ class OneProcessExporterCPP(object):
         """The complete class definition for the process"""
 
         replace_dict = {}
+        # Default (no-crossing) fill; overridden in the single_helicities branch.
+        replace_dict['cross_member_decl'] = ''
 
         # Extract model name
         replace_dict['model_name'] = self.model_name
@@ -1070,15 +1084,18 @@ class OneProcessExporterCPP(object):
             
             replace_dict['wfct_size'] = wfct_size
             
+            cross_repl = self.get_crossing_replace_dict(self.matrix_elements[0])
+            replace_dict['cross_member_decl'] = cross_repl['cross_member_decl']
             replace_dict['all_sigma_kin_definitions'] = \
                           """// Calculate wavefunctions
-                          void calculate_wavefunctions(const int perm[], const int hel[], const int flavor[]);
+                          void calculate_wavefunctions(const int perm[], const int hel[], const int flavor[]%(cross_cw_sig_extra)s);
                           static const int nwavefuncs = %(nwfct)d;
                           MG5_%(model_name)s::ALOHAOBJ w[nwavefuncs];
                           """ % \
                           {'nwfct':len(self.wavefunctions),
                           'sizew': wfct_size,
-                          'model_name': self.model_name
+                          'model_name': self.model_name,
+                          'cross_cw_sig_extra': cross_repl['cross_cw_sig_extra'],
                           }
 
             replace_dict['all_matrix_definitions'] = \
@@ -1160,7 +1177,11 @@ class OneProcessExporterCPP(object):
         process = self.matrix_elements[0].get('processes')[0]
         sym_data = ProcessExporterFortran._get_broken_symmetry_data(process, nincoming)
         ProcessExporterFortran._fill_broken_sym_replace_dict(replace_dict, sym_data)
-    
+
+        # ident_cross() companion of broken_sym() (empty unless crossing is on).
+        replace_dict['ident_cross_function'] = \
+            self.get_crossing_replace_dict(self.matrix_elements[0])['ident_cross_function']
+
         if write:
             file = self.read_template_file(self.process_definition_template) %\
                replace_dict
@@ -1279,6 +1300,10 @@ class OneProcessExporterCPP(object):
         self.helas_call_writer.use_flavor_mask = (n_flavors > 0)
         self.helas_call_writer.me_n_flavors = n_flavors
         self.helas_call_writer.me_active_flavor_mask = active_flavor_mask
+        # When crossing is on, the external HELAS calls must permute the
+        # helicity through perm[] and multiply their NSF flag by ic[] (both set
+        # up by sigmaKin); mirror of the fortran use_crossing_ic gate.
+        self.helas_call_writer.use_crossing_ic = getattr(self, 'use_crossing', False)
         try:
             replace_dict['wavefunction_calls'] = "\n".join(\
                 self.helas_call_writer.get_wavefunction_calls(\
@@ -1290,6 +1315,7 @@ class OneProcessExporterCPP(object):
             self.helas_call_writer.use_flavor_mask = False
             self.helas_call_writer.me_n_flavors = 0
             self.helas_call_writer.me_active_flavor_mask = None
+            self.helas_call_writer.use_crossing_ic = False
 
         if write:
             file = self.read_template_file(self.process_wavefunction_template) % \
@@ -1490,6 +1516,296 @@ class OneProcessExporterCPP(object):
                 n_flavors, active_flavor_mask)
        
 
+    @staticmethod
+    def _cpp_int_array(values):
+        """Flat C++ initialiser '{a, b, c}' for a list of ints."""
+        return '{%s}' % ', '.join(str(int(v)) for v in values)
+
+    @staticmethod
+    def _cpp_int_array2d(flat, ncols):
+        """Nested C++ initialiser '{{...}, {...}}' from a flat list, ncols wide."""
+        rows = ['{%s}' % ', '.join(str(int(v)) for v in flat[i:i + ncols])
+                for i in range(0, len(flat), ncols)]
+        return '{%s}' % ', '.join(rows)
+
+    def get_crossing_table(self, matrix_element):
+        """The crossing table of this output, in the coupling-class convention
+        of the C++ flavor index (FLAV = the 0-based class of
+        get_external_flavors_with_iden): the recorded crossings, plus every
+        applicable one with --crossing_table=all on the output line (see
+        export_v4.ProcessExporterFortran.get_crossing_table)."""
+        return ProcessExporterFortran.get_crossing_table(
+            self, matrix_element, 'classes',
+            all_applicable=getattr(self, 'crossing_table_all', False))
+
+    def get_crossing_replace_dict(self, matrix_element):
+        """Fill the crossing-machinery holes of the C++ standalone templates.
+
+        Mirrors export_v4.fill_crossing_replace_dict for the standalone_cpp
+        backend. When self.use_crossing is False every hole gets the plain,
+        pre-crossing code (no crossing token in the output); when it is
+        True the extended flavor_id (a flavor AND a crossing) is decoded in
+        sigmaKin, the momenta/helicities are permuted through the crossing and
+        the swapped legs' NSF flag is flipped (via the ic[] array the HELAS
+        calls now read), and the denominator is split into the crossing-
+        dependent initial-state spin*color (spincol_cross) times the flavor-
+        dependent identical-final-state factor (ident_cross).
+        """
+        # Plain (no-crossing) fills: the historical template's code.
+        plain = {
+            'fidx': 'flavor_id',
+            'cross_tables_decode': '',
+            'cross_perm_block': ('int perm[nexternal];\n'
+                                 'for(int i = 0; i < nexternal; i++){\n'
+                                 '    perm[i]=i;\n'
+                                 '}'),
+            'cross_cw_args': '',
+            'cross_return':
+                'return matrix_element * broken_sym(flavor) / denominator;',
+            'cross_cw_sig_extra': '',
+            'cross_member_decl': '',
+            'ident_cross_function': '',
+            # No crossing: every call is the uncrossed process, so the C-parity
+            # de-duplication is always allowed.
+            'csym_dedup_ok': 'true',
+            'csym_doc':
+                '// C-parity helicity de-duplication (mirror of the fortran'
+                ' SMATRIX): flip[ihel]\n// is the helicity row with every'
+                ' helicity negated, an involution built once\n// from the'
+                ' helicity table. dedup_ok gates the reuse to the UNCROSSED'
+                ' process:\n// a crossing permutes/sign-flips the helicities,'
+                ' so a base-row flip is no\n// longer the crossed C-parity'
+                ' partner and the crossed flavors keep the full sum.',
+            'csym_ntry': 'ntry_csym[flavor_id]',
+            'cross_full_sum': '',
+            'sampling_owner': 'dedup_ok',
+            # Historical good-helicity filter, except that igood is filled
+            # 0-based (the historical fill-after-increment left igood[0] unset
+            # and wrote igood[ncomb], one past the row, when every helicity is
+            # good).
+            'cross_ghidx_setup': '',
+            'cross_goodhel_gate':
+                'goodhel[flavor_id][ihel] || ntry[flavor_id] < 2',
+            'cross_goodhel_train':
+                'if (t != 0. && !goodhel[flavor_id][ihel]){\n'
+                '                goodhel[flavor_id][ihel]=true;\n'
+                '                igood[flavor_id][ngood[flavor_id]] = ihel;\n'
+                '                ngood[flavor_id] ++;\n'
+                '            }',
+        }
+        if not self.use_crossing:
+            return plain
+
+        tables = ProcessExporterFortran.compute_crossing_tables(
+            self, matrix_element)
+        nexternal = tables['nexternal']
+        ninitial = tables['ninitial']
+        # The crossing table (coupling-class convention: flavor_id counts the
+        # classes of get_external_flavors_with_iden). standalone_cpp is not a
+        # folding output, so it holds the rows --crossing_table=all asks for.
+        table = self.get_crossing_table(matrix_element)
+        ncross = len(table)
+
+        # The rows in both views (see crossing_table), the crossed spin*color
+        # average per row, and the per-leg data the flavor dependent identical
+        # factor is rebuilt from at runtime.
+        xperm_init = self._cpp_int_array(table.flat('B'))
+        xsgn_init = self._cpp_int_array(table.flat('SB'))
+        xpinv_init = self._cpp_int_array(table.flat('D'))
+        xsgni_init = self._cpp_int_array(table.flat('SD'))
+        xspincol_init = self._cpp_int_array(
+            table.spincol(tables['spincol_part']))
+        ids_base_init = self._cpp_int_array(tables['ids_base'])
+        antipid_base_init = self._cpp_int_array(tables['antipid_base'])
+        countable_init = self._cpp_int_array(tables['countable'])
+        cross_tables_decode = (
+            "// Crossing symmetry: flavor_id carries a flavor AND a crossing.\n"
+            "//   cross    = flavor_id / nflavors  (a row of the crossing table)\n"
+            "//   flav_use = flavor_id %% nflavors  (index used for masking)\n"
+            "// A row is a slot permutation (cross_gather / cross_pinv): it\n"
+            "// moves the momenta between slots and flips the NSF\n"
+            "// flag of each leg that changes side; the denominator splits into\n"
+            "// the crossed initial-state spin*color (spincol_cross) and the\n"
+            "// flavor-dependent identical-final-state factor (ident_cross).\n"
+            "const int ncross = %(ncross)d;\n"
+            "int cross = flavor_id / nflavors;\n"
+            "int flav_use = flavor_id %% nflavors;\n"
+            "// No such row: an identically-zero matrix element.\n"
+            "if (cross < 0 || cross >= ncross || spincol_cross(cross) == 0)\n"
+            "    return 0.;\n"
+            "// One good-helicity filter, goodhel[flav_use], serves every\n"
+            "// crossing: each evaluates the same helicity rows (the legs that\n"
+            "// changed side negated, hel*ic). A crossed index keeps its own try\n"
+            "// counter (ntryx, a member) and adds the rows it finds while\n"
+            "// training (the helicity of a massive leg depends on the frame,\n"
+            "// and each crossing is evaluated in its own). The C-parity verdict\n"
+            "// csym_bad[flav_use] is shared the same way, each extended id\n"
+            "// scanning it over its own first calls (ntry_csymx). xid is the\n"
+            "// crossed index, -1 uncrossed.\n"
+            "const int xid = cross > 0 ? flavor_id : -1;\n"
+            "if (xid >= 0) ntryx[xid]++;"
+        ) % {'ncross': ncross}
+
+        cross_perm_block = (
+            "int perm[nexternal];\n"
+            "int ic[nexternal];\n"
+            "cross_gather(cross, perm, ic);")
+
+        cross_return = (
+            "// Uncrossed: historical path (IDEN via denominator, BROKEN_SYM\n"
+            "// correcting the identical-particle count per flavor). Crossed:\n"
+            "// rebuild the denominator from the crossed initial-state spin*color\n"
+            "// and the identical final-state factor of the actual flavors.\n"
+            "if (cross == 0)\n"
+            "    return matrix_element * broken_sym(flavor) / denominator;\n"
+            "return matrix_element / "
+            "(spincol_cross(cross) * ident_cross(cross, flavor));")
+
+        ident_cross_function = (
+            "//------------------------------------------------------------------\n"
+            "// Row `cross` of the crossing table (%(ncross)d rows, row 0 the\n"
+            "// identity), base-slot view: base slot b is fed the momentum of\n"
+            "// input slot perm[b], its NSF flag multiplied by ic[b] (-1 when\n"
+            "// the leg changes side); its helicity stays its own (tau). Left the identity for a\n"
+            "// row out of range, so a momentum gather never reads out of range;\n"
+            "// returns whether the row exists.\n"
+            "bool CPPProcess::cross_gather(int cross, int* perm, int* ic)\n"
+            "{\n"
+            "    static const int xperm[%(ncross)d * nexternal] = %(xperm)s;\n"
+            "    static const int xsgn[%(ncross)d * nexternal] = %(xsgn)s;\n"
+            "    const bool ok = cross >= 0 && cross < %(ncross)d;\n"
+            "    for (int b = 0; b < nexternal; b++)\n"
+            "    {\n"
+            "        perm[b] = ok ? xperm[cross * nexternal + b] : b;\n"
+            "        ic[b] = ok ? xsgn[cross * nexternal + b] : 1;\n"
+            "    }\n"
+            "    return ok;\n"
+            "}\n"
+            "\n"
+            "//------------------------------------------------------------------\n"
+            "// The same row, input-slot view: input slot k is fed to base slot\n"
+            "// pinv[k], charge conjugated when sgn[k] is -1. A row is in general\n"
+            "// no involution, so the two views differ.\n"
+            "bool CPPProcess::cross_pinv(int cross, int* pinv, int* sgn)\n"
+            "{\n"
+            "    static const int xpinv[%(ncross)d * nexternal] = %(xpinv)s;\n"
+            "    static const int xsgni[%(ncross)d * nexternal] = %(xsgni)s;\n"
+            "    const bool ok = cross >= 0 && cross < %(ncross)d;\n"
+            "    for (int k = 0; k < nexternal; k++)\n"
+            "    {\n"
+            "        pinv[k] = ok ? xpinv[cross * nexternal + k] : k;\n"
+            "        sgn[k] = ok ? xsgni[cross * nexternal + k] : 1;\n"
+            "    }\n"
+            "    return ok;\n"
+            "}\n"
+            "\n"
+            "//------------------------------------------------------------------\n"
+            "// Initial-state spin*color average of the process row `cross`\n"
+            "// crosses into (tabulated). 0 for a row out of range.\n"
+            "int CPPProcess::spincol_cross(int cross)\n"
+            "{\n"
+            "    static const int xspincol[%(ncross)d] = %(xspincol)s;\n"
+            "    return (cross >= 0 && cross < %(ncross)d) ? xspincol[cross] : 0;\n"
+            "}\n"
+            "\n"
+            "//------------------------------------------------------------------\n"
+            "// Identical-final-state factor (product of n!) of the crossed\n"
+            "// process. Flavor dependent, so computed at runtime: two crossed\n"
+            "// final legs are identical when they carry the same flavor group\n"
+            "// (same representative PDG -- ids_base, conjugated to antipid_base\n"
+            "// when the leg changes side) and the same actual flavor. FLAVOR is\n"
+            "// not permuted by the crossing, so input slot k reads the base leg\n"
+            "// it is fed to: flavor[pinv[k]]. A decay-block leaf (countable 0) is\n"
+            "// skipped, its resonance-level symmetry being the constant\n"
+            "// %(ident_resonance)d, as in the fortran GET_IDENT_CROSS.\n"
+            "int CPPProcess::ident_cross(int cross, const int* flavor)\n"
+            "{\n"
+            "    static const int ids_base[nexternal] = %(ids_base)s;\n"
+            "    static const int antipid_base[nexternal] = %(antipid_base)s;\n"
+            "    static const int countable[nexternal] = %(countable)s;\n"
+            "    int perm[nexternal], ic[nexternal];\n"
+            "    cross_pinv(cross, perm, ic);\n"
+            "    int bpid[nexternal];\n"
+            "    for (int k = 0; k < nexternal; k++)\n"
+            "        bpid[k] = (ic[k] == 1) ? ids_base[perm[k]] : antipid_base[perm[k]];\n"
+            "    bool used[nexternal];\n"
+            "    for (int k = 0; k < nexternal; k++) used[k] = false;\n"
+            "    int fact = %(ident_resonance)d;\n"
+            "    for (int k = %(ninitial)d; k < nexternal; k++)\n"
+            "    {\n"
+            "        if (used[k] || !countable[perm[k]]) continue;\n"
+            "        int n = 1;\n"
+            "        for (int l = k + 1; l < nexternal; l++)\n"
+            "        {\n"
+            "            if (used[l] || !countable[perm[l]]) continue;\n"
+            "            if (bpid[k] == bpid[l] &&\n"
+            "                flavor[perm[k]] == flavor[perm[l]])\n"
+            "            {\n"
+            "                used[l] = true;\n"
+            "                n = n + 1;\n"
+            "                fact = fact * n;\n"
+            "            }\n"
+            "        }\n"
+            "    }\n"
+            "    return fact;\n"
+            "}"
+        ) % {'ncross': ncross, 'xperm': xperm_init, 'xsgn': xsgn_init,
+             'xpinv': xpinv_init, 'xsgni': xsgni_init,
+             'xspincol': xspincol_init, 'ids_base': ids_base_init,
+             'antipid_base': antipid_base_init, 'countable': countable_init,
+             'ident_resonance': tables['ident_resonance'],
+             'ninitial': ninitial}
+
+        return {
+            'fidx': 'flav_use',
+            'cross_tables_decode': cross_tables_decode,
+            'cross_perm_block': cross_perm_block,
+            'cross_cw_args': ', ic',
+            'cross_return': cross_return,
+            'cross_cw_sig_extra': ', const int ic[]',
+            'cross_member_decl':
+                '  // per extended flavor id (cross * nflavors + flavor), per\n'
+                '  // instance like the goodhel and csym_bad they train: the try\n'
+                '  // counter of the shared good-helicity filter and the C-parity\n'
+                '  // scan counter (see sigmaKin)\n'
+                '  int ntryx[%(ncross)d * nflavors] = {};\n'
+                '  int ntry_csymx[%(ncross)d * nflavors] = {};\n'
+                % {'ncross': ncross} +
+                '  bool cross_gather(int cross, int* perm, int* ic);\n'
+                '  bool cross_pinv(int cross, int* pinv, int* sgn);\n'
+                '  int spincol_cross(int cross);\n'
+                '  int ident_cross(int cross, const int* flavor);',
+            'ident_cross_function': ident_cross_function,
+            # C-parity de-duplication for every call: each extended id scans
+            # the shared verdict (ntry_csymx). A crossed call keeps the full sum
+            # instead of the helicity-sampling mode, and leaves its state alone:
+            # it trains its own good rows (ntryx) in the full sum.
+            'csym_dedup_ok': 'true',
+            'csym_doc':
+                '// C-parity helicity de-duplication (mirror of the fortran'
+                ' SMATRIX): flip[ihel]\n// is the helicity row with every'
+                ' helicity negated, an involution built once\n// from the'
+                ' helicity table. A crossed call evaluates the base rows (its'
+                ' legs that\n// changed side negated), so flip is its C-parity'
+                ' partner too: every call may\n// reuse, each extended id'
+                ' scanning the shared verdict over its own first calls.',
+            'csym_ntry': 'ntry_csymx[flavor_id]',
+            'cross_full_sum': ' || xid >= 0',
+            'sampling_owner': 'xid < 0',
+            # One filter for the base and every crossing of it; the try
+            # counter is the crossed index's own.
+            'cross_ghidx_setup': '',
+            'cross_goodhel_gate':
+                'goodhel[flav_use][ihel] ||'
+                ' (xid >= 0 ? ntryx[xid] : ntry[flav_use]) < 2',
+            'cross_goodhel_train':
+                'if (t != 0. && !goodhel[flav_use][ihel]){\n'
+                '                goodhel[flav_use][ihel]=true;\n'
+                '                igood[flav_use][ngood[flav_use]] = ihel;\n'
+                '                ngood[flav_use] ++;\n'
+                '            }',
+        }
+
     def get_sigmaKin_lines(self, color_amplitudes, write=True):
         """Get sigmaKin_lines for function definition for Pythia 8 .cc file"""
 
@@ -1500,6 +1816,10 @@ class OneProcessExporterCPP(object):
         if self.single_helicities:
             replace_dict = {}
             assert len(self.matrix_elements) == 1
+
+            # Crossing-symmetry holes (identity fills when use_crossing is off).
+            replace_dict.update(
+                self.get_crossing_replace_dict(self.matrix_elements[0]))
 
             # Number of helicity combinations
             replace_dict['ncomb'] = \
@@ -1669,9 +1989,11 @@ class OneProcessExporterCPP(object):
 
         ret_lines = []
         if self.single_helicities:
+            cross_cw_sig_extra = \
+                self.get_crossing_replace_dict(self.matrix_elements[0])['cross_cw_sig_extra']
             ret_lines.append(\
-                "void %s::calculate_wavefunctions(const int perm[], const int hel[], const int flavor[]){" % \
-                class_name)
+                "void %s::calculate_wavefunctions(const int perm[], const int hel[], const int flavor[]%s){" % \
+                (class_name, cross_cw_sig_extra))
             ret_lines.append("// Calculate wavefunctions for all processes")
             ret_lines.append(self.get_calculate_wavefunctions(\
                 self.wavefunctions, self.amplitudes))
@@ -2100,641 +2422,40 @@ class OneProcessExporterMatchbox(OneProcessExporterCPP):
 
 
 #===============================================================================
-# ProcessExporterPythia8
-#===============================================================================
-class OneProcessExporterPythia8(OneProcessExporterCPP):
-    """Class to take care of exporting a set of matrix elements to
-    Pythia 8 format."""
-
-    # Static variables (for inheritance)
-    process_template_h = 'pythia8_process_h.inc'
-    process_template_cc = 'pythia8_process_cc.inc'
-    process_class_template = 'pythia8_process_class.inc'
-    process_definition_template = 'pythia8_process_function_definitions.inc'
-    process_wavefunction_template = 'pythia8_process_wavefunctions.inc'
-    process_sigmaKin_function_template = 'pythia8_process_sigmaKin_function.inc'
-    template_path = os.path.join(_file_path, 'iolibs', 'template_files', 'pythia8')     
-
-
-    def __init__(self, *args, **opts):
-        """Set process class name"""
-
-        if 'version' in opts:
-            self.version = opts['version']
-            del opts['version']
-        else:
-            self.version='8.2'
-        super(OneProcessExporterPythia8, self).__init__(*args, **opts)
-
-        # Check if any processes are not 2->1,2,3
-        for me in self.matrix_elements:
-            if me.get_nexternal_ninitial() not in [(3,2),(4,2),(5,2)]:
-                nex,nin = me.get_nexternal_ninitial()
-                raise InvalidCmd("Pythia 8 can only handle 2->1,2,3 processes, not %d->%d" % \
-                      (nin,nex-nin))
-            
-        self.process_class = self.process_name
-        
-    # Methods for generation of process files for Pythia 8
-
-    def get_default_converter(self):
-        
-        replace_dict = {}       
-        # Extract model name
-        replace_dict['model_name'] = self.model_name
-        if self.version =="8.2":
-            replace_dict['include_prefix'] = 'Pythia8/'
-        else:
-            replace_dict['include_prefix'] = ''
-            
-        replace_dict['version'] = self.version
-        
-        return replace_dict
-    #===========================================================================
-    # Process export helper functions
-    #===========================================================================
-    def get_process_class_definitions(self, write=True):
-        """The complete Pythia 8 class definition for the process"""
-
-        replace_dict = self.get_default_converter()
-
-
-        # Extract process info lines for all processes
-        process_lines = "\n".join([self.get_process_info_lines(me) for me in \
-                                   self.matrix_elements])
-        
-        replace_dict['process_lines'] = process_lines
-
-        # Extract number of external particles
-        replace_dict['nfinal'] = self.nfinal
-
-        # Extract process class name (for the moment same as file name)
-        replace_dict['process_class_name'] = self.process_name
-
-        # Extract process definition
-        process_definition = "%s (%s)" % (self.process_string,
-                                          self.model_name)
-        replace_dict['process_definition'] = process_definition
-
-        process = self.processes[0]
-        replace_dict['process_code'] = 10000 + \
-                                       100*process.get('id') + \
-                                       self.process_number
-
-        replace_dict['inFlux'] = self.get_process_influx()
-
-        replace_dict['id_masses'] = self.get_id_masses(process)
-        replace_dict['resonances'] = self.get_resonance_lines()
-
-        replace_dict['nexternal'] = self.nexternal
-        replace_dict['nprocesses'] = self.nprocesses
-        
-        if self.single_helicities:
-            replace_dict['all_sigma_kin_definitions'] = \
-                          """// Calculate wavefunctions
-                          void calculate_wavefunctions(const int perm[], const int hel[], const int flavor[]);
-                          static const int nwavefuncs = %d;
-                          std::complex<double> w[nwavefuncs][18];
-                          static const int namplitudes = %d;
-                          std::complex<double> amp[namplitudes];""" % \
-                          (len(self.wavefunctions),
-                           len(self.amplitudes.get_all_amplitudes()))
-            replace_dict['all_matrix_definitions'] = \
-                           "\n".join(["double matrix_%s();" % \
-                                      me.get('processes')[0].shell_string().\
-                                      replace("0_", "") \
-                                      for me in self.matrix_elements])
-
-        else:
-            replace_dict['all_sigma_kin_definitions'] = \
-                          "\n".join(["void sigmaKin_%s();" % \
-                                     me.get('processes')[0].shell_string().\
-                                     replace("0_", "") \
-                                     for me in self.matrix_elements])
-            replace_dict['all_matrix_definitions'] = \
-                           "\n".join(["double matrix_%s(const int hel[]);" % \
-                                      me.get('processes')[0].shell_string().\
-                                      replace("0_", "") \
-                                      for me in self.matrix_elements])
-
-        if write:
-            file = self.read_template_file('pythia8_process_class.inc') % replace_dict
-            return file
-        else:
-            return replace_dict
-
-    def get_process_function_definitions(self, write=True):
-        """The complete Pythia 8 class definition for the process"""
-
-
-        replace_dict = self.get_default_converter()
-
-        # Extract process info lines
-        replace_dict['process_lines'] = \
-                             "\n".join([self.get_process_info_lines(me) for \
-                                        me in self.matrix_elements])
-
-        # Extract process class name (for the moment same as file name)
-        replace_dict['process_class_name'] = self.process_name
-
-        color_amplitudes = [me.get_color_amplitudes(merge_quartic_amplitudes=False) for me in \
-                            self.matrix_elements]
-
-        replace_dict['initProc_lines'] = \
-                                     self.get_initProc_lines(color_amplitudes)
-        replace_dict['reset_jamp_lines'] = \
-                                     self.get_reset_jamp_lines(color_amplitudes)
-        
-
-        replace_dict['sigmaKin_lines'], _ = \
-                                     self.get_sigmaKin_lines(color_amplitudes)
-        replace_dict['sigmaHat_lines'] = \
-                                     self.get_sigmaHat_lines()
-
-        replace_dict['setIdColAcol_lines'] = \
-                                   self.get_setIdColAcol_lines(color_amplitudes)
-
-        replace_dict['weightDecay_lines'] = \
-                                       self.get_weightDecay_lines()    
-
-        replace_dict['all_sigmaKin'] = \
-                                  self.get_all_sigmaKin_lines(color_amplitudes,
-                                                              self.process_name)
-        if write:
-            file = self.read_template_file('pythia8_process_function_definitions.inc') %\
-               replace_dict
-            return file
-        else:
-            return replace_dict
-
-    def get_process_influx(self):
-        """Return process file name for the process in matrix_element"""
-
-        # Create a set with the pairs of incoming partons in definite order,
-        # e.g.,  g g >... u d > ... d~ u > ... gives ([21,21], [1,2], [-2,1])
-        beams = set([tuple(sorted([process.get('legs')[0].get('id'),
-                                   process.get('legs')[1].get('id')])) \
-                          for process in self.processes])
-
-        # Define a number of useful sets
-        antiquarks = list(range(-1, -6, -1))
-        quarks = list(range(1,6))
-        antileptons = list(range(-11, -17, -1))
-        leptons = list(range(11, 17, 1))
-        allquarks = antiquarks + quarks
-        antifermions = antiquarks + antileptons
-        fermions = quarks + leptons
-        allfermions = allquarks + antileptons + leptons
-        downfermions = list(range(-2, -5, -2)) + list(range(-1, -5, -2)) + \
-                       list(range(-12, -17, -2)) + list(range(-11, -17, -2)) 
-        upfermions = list(range(1, 5, 2)) + list(range(2, 5, 2)) + \
-                     list(range(11, 17, 2)) + list(range(12, 17, 2))
-
-        # The following gives a list from flavor combinations to "inFlux" values
-        # allowed by Pythia8, see Pythia 8 document SemiInternalProcesses.html
-        set_tuples = [(set([(21, 21)]), "gg"),
-                      (set(list(itertools.product(allquarks, [21]))), "qg"),
-                      (set(zip(antiquarks, quarks)), "qqbarSame"),
-                      (set(list(itertools.product(allquarks,
-                                                       allquarks))), "qq"),
-                      (set(zip(antifermions, fermions)),"ffbarSame"),
-                      (set(zip(downfermions, upfermions)),"ffbarChg"),
-                      (set(list(itertools.product(allfermions,
-                                                       allfermions))), "ff"),
-                      (set(list(itertools.product(allfermions, [22]))), "fgm"),
-                      (set([(21, 22)]), "ggm"),
-                      (set([(22, 22)]), "gmgm")]
-
-        for set_tuple in set_tuples:
-            if beams.issubset(set_tuple[0]):
-                return set_tuple[1]
-
-        raise InvalidCmd('Pythia 8 cannot handle incoming flavors %s' %\
-                             repr(beams))
-
-        return 
-
-    #===============================================================================
-    # Global helper methods
-    #===============================================================================
-    @classmethod
-    def read_template_file(cls, filename):
-        """Open a template file and return the contents."""
-             
-        try:
-            return super(OneProcessExporterPythia8, cls).read_template_file(filename)     
-        except:
-            return super(OneProcessExporterPythia8, cls).read_template_file(filename, classpath=True)
-
-        
-    def get_id_masses(self, process):
-        """Return the lines which define the ids for the final state particles,
-        for the Pythia phase space"""
-
-        if self.nfinal == 1:
-            return ""
-        
-        mass_strings = []
-        for i in range(2, len(process.get_legs_with_decays())):
-            if self.model.get_particle(process.get_legs_with_decays()[i].get('id')).\
-                   get('mass') not in  ['zero', 'ZERO']:
-                mass_strings.append("int id%dMass() const {return %d;}" % \
-                                (i + 1, abs(process.get_legs_with_decays()[i].get('id'))))
-
-        return "\n".join(mass_strings)
-
-    def get_resonance_lines(self):
-        """Return the lines which define the ids for intermediate resonances
-        for the Pythia phase space"""
-
-        if self.nfinal == 1:
-            return "virtual int resonanceA() const {return %d;}" % \
-                           abs(self.processes[0].get('legs')[2].get('id'))
-        
-        res_strings = []
-        res_letters = ['A', 'B']
-
-        sids, singleres, schannel = self.get_resonances()
-
-        for i, sid in enumerate(sids[:2]):
-            res_strings.append("virtual int resonance%s() const {return %d;}"\
-                                % (res_letters[i], sid))
-
-        if schannel:
-           res_strings.append("virtual bool isSChannel() const {return true;}")
-
-        if singleres != 0:
-            res_strings.append("virtual int idSChannel() const {return %d;}" \
-                               % singleres)
-            
-        return "\n".join(res_strings)
-
-    def get_resonances(self):
-        """Return the PIDs for any resonances in 2->2 and 2->3 processes."""
-
-        model = self.matrix_elements[0].get('processes')[0].get('model')
-        new_pdg = model.get_first_non_pdg()
-        # Get a list of all resonant s-channel contributions
-        diagrams = sum([me.get('diagrams') for me in self.matrix_elements], [])
-        resonances = []
-        no_t_channels = True
-        final_s_channels = []
-        for diagram in diagrams:
-            schannels, tchannels = diagram.get('amplitudes')[0].\
-                                   get_s_and_t_channels(self.ninitial, model,
-                                                        new_pdg)
-            for schannel in schannels:
-                sid = schannel.get('legs')[-1].get('id')
-                part = self.model.get_particle(sid)
-                if part:
-                    width = self.model.get_particle(sid).get('width')
-                    if width.lower() != 'zero':
-                        # Only care about absolute value of resonance PIDs:
-                        resonances.append(abs(sid))
-                    else:
-                        sid = 0
-                    if len(tchannels) == 1 and schannel == schannels[-1]:
-                        final_s_channels.append(abs(sid))
-
-            if len(tchannels) > 1:
-                # There are t-channel diagrams
-                no_t_channels = False
-            
-        resonance_set = set(resonances)
-        final_s_set = set(final_s_channels)
-
-        singleres = 0
-        # singleres is set if all diagrams have the same final resonance
-        if len(final_s_channels) == len(diagrams) and len(final_s_set) == 1 \
-                and final_s_channels[0] != 0:
-            singleres = final_s_channels[0]
-
-        resonance_set = misc.make_unique([pid for pid in resonance_set])
-
-        # schannel is True if all diagrams are pure s-channel and there are
-        # no QCD vertices
-        schannel = no_t_channels and \
-                   not any(['QCD' in d.calculate_orders() for d in diagrams])
-
-        return resonance_set, singleres, schannel
-
-    def get_initProc_lines(self, color_amplitudes):
-        """Get initProc_lines for function definition for Pythia 8 .cc file"""
-
-        initProc_lines = []
-
-        initProc_lines.append("// Set massive/massless matrix elements for c/b/mu/tau")
-        # Add lines to set c/b/tau/mu kinematics massive/massless
-        if not self.model.get_particle(4) or \
-               self.model.get_particle(4).get('mass').lower() == 'zero':
-            cMassiveME = "0."
-        else:
-            cMassiveME = "particleDataPtr->m0(4)"
-        initProc_lines.append("mcME = %s;" % cMassiveME)
-        if not self.model.get_particle(5) or \
-               self.model.get_particle(5).get('mass').lower() == 'zero':
-            bMassiveME = "0."
-        else:
-            bMassiveME = "particleDataPtr->m0(5)"
-        initProc_lines.append("mbME = %s;" % bMassiveME)
-        if not self.model.get_particle(13) or \
-               self.model.get_particle(13).get('mass').lower() == 'zero':
-            muMassiveME = "0."
-        else:
-            muMassiveME = "particleDataPtr->m0(13)"
-        initProc_lines.append("mmuME = %s;" % muMassiveME)
-        if not self.model.get_particle(15) or \
-               self.model.get_particle(15).get('mass').lower() == 'zero':
-            tauMassiveME = "0."
-        else:
-            tauMassiveME = "particleDataPtr->m0(15)"
-        initProc_lines.append("mtauME = %s;" % tauMassiveME)
-            
-        for i, me in enumerate(self.matrix_elements):
-            initProc_lines.append("jamp2[%d] = new double[%d];" % \
-                                  (i, len(color_amplitudes[i])))
-
-        return "\n".join(initProc_lines)
-
-    def get_setIdColAcol_lines(self, color_amplitudes):
-        """Generate lines to set final-state id and color info for process"""
-
-        res_lines = []
-
-        # Create a set with the pairs of incoming partons
-        beams = set([(process.get('legs')[0].get('id'),
-                      process.get('legs')[1].get('id')) \
-                     for process in self.processes])
-        beams = sorted(list(beams))
-        # Now write a selection routine for final state ids
-        for ibeam, beam_parts in enumerate(beams):
-            if ibeam == 0:
-                res_lines.append("if(id1 == %d && id2 == %d){" % beam_parts)
-            else:
-                res_lines.append("else if(id1 == %d && id2 == %d){" % beam_parts)            
-            # Pick out all processes with this beam pair
-            beam_processes = [(i, me) for (i, me) in \
-                              enumerate(self.matrix_elements) if beam_parts in \
-                              [(process.get('legs')[0].get('id'),
-                                process.get('legs')[1].get('id')) \
-                               for process in me.get('processes')]]
-            # Pick out all mirror processes for this beam pair
-            beam_mirror_processes = []
-            if beam_parts[0] != beam_parts[1]:
-                beam_mirror_processes = [(i, me) for (i, me) in \
-                              enumerate(self.matrix_elements) if beam_parts in \
-                              [(process.get('legs')[1].get('id'),
-                                process.get('legs')[0].get('id')) \
-                               for process in me.get('processes')]]
-
-            final_id_list = []
-            final_mirror_id_list = []
-            for (i, me) in beam_processes:
-                final_id_list.extend([tuple([l.get('id') for l in \
-                                             proc.get_legs_with_decays() if l.get('state')]) \
-                                      for proc in me.get('processes') \
-                                      if beam_parts == \
-                                      (proc.get('legs')[0].get('id'),
-                                       proc.get('legs')[1].get('id'))])
-            for (i, me) in beam_mirror_processes:
-                final_mirror_id_list.extend([tuple([l.get('id') for l in \
-                                             proc.get_legs_with_decays() if l.get('state')]) \
-                                      for proc in me.get_mirror_processes() \
-                                      if beam_parts == \
-                                      (proc.get('legs')[0].get('id'),
-                                       proc.get('legs')[1].get('id'))])
-            final_id_list = set(final_id_list)
-            final_mirror_id_list = set(final_mirror_id_list)
-
-            if final_id_list and final_mirror_id_list or \
-               not final_id_list and not final_mirror_id_list:
-                raise self.ProcessExporterCPPError("Missing processes, or both process and mirror process")
-
-
-            ncombs = len(final_id_list)+len(final_mirror_id_list)
-
-            res_lines.append("// Pick one of the flavor combinations %s" % \
-                             ", ".join([repr(ids) for ids in final_id_list]))
-
-            me_weight = []
-            for final_ids in final_id_list:
-                items = [(i, len([ p for p in me.get('processes') \
-                             if [l.get('id') for l in \
-                             p.get_legs_with_decays()] == \
-                             list(beam_parts) + list(final_ids)])) \
-                       for (i, me) in beam_processes]
-                me_weight.append("+".join(["matrix_element[%i]*%i" % (i, l) for\
-                                           (i, l) in items if l > 0]).\
-                                 replace('*1', ''))
-                if any([l>1 for (i, l) in items]):
-                    raise self.ProcessExporterCPPError("More than one process with identical " + \
-                          "external particles is not supported")
-
-            for final_ids in final_mirror_id_list:
-                items = [(i, len([ p for p in me.get_mirror_processes() \
-                             if [l.get('id') for l in p.get_legs_with_decays()] == \
-                             list(beam_parts) + list(final_ids)])) \
-                       for (i, me) in beam_mirror_processes]
-                me_weight.append("+".join(["matrix_element[%i]*%i" % \
-                                           (i+len(self.matrix_elements), l) for\
-                                           (i, l) in items if l > 0]).\
-                                 replace('*1', ''))
-                if any([l>1 for (i, l) in items]):
-                    raise self.ProcessExporterCPPError("More than one process with identical " + \
-                          "external particles is not supported")
-
-            if final_id_list:
-                res_lines.append("int flavors[%d][%d] = {%s};" % \
-                                 (ncombs, self.nfinal,
-                                  ",".join(["{" + ",".join([str(id) for id \
-                                            in ids]) + "}" for ids \
-                                            in final_id_list])))
-            elif final_mirror_id_list:
-                res_lines.append("int flavors[%d][%d] = {%s};" % \
-                                 (ncombs, self.nfinal,
-                                  ",".join(["{" + ",".join([str(id) for id \
-                                            in ids]) + "}" for ids \
-                                            in final_mirror_id_list])))
-            res_lines.append("vector<double> probs;")
-            res_lines.append("double sum = %s;" % "+".join(me_weight))
-            for me in me_weight:
-                res_lines.append("probs.push_back(%s/sum);" % me)
-            res_lines.append("int choice = rndmPtr->pick(probs);")
-            for i in range(self.nfinal):
-                res_lines.append("id%d = flavors[choice][%d];" % (i+3, i))
-
-            res_lines.append("}")
-
-        res_lines.append("setId(%s);" % ",".join(["id%d" % i for i in \
-                                                 range(1, self.nexternal + 1)]))
-
-        # Now write a selection routine for color flows
-
-        # We need separate selection for each flavor combination,
-        # since the different processes might have different color
-        # structures.
-        
-        # Here goes the color connections corresponding to the JAMPs
-        # Only one output, for the first subproc!
-
-        res_lines.append("// Pick color flow")
-
-        res_lines.append("int ncolor[%d] = {%s};" % \
-                         (len(color_amplitudes),
-                          ",".join([str(len(colamp)) for colamp in \
-                                    color_amplitudes])))
-                                                 
-
-        for ime, me in enumerate(self.matrix_elements):
-
-            res_lines.append("if((%s)){" % \
-                                 ")||(".join(["&&".join(["id%d == %d" % \
-                                            (i+1, l.get('id')) for (i, l) in \
-                                            enumerate(p.get_legs_with_decays())])\
-                                           for p in me.get('processes')]))
-            if ime > 0:
-                res_lines[-1] = "else " + res_lines[-1]
-
-            proc = me.get('processes')[0]
-            if not me.get('color_basis'):
-                # If no color basis, just output trivial color flow
-                res_lines.append("setColAcol(%s);" % ",".join(["0"]*2*self.nfinal))
-            else:
-                # Else, build a color representation dictionary
-                repr_dict = {}
-                legs = proc.get_legs_with_decays()
-                for l in legs:
-                    repr_dict[l.get('number')] = \
-                        proc.get('model').get_particle(l.get('id')).get_color()
-                # Get the list of color flows
-                color_flow_list = \
-                    me.get('color_basis').color_flow_decomposition(\
-                                                      repr_dict, self.ninitial)
-                # Select a color flow
-                ncolor = len(me.get('color_basis'))
-                res_lines.append("""vector<double> probs;
-                  double sum = %s;
-                  for(int i=0;i<ncolor[%i];i++)
-                  probs.push_back(jamp2[%i][i]/sum);
-                  int ic = rndmPtr->pick(probs);""" % \
-                                 ("+".join(["jamp2[%d][%d]" % (ime, i) for i \
-                                            in range(ncolor)]), ime, ime))
-
-                color_flows = []
-                for color_flow_dict in color_flow_list:
-                    color_flows.append([int(fmod(color_flow_dict[l.get('number')][i], 500)) \
-                                        for (l,i) in itertools.product(legs, [0,1])])
-
-                # Write out colors for the selected color flow
-                res_lines.append("static int colors[%d][%d] = {%s};" % \
-                                 (ncolor, 2 * self.nexternal,
-                                  ",".join(["{" + ",".join([str(id) for id \
-                                            in flows]) + "}" for flows \
-                                            in color_flows])))
-
-                res_lines.append("setColAcol(%s);" % \
-                                 ",".join(["colors[ic][%d]" % i for i in \
-                                          range(2 * self.nexternal)]))
-            res_lines.append('}')
-
-        # Same thing but for mirror processes
-        for ime, me in enumerate(self.matrix_elements):
-            if not me.get('has_mirror_process'):
-                continue
-            res_lines.append("else if((%s)){" % \
-                                 ")||(".join(["&&".join(["id%d == %d" % \
-                                            (i+1, l.get('id')) for (i, l) in \
-                                            enumerate(p.get_legs_with_decays())])\
-                                           for p in me.get_mirror_processes()]))
-
-            proc = me.get('processes')[0]
-            if not me.get('color_basis'):
-                # If no color basis, just output trivial color flow
-                res_lines.append("setColAcol(%s);" % ",".join(["0"]*2*self.nfinal))
-            else:
-                # Else, build a color representation dictionary
-                repr_dict = {}
-                legs = proc.get_legs_with_decays()
-                legs[0:2] = [legs[1],legs[0]]
-                for l in legs:
-                    repr_dict[l.get('number')] = \
-                        proc.get('model').get_particle(l.get('id')).get_color()
-                # Get the list of color flows
-                color_flow_list = \
-                    me.get('color_basis').color_flow_decomposition(\
-                                                      repr_dict, self.ninitial)
-                # Select a color flow
-                ncolor = len(me.get('color_basis'))
-                res_lines.append("""vector<double> probs;
-                  double sum = %s;
-                  for(int i=0;i<ncolor[%i];i++)
-                  probs.push_back(jamp2[%i][i]/sum);
-                  int ic = rndmPtr->pick(probs);""" % \
-                                 ("+".join(["jamp2[%d][%d]" % (ime, i) for i \
-                                            in range(ncolor)]), ime, ime))
-
-                color_flows = []
-                for color_flow_dict in color_flow_list:
-                    color_flows.append([color_flow_dict[l.get('number')][i] % 500 \
-                                        for (l,i) in itertools.product(legs, [0,1])])
-
-                # Write out colors for the selected color flow
-                res_lines.append("static int colors[%d][%d] = {%s};" % \
-                                 (ncolor, 2 * self.nexternal,
-                                  ",".join(["{" + ",".join([str(id) for id \
-                                            in flows]) + "}" for flows \
-                                            in color_flows])))
-
-                res_lines.append("setColAcol(%s);" % \
-                                 ",".join(["colors[ic][%d]" % i for i in \
-                                          range(2 * self.nexternal)]))
-            res_lines.append('}')
-
-        return "\n".join(res_lines)
-
-
-    def get_weightDecay_lines(self):
-        """Get weightDecay_lines for function definition for Pythia 8 .cc file"""
-
-        weightDecay_lines = "// Just use isotropic decay (default)\n"
-        weightDecay_lines += "return 1.;"
-
-        return weightDecay_lines
-
-    #===============================================================================
-    # Routines to export/output UFO models in Pythia8 format
-    #===============================================================================
-    def convert_model_to_pythia8(self, model, pythia_dir, wanted_lorentz = []):
-        """Create a full valid Pythia 8 model from an MG5 model (coming from UFO)"""
-    
-        if not os.path.isfile(os.path.join(pythia_dir, 'include', 'Pythia.h'))\
-           and not os.path.isfile(os.path.join(pythia_dir, 'include', 'Pythia8', 'Pythia.h')):
-            logger.warning('Directory %s is not a valid Pythia 8 main dir.' % pythia_dir)
-    
-        # create the model parameter files
-        model_builder = UFOModelConverterPythia8(model, pythia_dir, 
-                                                 wanted_lorentz=wanted_lorentz,
-                                                 replace_dict=self.get_default_converter())
-        model_builder.cc_file_dir = "Processes_" + model_builder.model_name
-        model_builder.include_dir = model_builder.cc_file_dir
-    
-        model_builder.write_files()
-        # Write makefile
-        model_builder.write_makefile()
-        # Write param_card
-        model_builder.write_param_card()
-        return model_builder.model_name, model_builder.cc_file_dir
-
-
-#===============================================================================
 # ProcessExporterCPP
 #===============================================================================
 class ProcessExporterCPP(VirtualExporter):
     """Class to take care of exporting a set of matrix elements to
     Fortran (v4) format."""
 
+    # the other gauges of an output whose processes are in two gauges and
+    # their models, set by the interface (see export_processes_in_gauge)
+    gauge_libraries = {}
+    gauge_models = {}
+
+    def export_processes_in_gauge(self, matrix_element, writer):
+        """(writer, scope) of a matrix element: the session writer, used in
+        the gauge of the matrix element (aloha.gauge_scope, and the writer's
+        model and caches of that gauge, HelasCallWriter.gauge_cache)."""
+
+        if isinstance(matrix_element, group_subprocs.SubProcessGroup):
+            me = matrix_element.get('matrix_elements')[0]
+        else:
+            me = matrix_element
+        gauge = me.get('processes')[0].get_gauge()
+        if gauge not in self.gauge_models:
+            return writer, aloha.gauge_scope('')
+        scope = contextlib.ExitStack()
+        scope.enter_context(aloha.gauge_scope(gauge))
+        scope.enter_context(writer.gauge_cache(gauge, self.gauge_models[gauge]))
+        return writer, scope
+
     grouped_mode = False
     exporter = 'cpp'
+    # Only the plain standalone_cpp exporter emits the crossing machinery; the
+    # matchbox/mg7 subclasses write their own templates and override
+    # this back to False.
+    supports_crossing = True
 
     default_opt = {'clean': False, 'complex_mass':False,
                         'export_format':'madevent', 'mp': False,
@@ -2861,7 +2582,85 @@ class ProcessExporterCPP(VirtualExporter):
     #===============================================================================
     # generate_subprocess_directory
     #===============================================================================
-    def write_check_sa_cpp(self, matrix_element, dirpath):
+    def _get_check_sa_cpp_crossing_example(self, matrix_element, maxflavor,
+                                           nexternal, use_crossing):
+        """C++ block for check_sa.cpp demonstrating the crossed matrix elements.
+
+        Returns '' when crossing is not active for this backend/matrix element,
+        leaving the driver unchanged. Otherwise it mirrors the Fortran
+        check_sa.f demonstration: a loop over every row of the crossing table
+        (and over each flavor) that, for each, evaluates the crossed matrix
+        element and prints its signed PDGs and value. The whole section is
+        gated behind `if(false)` so it is present only as a ready-to-enable
+        example.
+
+        flavor_id is 0-based in C++: flavor_id = K*nflav + flav0, K a row of
+        the crossing table, matching sigmaKin's decode. standalone_cpp has no
+        runtime PDG accessor, so the signed PDG of each flavor_id is
+        precomputed here into demo_pdg[flavor_id*nexternal + slot]: the class
+        representative's PDGs crossed by the row (conjugating the legs that
+        change side). Each evaluation uses a FRESH CPPProcess so the shared
+        good-helicity cache cannot contaminate it.
+        """
+        if not use_crossing:
+            return ''
+
+        import madgraph.iolibs.crossing_table as crossing_table
+        table = ProcessExporterFortran.get_crossing_table(
+            self, matrix_element, 'classes',
+            all_applicable=str((self.opt.get('output_options') or {}).get(
+                'crossing_table', '')).lower() == 'all')
+        anti = crossing_table.make_anti(
+            matrix_element.get('processes')[0].get('model'))
+        reps = []
+        for flav0, pdgs in ProcessExporterFortran.crossing_base_entries(
+                self, matrix_element, 'classes'):
+            if flav0 == len(reps):
+                reps.append(pdgs)
+
+        # demo_pdg[flavor_id*nexternal + slot], flavor_id = K*nflav+flav0.
+        demo_pdg = []
+        for row in table:
+            for rep in reps:
+                demo_pdg.extend(row.crossed(rep, anti))
+
+        sep = ('    cout << " ---------------------------------------------------'
+               '--------------------------" << endl;')
+        lines = [
+            '  // Crossing-symmetry examples (crossed processes); see the',
+            '  // matching block in the Fortran check_sa.f. Gated behind',
+            '  // if(false): flip it to true to actually print them. Each',
+            '  // flavor_id is evaluated on a fresh CPPProcess so the shared',
+            '  // good-helicity cache cannot contaminate the crossed value.',
+            '  if(false){',
+            '    const int nflav = process.nflavors;',
+            '    const int nx = process.nexternal;',
+            '    const int ncross = %d;' % len(table),
+            '    static const int demo_pdg[%d] = {%s};'
+            % (len(demo_pdg), ', '.join(str(p) for p in demo_pdg)),
+            '    cout << endl << " Crossing-symmetry examples (crossed '
+            'processes):" << endl << endl;',
+            '    for(int cross = 1; cross < ncross; cross++){',
+            '      for(int j = 1; j <= nflav; j++){',
+            '        int flavor_id = cross*nflav + (j-1);',
+            '        CPPProcess xproc("../../Cards/param_card.dat");',
+            '        xproc.setMomenta(p);',
+            '        double xme = xproc.sigmaKin(flavor_id);',
+            '        cout << "CROSSING ROW " << cross << endl;',
+            '        cout << "PDG";',
+            '        for(int s = 0; s < nx; s++) cout << " " '
+            '<< demo_pdg[flavor_id*nx + s];',
+            '        cout << " FLAV_IDX " << flavor_id << endl;',
+            '        cout << "Matrix element = " << xme'
+            ' << " GeV^" << -(2*xproc.nexternal-8) << endl;',
+            sep,
+            '      }',
+            '    }',
+            '  }',
+        ]
+        return '\n'.join(lines)
+
+    def write_check_sa_cpp(self, matrix_element, dirpath, use_crossing=False):
         """Write a per-process check_sa.cpp with flavor arrays filled in.
 
         This mirrors the Fortran ``write_check_sa`` in ``export_v4.py``:
@@ -2940,6 +2739,8 @@ class ProcessExporterCPP(VirtualExporter):
             'nexternal': nexternal,
             'flavor_arr': flavor_arr_str,
             'pdg_arr':    pdg_arr_str,
+            'crossing_example': self._get_check_sa_cpp_crossing_example(
+                matrix_element, maxflavor, nexternal, use_crossing),
         }
         with open(pjoin(dirpath, 'check_sa.cpp'), 'w') as fout:
             fout.write(content)
@@ -2952,7 +2753,27 @@ class ProcessExporterCPP(VirtualExporter):
         #matrix_element = copy.deepcopy(matrix_element)
         process_exporter_cpp = self.oneprocessclass(matrix_element,cpp_helas_call_writer)
 
-        
+        # Enable the crossing machinery for standalone_cpp when the process was
+        # generated with --use_crossing (default on) and the process does not
+        # pin a specific s-channel (which a crossing would not preserve). Only a
+        # single-ME directory carries the flavor tables the crossing needs.
+        # The crossing table holds the recorded crossings -- none survive to a
+        # non-folding output like this one -- plus every applicable crossing
+        # with --crossing_table=all, so that option is what gives it rows.
+        me0 = process_exporter_cpp.matrix_elements[0]
+        process_exporter_cpp.crossing_table_all = str(
+            (self.opt.get('output_options') or {}).get('crossing_table', '')
+            ).lower() == 'all'
+        process_exporter_cpp.use_crossing = bool(
+            getattr(self, 'supports_crossing', False)
+            and self.opt.get('use_crossing', True)
+            and len(process_exporter_cpp.matrix_elements) == 1
+            and (('crossed_processes' in me0 and me0.get('crossed_processes'))
+                 or process_exporter_cpp.crossing_table_all)
+            and not ProcessExporterFortran.breaks_crossing_symmetry(
+                me0.get('processes')[0]))
+
+
         # Create the directory PN_xx_xxxxx in the specified path
         proc_dir_name = "P%d_%s" % (process_exporter_cpp.process_number, 
                                     process_exporter_cpp.process_name)
@@ -2970,7 +2791,8 @@ class ProcessExporterCPP(VirtualExporter):
             for file in self.to_link_in_P:
                 ln('../%s' % file)
         # Write a per-process check_sa.cpp with flavor info filled in
-        self.write_check_sa_cpp(matrix_element, dirpath)
+        self.write_check_sa_cpp(matrix_element, dirpath,
+                                use_crossing=process_exporter_cpp.use_crossing)
         return proc_dir_name
 
     @staticmethod
@@ -2988,312 +2810,9 @@ class ProcessExporterCPP(VirtualExporter):
 
 class ProcessExporterMatchbox(ProcessExporterCPP):
     oneprocessclass = OneProcessExporterMatchbox
-
-class ProcessExporterPythia8(ProcessExporterCPP):
-    oneprocessclass = OneProcessExporterPythia8
-    grouped_mode = 'madevent'
-     
-    #===============================================================================
-    # generate_process_files_pythia8
-    #===============================================================================
-    def generate_process_directory(self, multi_matrix_element, cpp_helas_call_writer,
-                                   process_string = "",
-                                   process_number = 0,
-                                   version='8.2'):
-
-        """Generate the .h and .cc files needed for Pythia 8, for the
-        processes described by multi_matrix_element"""
-
-        process_exporter_pythia8 = OneProcessExporterPythia8(multi_matrix_element,
-                                                      cpp_helas_call_writer,
-                                                      process_string,
-                                                      process_number,
-                                                      self.dir_path,
-                                                      version=version)
-    
-        # Set process directory
-        model = process_exporter_pythia8.model
-        model_name = process_exporter_pythia8.model_name
-        process_exporter_pythia8.process_dir = \
-                       'Processes_%(model)s' % {'model': \
-                        model_name}
-        process_exporter_pythia8.include_dir = process_exporter_pythia8.process_dir
-        process_exporter_pythia8.generate_process_files()
-        return process_exporter_pythia8
-
-    #===============================================================================
-    # generate_example_file_pythia8
-    #===============================================================================
-    @staticmethod
-    def generate_example_file_pythia8(path,
-                                       model_path,
-                                       process_names,
-                                       exporter,
-                                       main_file_name = "",
-                                       example_dir = "examples",
-                                       version="8.2"):
-        """Generate the main_model_name.cc file and Makefile in the examples dir"""
-    
-        filepath = os.path.join(path, example_dir)
-        if not os.path.isdir(filepath):
-            os.makedirs(filepath)
-    
-        replace_dict = {}
-    
-        # Extract version number and date from VERSION file
-        info_lines = ProcessExporterPythia8.get_mg5_info_lines()
-        replace_dict['info_lines'] = info_lines
-    
-        # Extract model name
-        replace_dict['model_name'] = exporter.model_name
-    
-        # Extract include line
-        replace_dict['include_lines'] = \
-                              "\n".join(["#include \"%s.h\"" % proc_name \
-                                         for proc_name in process_names])
-    
-        # Extract setSigmaPtr line
-        replace_dict['sigma_pointer_lines'] = \
-               "\n".join(["pythia.setSigmaPtr(new %s());" % proc_name \
-                         for proc_name in process_names])
-    
-        # Extract param_card path
-        replace_dict['param_card'] = os.path.join(os.path.pardir,model_path,
-                                                  "param_card_%s.dat" % \
-                                                  exporter.model_name)
-    
-        # Create the example main file
-        if version =="8.2":
-            template_path = 'pythia8.2_main_example_cc.inc'
-            makefile_path = 'pythia8.2_main_makefile.inc'
-            replace_dict['include_prefix'] = 'Pythia8/'
-        else:
-            template_path = 'pythia8_main_example_cc.inc'
-            makefile_path = 'pythia8_main_makefile.inc'
-            replace_dict['include_prefix'] = ''
-        
-        
-        file = ProcessExporterPythia8.read_template_file(template_path) % \
-               replace_dict
-    
-        if not main_file_name:
-            num = 1
-            while os.path.exists(os.path.join(filepath,
-                                        'main_%s_%i.cc' % (exporter.model_name, num))) or \
-                  os.path.exists(os.path.join(filepath,
-                                        'main_%s_%i' % (exporter.model_name, num))):
-                num += 1
-            main_file_name = str(num)
-    
-        main_file = 'main_%s_%s' % (exporter.model_name,
-                                    main_file_name)
-    
-        main_filename = os.path.join(filepath, main_file + '.cc')
-    
-        # Write the file
-        writers.CPPWriter(main_filename).writelines(file)
-    
-        replace_dict = {}
-    
-        # Extract version number and date from VERSION file
-        replace_dict['info_lines'] = ProcessExporterPythia8.get_mg5_info_lines()
-    
-        replace_dict['main_file'] = main_file
-    
-        replace_dict['process_dir'] = model_path
-    
-        replace_dict['include_dir'] = exporter.include_dir
-    
-        # Create the makefile
-        file = ProcessExporterPythia8.read_template_file(makefile_path) % replace_dict
-    
-        make_filename = os.path.join(filepath, 'Makefile_%s_%s' % \
-                                (exporter.model_name, main_file_name))
-    
-        # Write the file
-        open(make_filename, 'w').write(file)
-    
-        logger.info("Created files %s and %s in directory %s" \
-                    % (os.path.split(main_filename)[-1],
-                       os.path.split(make_filename)[-1],
-                       os.path.split(make_filename)[0]))
-        return main_file, make_filename
-
-    def convert_model(self,*args,**opts):
-        pass
-    def finalize(self, *args, **opts):
-        pass
-  
-
-#===============================================================================
-# UFOModelConverterPythia8
-#===============================================================================
-
-class UFOModelConverterPythia8(UFOModelConverterCPP):
-    """ A converter of the UFO-MG5 Model to the Pythia 8 format """
-
-    # Static variables (for inheritance)
-    output_name = 'Pythia 8'
-    namespace = 'Pythia8'
-    
-    # Dictionaries for expression of MG5 SM parameters into Pythia 8
-    slha_to_expr = {('SMINPUTS', (1,)): '1./csm->alphaEM(((pd->m0(23))*(pd->m0(23))))',
-                    ('SMINPUTS', (2,)): 'M_PI*csm->alphaEM(((pd->m0(23))*(pd->m0(23))))*((pd->m0(23))*(pd->m0(23)))/(sqrt(2.)*((pd->m0(24))*(pd->m0(24)))*(((pd->m0(23))*(pd->m0(23)))-((pd->m0(24))*(pd->m0(24)))))',
-                    ('SMINPUTS', (3,)): 'alpS',
-                    ('CKMBLOCK', (1,)): 'csm->VCKMgen(1,2)',
-                    }
-
-    # Template files to use
-    param_template_h = 'pythia8_model_parameters_h.inc'
-    param_template_cc = 'pythia8_model_parameters_cc.inc'
-    template_paths = os.path.join(_file_path, 'iolibs', 'template_files', 'pythia8')     
-
-    def prepare_parameters(self):
-        """Extract the model parameters from Pythia 8, and store them in
-        the two lists params_indep and params_dep"""
-
-        # Keep only dependences on alphaS, to save time in execution
-        keys = list(self.model['parameters'].keys())
-        keys.sort(key=len)
-        params_ext = []
-        for key in keys:
-            if key == ('external',):
-                params_ext += [p for p in self.model['parameters'][key] if p.name]
-            elif 'aS' in key:
-                for p in self.model['parameters'][key]:
-                    self.params_dep.append(base_objects.ModelVariable(p.name,
-                                                 p.name + " = " + \
-                                                 self.p_to_cpp.parse(p.expr) + ';',
-                                                 p.type,
-                                                 p.depend))
-            else:
-                for p in self.model['parameters'][key]:
-                    self.params_indep.append(base_objects.ModelVariable(p.name,
-                                                 p.name + " = " + \
-                                                 self.p_to_cpp.parse(p.expr) + ';',
-                                                 p.type,
-                                                 p.depend))
-
-        # For external parameters, want to use the internal Pythia
-        # parameters for SM params and masses and widths. For other
-        # parameters, want to read off the SLHA block code
-        while params_ext:
-            param = params_ext.pop(0)
-            key = (param.lhablock, tuple(param.lhacode))
-            if 'aS' in self.slha_to_depend.setdefault(key, ()):
-                # This value needs to be set event by event
-                self.params_dep.insert(0,
-                                       base_objects.ModelVariable(param.name,
-                                                   param.name + ' = ' + \
-                                                   self.slha_to_expr[key] + ';',
-                                                   'real'))
-            else:
-                try:
-                    # This is an SM parameter defined above
-                    self.params_indep.insert(0,
-                                             base_objects.ModelVariable(param.name,
-                                                   param.name + ' = ' + \
-                                                   self.slha_to_expr[key] + ';',
-                                                   'real'))
-                except Exception:
-                    # For Yukawa couplings, masses and widths, insert
-                    # the Pythia 8 value
-                    if param.lhablock == 'YUKAWA':
-                        self.slha_to_expr[key] = 'pd->mRun(%i, pd->m0(24))' \
-                                                 % param.lhacode[0]
-                    if param.lhablock == 'MASS':
-                        self.slha_to_expr[key] = 'pd->m0(%i)' \
-                                            % param.lhacode[0]
-                    if param.lhablock == 'DECAY':
-                        self.slha_to_expr[key] = \
-                                            'pd->mWidth(%i)' % param.lhacode[0]
-                    if key in self.slha_to_expr:
-                        self.params_indep.insert(0,\
-                                     base_objects.ModelVariable(param.name,
-                                     param.name + "=" + self.slha_to_expr[key] \
-                                                                + ';',
-                                                                'real'))
-                    else:
-                        # This is a BSM parameter which is read from SLHA
-                        if len(param.lhacode) == 1:
-                            expression = "if(!slhaPtr->getEntry<double>(\"%s\", %d, %s)){\n" % \
-                                         (param.lhablock.lower(),
-                                          param.lhacode[0],
-                                          param.name) + \
-                                          ("cout << \"Warning, setting %s to %e\" << endl;\n" \
-                                          + "%s = %e;}") % (param.name, param.value.real,
-                                                           param.name, param.value.real)
-                        elif len(param.lhacode) == 2:
-                            expression = "if(!slhaPtr->getEntry<double>(\"%s\", %d, %d, %s)){\n" % \
-                                         (param.lhablock.lower(),
-                                          param.lhacode[0],
-                                          param.lhacode[1],
-                                          param.name) + \
-                                          ("cout << \"Warning, setting %s to %e\" << endl;\n" \
-                                          + "%s = %e;}") % (param.name, param.value.real,
-                                                           param.name, param.value.real)
-                        elif len(param.lhacode) == 3:
-                            expression = "if(!slhaPtr->getEntry<double>(\"%s\", %d, %d, %d, %s)){\n" % \
-                                         (param.lhablock.lower(),
-                                          param.lhacode[0],
-                                          param.lhacode[1],
-                                          param.lhacode[2],
-                                          param.name) + \
-                                          ("cout << \"Warning, setting %s to %e\" << endl;\n" \
-                                          + "%s = %e;}") % (param.name, param.value.real,
-                                                           param.name, param.value.real)
-                        else:
-                            raise MadGraph5Error("Only support for SLHA blocks with 1 or 2 indices")
-                        self.params_indep.insert(0,
-                                               base_objects.ModelVariable(param.name,
-                                                                          expression,
-                                                                          'real'))
-
-    def write_makefile(self):
-        """Generate the Makefile, which creates library files."""
-
-        makefilename = os.path.join(self.dir_path, self.cc_file_dir,
-                                    'Makefile')
-
-        replace_dict = {}
-
-        replace_dict['info_lines'] = self.get_mg5_info_lines()
-        replace_dict['model'] = self.model_name
-
-        if self.default_replace_dict['version'] == "8.2":
-            path = 'pythia8.2_makefile.inc'
-        else:
-            path = 'pythia8_makefile.inc'
-        makefile = self.read_template_file(path) % replace_dict
-
-        # Write the files
-        open(makefilename, 'w').write(makefile)
-
-        logger.info("Created %s in directory %s" \
-                    % (os.path.split(makefilename)[-1],
-                       os.path.split(makefilename)[0]))
-
-    def write_param_card(self):
-        """Generate the param_card for the model."""
-
-        paramcardname = os.path.join(self.dir_path, self.cc_file_dir,
-                                    'param_card_%s.dat' % self.model_name)
-        # Write out param_card
-        open(paramcardname, 'w').write(\
-            self.model.write_param_card())
-
-        logger.info("Created %s in directory %s" \
-                    % (os.path.split(paramcardname)[-1],
-                       os.path.split(paramcardname)[0]))
-        
-    #===============================================================================
-    # Global helper methods
-    #===============================================================================
-    @classmethod
-    def read_template_file(cls, *args, **opts):
-        """Open a template file and return the contents."""
-         
-        return OneProcessExporterPythia8.read_template_file(*args, **opts)
+    supports_crossing = False
+    # Matchbox only reads trace-basis color strings
+    ddm_color_basis = 'never'
 
 
 def mg7_launcher_source(interpreter, mg5_dir):
@@ -3339,6 +2858,15 @@ def mg7_launcher_source(interpreter, mg5_dir):
 class ProcessExporterMG7(ProcessExporterCPP):
     """ Extends the standalone CPP exporter to add files needed to run madevent7 / madnis """
 
+    supports_crossing = False
+    # Whether this output writes SubProcesses/subprocesses.json (and thus the
+    # entries of the crossed subprocesses folded into a base)
+    writes_subprocess_info = True
+    # The crossings recorded inside a decay chain are expanded: the entry of a
+    # crossed decay chain would need its production crossed and its decays
+    # re-attached (see MadGraphCmd._output_folds_crossings)
+    folds_decay_chain_crossings = False
+
     s= _file_path + 'iolibs/template_files/'
     dirs_to_create = ['bin', 'src', 'lib', 'Cards', 'SubProcesses']
     # mg7_v5 builds api.so in the P* folders (instead of the standalone_cpp
@@ -3379,6 +2907,54 @@ class ProcessExporterMG7(ProcessExporterCPP):
             merge_same_topologies=self.opt.get('merge_same_topologies', True)
         )
 
+        # Enable the crossing machinery (extended flavor id) when the process was
+        # generated with --use_crossing (default on), the matrix element really
+        # folds a crossed subprocess in, and the process does not pin a specific
+        # s-channel (which a crossing would not preserve). Only a single-ME
+        # directory carries the flavor tables the crossing needs. When off,
+        # use_crossing stays False and the output is byte-identical.
+        # The recorded crossings are part of the gate, not just the option: the
+        # good-helicity scan and the runtime guard accept the recorded codes and
+        # the identity only, so with nothing recorded the machinery (per-state
+        # external blend, per-event momentum gather, cNGoodMaxCross loop) could
+        # only ever run the identity -- pure overhead. That is every base that
+        # folds nothing (g g > t t~ g g g), and every directory of an `output
+        # mg7` whose crossings were expanded back into subprocesses of their own
+        # (--use_crossing=False on the output line, a decay chain, a crossing
+        # crossing_foldable refuses).
+        # --crossing_table=all on the output line also gives the table every
+        # applicable crossing (a standalone user asking for an arbitrary one),
+        # which is then reason enough for the machinery -- not for `output
+        # mg7`, whose runtime (madspace) only ever asks for the recorded ones.
+        me0 = process_exporter_mg7.matrix_elements[0]
+        process_exporter_mg7.crossing_table_all = str(
+            (self.opt.get('output_options') or {}).get('crossing_table', '')
+            ).lower() == 'all' and getattr(self, 'format_name', None) != 'mg7'
+        process_exporter_mg7.use_crossing = bool(
+            getattr(self, 'supports_crossing', False)
+            and self.opt.get('use_crossing', True)
+            and len(process_exporter_mg7.matrix_elements) == 1
+            and (('crossed_processes' in me0 and me0.get('crossed_processes'))
+                 or process_exporter_mg7.crossing_table_all)
+            and not ProcessExporterFortran.breaks_crossing_symmetry(
+                me0.get('processes')[0]))
+        # mg7 folds the crossed subprocesses into subprocesses.json entries
+        # evaluated by this library: their entries, and the crossing table
+        # serving their rows as they come, are built and checked before
+        # anything of this directory is written -- the C++ is written from
+        # that table (see prepare_crossed_subprocesses)
+        folds_entries = process_exporter_mg7.use_crossing and \
+            self.writes_subprocess_info and \
+            bool(me0.get('crossed_processes'))
+        if folds_entries:
+            # the beam swaps are paired into a mirror as the expansion pairs
+            # them (MadGraphCmd._expand_recorded_crossings)
+            group = self.opt.get('group_subprocesses', 'Auto')
+            process_exporter_mg7.prepare_crossed_subprocesses(
+                merge_same_topologies=self.opt.get('merge_same_topologies',
+                                                   True),
+                collect_mirror=group == 'Auto' or bool(group))
+
         # Create the directory PN_xx_xxxxx in the specified path
         proc_dir_name = process_exporter_mg7.name
         dirpath = pjoin(self.dir_path, 'SubProcesses', proc_dir_name)
@@ -3402,7 +2978,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
             for file in self.to_link_in_P:
                 ln('../%s' % file)
 
-        # Generate SVG Feynman diagrams (diagrams.svg + diagrams.json)
+        # Generate SVG Feynman diagrams (diagrams.svgz + diagrams.json.gz)
         if not self.opt.get('output_options', {}).get('noeps') == 'True':
             svg_stem = pjoin(dirpath, 'diagrams')
             diagrams = matrix_element.get('base_amplitude').get('diagrams')
@@ -3431,6 +3007,22 @@ class ProcessExporterMG7(ProcessExporterCPP):
             (len(self.process_info), diagram_tags)
         )
         self.process_info.append(subproc_info)
+
+        # The crossed subprocesses folded into this matrix element (mg7 is a
+        # folding format, see MadGraphCmd._crossing_folding_formats): one more
+        # entry each, evaluated by this same library at its extended flavor
+        # id, so they get no directory of their own.
+        if folds_entries:
+            crossed = process_exporter_mg7.get_crossed_subprocess_info(
+                rel_dirpath, me_lib_path)
+            for info, tags, sclass in crossed:
+                self.merged_subprocesses[sclass].append(
+                    (len(self.process_info), tags))
+                self.process_info.append(info)
+            if crossed:
+                logger.info('%s: %d crossed subprocess entr%s folded in',
+                            proc_dir_name, len(crossed),
+                            'y' if len(crossed) == 1 else 'ies')
 
     def copy_template(self, model):
         super().copy_template(model)
@@ -3466,6 +3058,30 @@ class ProcessExporterMG7(ProcessExporterCPP):
                     "    sys.exit(main(me_dir=os.path.dirname(os.path.dirname(os.path.realpath(__file__)))))\n"
                 )
             os.chmod(custom_bin, 0o755)
+
+            merge_bin = os.path.join("bin", "merge_gridpacks")
+            with open(merge_bin, "w") as f:
+                f.write(
+                    "#! /usr/bin/env python3\n"
+                    "import sys\n"
+                    f"sys.path.append('{MG5DIR}')\n"
+                    "from madgraph.iolibs.template_files.mg7.merge_gridpacks import main\n"
+                    "if __name__ == '__main__':\n"
+                    "    sys.exit(main())\n"
+                )
+            os.chmod(merge_bin, 0o755)
+
+            combine_bin = os.path.join("bin", "combine_cluster_runs")
+            with open(combine_bin, "w") as f:
+                f.write(
+                    "#! /usr/bin/env python3\n"
+                    "import sys\n"
+                    f"sys.path.append('{MG5DIR}')\n"
+                    "from madgraph.iolibs.template_files.mg7.combine_cluster import main\n"
+                    "if __name__ == '__main__':\n"
+                    "    sys.exit(main())\n"
+                )
+            os.chmod(combine_bin, 0o755)
 
     # Recorded in Cards/me5_configuration.txt: the tools a run needs but cannot
     # rediscover on its own. LHAPDF above all -- bin/generate_events may be
@@ -3535,16 +3151,26 @@ class ProcessExporterMG7(ProcessExporterCPP):
                 for unmerged_chan_index, (chan_info, chan_tags) in enumerate(
                     zip(subproc_info["channels"], diagram_tags)
                 ):
-                    chan_index = len(channels)
-
+                    # each diagram already met in this group (same topology
+                    # tag) goes to the merged channel that holds it. The
+                    # diagrams of one channel may sit in several merged
+                    # channels: a crossed subprocess folded into its base
+                    # (crossed_entries_of) keeps per crossing-table row only
+                    # the diagrams that row needs, so the diagrams of one of
+                    # its channels can be split over several entries. The new
+                    # diagrams go to the merged channel of the first one met,
+                    # or to a new merged channel if none was.
                     same_diags = []
                     for tag in chan_tags:
                         try:
                             index = unique_diagram_tags.index(tag)
-                            chan_index, diag_index = unique_diagrams[index]
-                            same_diags.append(diag_index)
+                            same_diags.append(unique_diagrams[index])
                         except ValueError:
                             same_diags.append(None)
+                    chan_index = next(
+                        (same[0] for same in same_diags if same is not None),
+                        len(channels),
+                    )
 
                     if chan_index == len(channels):
                         channels.append(
@@ -3570,9 +3196,10 @@ class ProcessExporterMG7(ProcessExporterCPP):
                                     "active_flavors": [],
                                 }
                             )
+                            diag_dict = diagrams[diag_index]
                         else:
-                            diag_index = same_diag
-                        diag_dict = diagrams[diag_index]
+                            same_chan, same_index = same_diag
+                            diag_dict = channels[same_chan]["diagrams"][same_index]
                         diag_dict["diagram"][subproc_index_in_group] = diag_info["diagram"]
                         diag_dict["active_flavors"].extend(
                             flavor_offset + flav for flav in diag_info["active_flavors"]
@@ -3587,7 +3214,36 @@ class ProcessExporterMG7(ProcessExporterCPP):
             })
         return merged_subproc_info
 
+    def check_crossed_coverage(self):
+        """A crossed subprocess entry must not integrate a partonic process
+        (initial legs in order, final ones as a set) that another entry --
+        mirrored initial state included -- integrates already: it would be
+        counted twice. The folding is built so that this cannot happen
+        (get_crossed_subprocess_info); refuse the output if it does."""
+        def key(row, n_in):
+            return (tuple(row[:n_in]), tuple(sorted(row[n_in:])))
+        owner = {}
+        for info in sorted(self.process_info, key=lambda i: 'crossing' in i):
+            n_in = len(info['incoming'])
+            for flavor in info['flavors']:
+                for row in flavor['options']:
+                    keys = [key(row, n_in)]
+                    if flavor['mirror']:
+                        keys.append(key([row[1], row[0]] + list(row[2:]), n_in))
+                    for k in keys:
+                        other = owner.setdefault(k, info)
+                        if other is not info and 'crossing' in info:
+                            raise MadGraph5Error(
+                                'the crossed subprocess %s > %s folded into %s '
+                                'also belongs to %s: output with '
+                                '--use_crossing=False' % (
+                                    k[0], k[1], info['path'], other['path']))
+
     def finalize(self, matrix_elements=None, history='', *args, **kwargs):
+        # the crossings fold madmatrix subprocesses only: check them before
+        # the [amplicol] ones are appended
+        if any('crossing' in info for info in self.process_info):
+            self.check_crossed_coverage()
         self.export_amplicol()
         file_name = os.path.normpath(os.path.join(
             self.dir_path, "SubProcesses", "subprocesses.json"
@@ -3607,6 +3263,11 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # NB: this must come *before* create_run_card: it is what fills in
         # self.proc_characteristic, and the run_card defaults are derived from
         # it (e.g. ninitial == 1 -> a decay, which gets no cuts at all).
+        # the gauge of the generation (unitary, FD, ...), as the madevent
+        # output records it: the FD gauge may have been chosen automatically
+        mg5options = args[0] if args else kwargs.get('mg5options')
+        if mg5options and 'gauge' in mg5options:
+            self.proc_characteristic['gauge'] = mg5options['gauge']
         self.create_proc_characteristics(matrix_elements)
 
         # Generate Cards/run_card.toml from the template, filling in
@@ -3616,6 +3277,8 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # The dressed-lepton densities beam.lepton_density selects from. Also
         # reads self.proc_characteristic, so it comes after the call above.
         self.copy_lepton_densities()
+        # and the gamma-UPC sources beam.upc_flux tabulates its luminosity with
+        self.copy_gamma_upc()
 
         self.write_me5_configuration()
 
@@ -3797,6 +3460,38 @@ class ProcessExporterMG7(ProcessExporterCPP):
             logger.warning('could not ship the dressed-lepton densities: %s',
                            error)
 
+    def copy_gamma_upc(self):
+        """Ship Source/PDF/gammaUPC (and the pdf.inc it includes), but only
+        when both beams can give a photon.
+
+        A run with beam.upc_flux compiles it the first time it is needed and
+        tabulates the two-photon luminosity with
+        gammaUPC/upc_luminosity_table.f (template_files/mg7 has no Fortran
+        otherwise); the table is cached next to the sources for the next run,
+        and a gridpack carries it in its saved globals, without Source/.
+        """
+        pc = self.proc_characteristic
+        try:
+            if pc['ninitial'] != 2:
+                return
+            if 22 not in pc['pdg_initial1'] or 22 not in pc['pdg_initial2']:
+                return
+        except (KeyError, TypeError):
+            return
+        pdf_dir = pjoin(MG5DIR, 'Template', 'Common', 'Source', 'PDF')
+        source = pjoin(pdf_dir, 'gammaUPC')
+        target = pjoin(self.dir_path, 'Source', 'PDF', 'gammaUPC')
+        if not os.path.isdir(source) or os.path.exists(target):
+            return
+        try:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copytree(source, target, ignore=shutil.ignore_patterns(
+                '*.o', '*.mod', '*.a', 'test', 'upc_luminosity_table',
+                'upc_luminosity_table.compiler', 'tables'))
+            shutil.copy(pjoin(pdf_dir, 'pdf.inc'), pjoin(self.dir_path, 'Source', 'PDF'))
+        except Exception as error:
+            logger.warning('could not ship the gamma-UPC sources: %s', error)
+
     def create_run_card(self, matrix_elements, history):
         """Write Cards/run_card.toml from the run_card.toml template via
         banner.RunCardMG7, applying process-dependent defaults."""
@@ -3814,14 +3509,22 @@ class ProcessExporterMG7(ProcessExporterCPP):
         except (KeyError, TypeError):
             processes = None
         amplicol_procs = self.amplicol_processes()
-        amplicol = bool(amplicol_procs)
-        if amplicol:
-            processes = (processes or []) + [amplicol_procs]
+        if amplicol_procs:
+            # one group per process, as the amplitudes: their multiplicities
+            # decide whether the sample is MLM merged
+            processes = (processes or []) + [[proc] for proc in amplicol_procs]
 
         if processes:
+            # the crossed subprocesses folded into a base (merge_crossing=
+            # 'record') are processes of this output as well
+            # (the [amplicol] entry appended last has no matrix element
+            # here: keep it instead of letting zip drop it)
+            mes = self.me_list(matrix_elements)
+            processes = [list(procs) + (self.folded_crossed_processes(mes[i])
+                                        if i < len(mes) else [])
+                         for i, procs in enumerate(processes)]
             run_card.create_default_for_process(self.proc_characteristic,
-                                                history, processes,
-                                                amplicol=amplicol)
+                                                history, processes)
             # persist the model so the runtime can reload it: to compute the
             # widths set to 'auto' in the param_card (and recompute them at
             # each scan point) and to reset the parameters the model derives
@@ -3838,6 +3541,25 @@ class ProcessExporterMG7(ProcessExporterCPP):
         # can offer "set <param> default" (mirrors run_card_default.dat at LO).
         run_card.write(pjoin(self.dir_path, 'Cards', 'run_card_default.toml'),
                        template=template)
+
+    @staticmethod
+    def me_list(matrix_elements):
+        """The matrix elements of `matrix_elements` (a SubProcessGroupList or
+        a HelasMultiProcess), in the order create_run_card lists them."""
+        if isinstance(matrix_elements, group_subprocs.SubProcessGroupList):
+            return [me for megroup in matrix_elements
+                    for me in megroup['matrix_elements']]
+        return list(matrix_elements['matrix_elements']) \
+            if matrix_elements else []
+
+    @staticmethod
+    def folded_crossed_processes(matrix_element):
+        """The crossed processes folded into `matrix_element` (their entries
+        are written by get_crossed_subprocess_info); none once expanded."""
+        if 'crossed_processes' not in matrix_element:
+            return []
+        return [proc for proc, _, _ in
+                matrix_element.get('crossed_processes') or []]
 
     def create_proc_characteristics(self, matrix_elements):
         """Populate and write SubProcesses/proc_characteristics. This is the
@@ -3861,6 +3583,14 @@ class ProcessExporterMG7(ProcessExporterCPP):
         if procs:
             pc['nexternal'] = max(pc['nexternal'], amplicol_nexternal)
             pc['ninitial'] = 2
+            try:
+                import madgraph.iolibs.export_amplicol as export_amplicol
+                pc['max_n_matched_jets'] = max(
+                    pc['max_n_matched_jets'], export_amplicol.max_matched_jets(
+                        self.amplicol_defs, self.amplicol_model))
+            except Exception as error:
+                logger.warning('could not count the [amplicol] matched jets, so '
+                               'the merged shower may use a wrong nJetMax: %s', error)
         for me in me_list:
             if not me.get('processes'):
                 continue
@@ -3868,6 +3598,7 @@ class ProcessExporterMG7(ProcessExporterCPP):
             pc['nexternal'] = max(pc['nexternal'], nexternal)
             pc['ninitial'] = ninitial
             procs.extend(me.get('processes'))
+            procs.extend(self.folded_crossed_processes(me))
             # power of alpha_s in |M|^2 = QCD coupling order of the amplitude;
             # collect it over every diagram so we can tell whether it is uniform.
             # Never let this break the output: on any surprise just fall back to
@@ -3941,6 +3672,16 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
 
     opt = dict(cmd.options)
     opt['output_options'] = cmd_options
+    # --use_crossing of the generate/add process command, and of the output
+    # command for this output (both default on). Only the exporters that set
+    # supports_crossing (the madmatrix standalone and mg7) read this key; the
+    # others ignore it. The interface folds the recorded crossings on the same
+    # answer (MadGraphCmd.output_uses_crossing), so the two cannot disagree.
+    if hasattr(cmd, 'output_uses_crossing'):
+        opt['use_crossing'] = cmd.output_uses_crossing()
+    else:
+        opt['use_crossing'] = getattr(cmd, '_use_crossing', True) \
+                              and getattr(cmd, '_output_use_crossing', True)
     cformat = cmd._export_format
 
     # No C++ exporter has a MadLoop backend (the mg7 one cannot even index the
@@ -3950,9 +3691,7 @@ def ExportCPPFactory(cmd, group_subprocesses=False, cmd_options={}):
         raise InvalidCmd(export_v4.loop_induced_not_supported_msg(
                                      cformat, cmd._curr_amps[0].get('process')))
 
-    if cformat == 'pythia8':
-        return ProcessExporterPythia8(cmd._export_dir, opt)
-    elif cformat == 'matchbox_cpp':
+    if cformat == 'matchbox_cpp':
         return  ProcessExporterMatchbox(cmd._export_dir, opt)
     elif cformat == 'mg7_v5':
         return ProcessExporterMG7(cmd._export_dir, opt)

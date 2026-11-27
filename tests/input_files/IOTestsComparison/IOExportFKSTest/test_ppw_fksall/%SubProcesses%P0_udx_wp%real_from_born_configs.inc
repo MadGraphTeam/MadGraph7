@@ -1,6 +1,1 @@
-      INTEGER IRFBC
-      INTEGER REAL_FROM_BORN_CONF(LMAXCONFIGS,4)
-      DATA (REAL_FROM_BORN_CONF(IRFBC,1),IRFBC=1,1) /2/
-      DATA (REAL_FROM_BORN_CONF(IRFBC,2),IRFBC=1,1) /1/
-      DATA (REAL_FROM_BORN_CONF(IRFBC,3),IRFBC=1,1) /2/
-      DATA (REAL_FROM_BORN_CONF(IRFBC,4),IRFBC=1,1) /2/
+../../_shared/IOExportFKSTest%test_ppw_fksall%%SubProcesses%P0_dxu_wp%real_from_born_configs.inc

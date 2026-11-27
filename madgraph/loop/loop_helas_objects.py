@@ -2237,7 +2237,9 @@ class LoopHelasMatrixElement(helas_objects.HelasMatrixElement):
 
     def get_nexternal_ninitial(self, constituents=False):
         """Gives (number or external particles, number of
-        incoming particles)"""
+        incoming particles). A bound state counts as its two constituents:
+        MadLoop computes the loop amplitudes of the constituent process and
+        projects them (see get_physical_nexternal_ninitial)."""
 
         external_wfs = [wf for wf in self.get_all_wavefunctions() if not wf.get('mothers') and not wf.get('is_loop')]
 
@@ -2245,6 +2247,27 @@ class LoopHelasMatrixElement(helas_objects.HelasMatrixElement):
                          external_wfs])),
                 len(set([wf.get('number_external') for wf in \
                          [wf for wf in external_wfs if wf.get('leg_state') == False]])))
+
+    def get_physical_nexternal_ninitial(self):
+        """(number of external particles, number of incoming particles) with
+        each bound state counted once, as the users of MadLoop see them."""
+
+        nexternal, ninitial = self.get_nexternal_ninitial()
+        return nexternal - self.get_nonia(), ninitial
+
+    def get_helicity_combinations(self, onia_physical=False):
+        """Number of helicity combinations of the external legs. MadLoop
+        works with the helicities of the constituents of a bound state."""
+
+        return super(LoopHelasMatrixElement, self).get_helicity_combinations(
+                                                   onia_physical=onia_physical)
+
+    def get_helicity_matrix(self, allow_reverse=True, onia_physical=False):
+        """Helicity matrix of the external legs. MadLoop works with the
+        helicities of the constituents of a bound state."""
+
+        return super(LoopHelasMatrixElement, self).get_helicity_matrix(
+                       allow_reverse=allow_reverse, onia_physical=onia_physical)
 
     def get_number_of_amplitudes(self):
         """Gives the total number of amplitudes for this ME, including the loop

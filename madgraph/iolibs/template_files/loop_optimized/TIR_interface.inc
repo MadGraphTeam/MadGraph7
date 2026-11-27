@@ -1,4 +1,7 @@
 	  SUBROUTINE %(proc_prefix)sTIRLOOP(I_SQSO,I_LOOPGROUP,I_LIB,NLOOPLINE,PL,M2L,RANK,RES,STABLE)
+## if(tirust_available){
+      USE, INTRINSIC :: IEEE_ARITHMETIC, ONLY: IEEE_IS_FINITE
+## }
 C  
 %(info_lines)s
 C 
@@ -32,12 +35,18 @@ C
       INTEGER NLOOPLINE, RANK
       %(real_dp_format)s PL(0:3,NLOOPLINE)
       %(real_dp_format)s PCT(0:3,0:NLOOPLINE-1),ABSPCT(0:3)
-      %(real_dp_format)s REF_P
+      %(real_dp_format)s REF_P,PREFIX_SUM
       %(real_dp_format)s PDEN(0:3,NLOOPLINE-1)
       %(mass_dp_format)s M2L(NLOOPLINE)
       %(complex_dp_format)s M2LCT(0:NLOOPLINE-1)	  
       %(complex_dp_format)s RES(3)
 	  LOGICAL STABLE	  
+## if(OniaPwave){
+C     A P-wave bound state: the lines and masses before the reduction (which
+C     may reverse them in place), for the integrals with a doubled line
+      %(real_dp_format)s PW_PL(0:3,NLOOPLINE)
+      %(mass_dp_format)s PW_M2L(NLOOPLINE)
+## }
 C  
 C LOCAL VARIABLES 
 C
@@ -49,6 +58,10 @@ C
 c This variable will be used to detect changes in the TIR library used so as to force the reset of the TIR filter.
 	  INTEGER LAST_LIB_USED
 	  DATA LAST_LIB_USED/-1/
+      INTEGER LAST_POLE_MODE
+      LOGICAL LAST_UV_POLES,LAST_IR_POLES,UV_POLES,IR_POLES
+      DATA LAST_POLE_MODE/-2/
+      DATA LAST_UV_POLES,LAST_IR_POLES/.TRUE.,.TRUE./
 
        %(complex_dp_format)s TIRCOEFS(0:LOOPMAXCOEFS-1,3),TIRCOEFSERRORS(0:LOOPMAXCOEFS-1,3)
        %(complex_dp_format)s PJCOEFS(0:LOOPMAXCOEFS-1,3)
@@ -57,6 +70,8 @@ c This variable will be used to detect changes in the TIR library used so as to 
        %(complex_dp_format)s TIRCOEFS_CACHING(3,0:LOOPMAXCOEFS-1,NLOOPGROUPS,TIR_CACHE_SIZE)
        SAVE TIRCOEFS_CACHING
 ## }
+      LOGICAL FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
+      COMMON/%(proc_prefix)sFPE_IN_REDUCTION/FPE_IN_DP_REDUCTION,FPE_IN_QP_REDUCTION
 C
 C EXTERNAL FUNCTIONS
 C
@@ -100,7 +115,41 @@ C ----------
 C BEGIN CODE
 C ----------
 
+C Reject unavailable OPP backends which reach the TIR fallback. Check before
+C consulting the cache so an unsupported ID can never reuse old coefficients.
+      SELECT CASE(MLReductionLib(I_LIB))
+      CASE(3,4,7)
+        CONTINUE
+      CASE(9)
+## if(tirust_available){
+        STABLE=.TRUE.
+## } else {
+        WRITE(*,*) 'TIRust unavailable: install tirust, regenerate and rebuild.'
+          STOP 1
+## }
+      CASE(2)
+        WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+        WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another supported backend.'
+        STOP 1
+      CASE DEFAULT
+        IF(MLReductionLib(I_LIB).EQ.8) THEN
+          WRITE(*,*) 'NinjaRS (MLReductionLib=8) is unavailable in this generated process.'
+          WRITE(*,*) 'Run install ninjars in MadGraph, then regenerate and rebuild this process.'
+        ELSE
+          WRITE(*,*) 'ERROR:: Unsupported TIR reduction library:',MLReductionLib(I_LIB)
+          WRITE(*,*) 'Select an available MLReductionLib and regenerate and rebuild this process.'
+        ENDIF
+        STOP 1
+      END SELECT
+
 C Initialize for the very first time ML is called LAST_ILIB with the first ILIB used.
+CALL ML_LOOP_POLE_FLAGS(UV_POLES,IR_POLES)
+IF(LAST_POLE_MODE.NE.LoopPoleMode.OR.(LAST_UV_POLES.NEQV.UV_POLES).OR.(LAST_IR_POLES.NEQV.IR_POLES)) THEN
+  IF(LAST_POLE_MODE.NE.-2) CALL %(proc_prefix)sCLEAR_TIR_CACHE()
+  LAST_POLE_MODE=LoopPoleMode
+  LAST_UV_POLES=UV_POLES
+  LAST_IR_POLES=IR_POLES
+ENDIF
 IF(LAST_LIB_USED.eq.-1) THEN
   LAST_LIB_USED = MLREDUCTIONLIB(LIBINDEX)
 ELSE
@@ -130,6 +179,7 @@ C Golem95 not available
 ## }
 ENDIF
 
+      IF(MLReductionLib(I_LIB).NE.9) THEN
 C INITIALIZE TIR IF NEEDED
       IF (TIRINIT) THEN
 	    TIRINIT=.FALSE.
@@ -174,19 +224,21 @@ C  CONVERT THE MOMENTA FLOWING IN THE LOOP LINES TO CT CONVENTIONS
          stop 'pz is not conserved (flag: TIR)'
         endif
       endif
-      do I=0,3
-        do J=1,(NLOOPLINE-1)
-          do K=1,J
-            PCT(I,J)=PCT(I,J)+PL(I,K)
-          enddo
-        enddo
-      enddo
+C     Accumulate ordered prefixes once, preserving the zero-seeded sum.
+      DO I=0,3
+        PREFIX_SUM=0.D0
+        DO J=1,(NLOOPLINE-1)
+          PREFIX_SUM=PREFIX_SUM+PL(I,J)
+          PCT(I,J)=PREFIX_SUM
+        ENDDO
+      ENDDO
 
       do I=0,3
         do J=1,(NLOOPLINE-1)
 	      PDEN(I,J)=PCT(I,J)
 	    enddo
       enddo
+      ENDIF
 C NUMBER OF INDEPENDENT LOOPCOEFS FOR RANK=RANK
       NLOOPCOEFS=0
       DO I=0,RANK
@@ -198,24 +250,17 @@ C NUMBER OF INDEPENDENT LOOPCOEFS FOR RANK=RANK
 	  ELSE
 	    TIR_CACHE_INDEX = %(proc_prefix)sTIRCACHE_INDEX(CTMODE)
 C This way whenever the CTMode exceeds the cache size it rolls back to the beginning and MadLoop will have taken care of having re-initialized TIR_DONE between labels 200 and 205 in loop_matrix.f
-		TIR_CACHE_INDEX = MOD(TIR_CACHE_INDEX-1,TIR_CACHE_SIZE)+1 
+C       Keep the constant expression valid when users disable this cache.
+		TIR_CACHE_INDEX = MOD(TIR_CACHE_INDEX-1,MAX(TIR_CACHE_SIZE,1))+1
 	  ENDIF
 
 	  IF(.NOT.TIR_DONE(I_LOOPGROUP,TIR_CACHE_INDEX))THEN
 ## } 
       SELECT CASE(MLReductionLib(I_LIB))
       CASE(2)
-C     PJFry++
-## if(pjfry_available){
-      CALL %(proc_prefix)sSWITCH_ORDER(CTMODE,NLOOPLINE,PL,PDEN,M2L)
-      CALL PMLOOP(NLOOPLINE,RANK,PL,PDEN,M2L,MU_R,PJCOEFS(0:NLOOPCOEFS-1,1:3),STABLE)
-C     CONVERT TO MADLOOP CONVENTION
-      CALL %(proc_prefix)sCONVERT_PJFRY_COEFFS(RANK,PJCOEFS,TIRCOEFS)
-      CALL cite('Fleischer:2011bi','one-loop reduction with PJFry++')
-## } else {
-      WRITE(*,*) 'ERROR:: PJFRY++ is not interfaced.'
-      STOP
-## }
+        WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+        WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another supported backend.'
+        STOP 1
       CASE(3)
 C     IREGI
 ## if(iregi_available){
@@ -242,6 +287,22 @@ C       We add here the numerical inaccuracies linearly to be conservative
 ## } else {
       WRITE(*,*) 'ERROR:: COLLIER is not interfaced.'
       STOP
+## }
+      CASE(9)
+## if(tirust_available){
+## if(OniaPwave){
+      PW_PL=PL
+      PW_M2L=M2L
+## }
+      CALL %(proc_prefix)sTIRUSTLOOP(CTMODE,NLOOPLINE,RANK,PL,M2L,TIRCOEFS,STABLE)
+      IF(.NOT.STABLE) THEN
+        FPE_IN_DP_REDUCTION=.TRUE.
+        RES=0
+        RETURN
+      ENDIF
+## } else {
+      WRITE(*,*) 'TIRust unavailable: install tirust, regenerate and rebuild.'
+          STOP 1
 ## }
       END SELECT
 ## if(TIRCaching){
@@ -272,6 +333,18 @@ C The zero index is dummy and means no caching at all since TIR_CACHE_SIZE=0.
 ## }
 	 ENDDO
       ENDDO
+## if(OniaPwave){
+C     A P-wave bound state: the derivatives of the propagators in the
+C     relative momentum, the integrals with one doubled line (onia_loop.f)
+      IF(MLReductionLib(I_LIB).EQ.9) THEN
+        CALL %(proc_prefix)sONIA_PW_DOUBLED(I_SQSO,I_LOOPGROUP,CTMODE,NLOOPLINE,RANK,PW_PL,PW_M2L,RES,STABLE)
+        IF(.NOT.STABLE) THEN
+          FPE_IN_DP_REDUCTION=.TRUE.
+          RES=0
+          RETURN
+        ENDIF
+      ENDIF
+## }
 ## if(AmplitudeReduction){
       RES(1)=NORMALIZATION*RES(1)
       RES(2)=NORMALIZATION*RES(2)
@@ -280,6 +353,17 @@ C The zero index is dummy and means no caching at all since TIR_CACHE_SIZE=0.
       RES(1)=NORMALIZATION*2.0d0*DBLE(RES(1))
       RES(2)=NORMALIZATION*2.0d0*DBLE(RES(2))
       RES(3)=NORMALIZATION*2.0d0*DBLE(RES(3))
+## }
+## if(tirust_available){
+      IF(MLReductionLib(I_LIB).EQ.9) THEN
+        DO I=1,3
+          STABLE=STABLE.AND.IEEE_IS_FINITE(DBLE(RES(I))).AND.IEEE_IS_FINITE(AIMAG(RES(I)))
+        ENDDO
+        IF(.NOT.STABLE) THEN
+          FPE_IN_DP_REDUCTION=.TRUE.
+          RES=0
+        ENDIF
+      ENDIF
 ## }
 C     IF(MLReductionLib(I_LIB).EQ.2) THEN
 C       WRITE(*,*) 'PJFry: Loop ID',ID,' =',RES(1),RES(2),RES(3)
@@ -453,13 +537,27 @@ C
 C CONSTANTS
 C
             INTEGER NLOOPLIB
-			PARAMETER (NLOOPLIB=7)
-			INTEGER QP_NLOOPLIB
-## if(ninja_supports_quad_prec) {
-      		PARAMETER (QP_NLOOPLIB=2)
+			PARAMETER (NLOOPLIB=9)
+			INTEGER QP_NLOOPLIB,TIRUST_QP_COUNT
+## if(tirust_supports_quad_prec) {
+      PARAMETER (TIRUST_QP_COUNT=1)
 ## } else {
-      		PARAMETER (QP_NLOOPLIB=1)
+      PARAMETER (TIRUST_QP_COUNT=0)
 ## }
+## if(ninja_supports_quad_prec) {
+## if(ninjars_supports_quad_prec) {
+      PARAMETER (QP_NLOOPLIB=3+TIRUST_QP_COUNT)
+## } else {
+      PARAMETER (QP_NLOOPLIB=2+TIRUST_QP_COUNT)
+## }
+## } else {
+## if(ninjars_supports_quad_prec) {
+      PARAMETER (QP_NLOOPLIB=2+TIRUST_QP_COUNT)
+## } else {
+      PARAMETER (QP_NLOOPLIB=1+TIRUST_QP_COUNT)
+## }
+## }
+
             INTEGER NLOOPGROUPS
             PARAMETER (NLOOPGROUPS=%(nloop_groups)d)
 C
@@ -492,7 +590,8 @@ C ----------
 	    IF(doing_qp)THEN
 C  QP EVALUATION, ONLY CUTTOOLS
 		IF(.NOT.QP_TOOLS_AVAILABLE)THEN
-		   STOP 'No qp tools available, please make sure MLReductionLib is correct'
+		   WRITE(*,*) 'No qp tools available, please make sure MLReductionLib is correct'
+             STOP 1
 		ENDIF
 		J_LIB=0
 		SELECT_LIBINDEX=LIBINDEX
@@ -515,11 +614,12 @@ C  QP EVALUATION, ONLY CUTTOOLS
 		  CALL DETECT_LOOPLIB(LIBNUM,NLOOPLINE,RANK,complex_mass,HAS_AN_HEFT_VERTEX(loop_ID),MAX_SPIN_CONNECTED_TO_LOOP,LPASS)
 		  IF(LPASS)EXIT
 		  I=I+1
-		  IF(I.GT.QP_NLOOPLIB.AND.INDEX_QP_TOOLS(I).EQ.0)THEN
+		  IF(I.GT.QP_NLOOPLIB.OR.INDEX_QP_TOOLS(I).EQ.0)THEN
 		     I=1
 		  ENDIF
 		  IF(I.EQ.J_LIB)THEN
-		    STOP 'No qp loop library can deal with this integral'
+		    WRITE(*,*) 'No qp loop library can deal with this integral'
+             STOP 1
 		  ENDIF
 		  I_LIB=INDEX_QP_TOOLS(I)
 		  LIBNUM=MLReductionLib(I_LIB)
@@ -536,7 +636,8 @@ C  DP EVALUATION
 		     I_LIB=1
 		  ENDIF
 		  IF(I_LIB.EQ.LIBINDEX)THEN
-		     STOP 'No dp loop library can deal with this integral'
+		     WRITE(*,*) 'No dp loop library can deal with this integral'
+             STOP 1
 		  ENDIF
 		  LIBNUM=MLReductionLib(I_LIB)
 		ENDDO 

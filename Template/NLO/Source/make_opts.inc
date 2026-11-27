@@ -115,7 +115,7 @@ else ifneq ($(epdf),)
 # option eMELA/ePDF
 EPDFLIBS=$(shell $(epdf) --ldflags)
 alfas_functions=alfas_functions
-CXX=$(DEFAULT_CPP_COMPILER) -std=c++11
+CXX=$(DEFAULT_CPP_COMPILER) -std=c++20
 llhapdf = $(shell $(epdf) --ldflags)
 # Add also LHAPDF to the libraries to be linked
 llhapdf+= -lLHAPDF
@@ -127,7 +127,7 @@ endif
 
 # Set CXX unless it's defined by an environment variable
 ifeq ($(origin CXX),default)
-   CXX=$(DEFAULT_CPP_COMPILER) -std=c++11
+   CXX=$(DEFAULT_CPP_COMPILER) -std=c++20
 endif
 
 

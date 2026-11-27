@@ -7,15 +7,15 @@
 #ifndef COLOR_SUM_H
 #define COLOR_SUM_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuCxtypes.h"
+#include "MadMatrixCxtypes.h"
 
 #include "ProcessData.h"
 #include "GpuAbstraction.h"
 
 #include <cstddef>
-#ifdef MGONGPU_CPP_HAS_BLAS
+#ifdef MADMATRIX_CPP_HAS_BLAS
 #include <vector> // the batched C++ color sum keeps the jamps of every good helicity
 #endif
 
@@ -23,18 +23,18 @@ namespace madmatrix
 {
   //--------------------------------------------------------------------------
 
-#ifndef MGONGPU_HAS_NO_BLAS
+#ifndef MADMATRIX_HAS_NO_BLAS
   // The size of the ghelAllBlasTmp scratch buffer color_sum_blas needs, in fptype2 elements:
   // one fptype2[ncolor*nx2*nhel*nevt] buffer for the BLAS intermediate results and, in mixed
   // precision mode only, one more for the jamps converted from double to float plus one
   // fptype2[nhel*nevt] buffer for the MEs, which are fptype elsewhere. This is the one place
-  // the size is defined: both the allocation (MatrixElementKernels.cc) and the reset
+  // the size is defined: both the allocation and the reset
   // (color_sum_gpu) come here.
   constexpr std::size_t
   blasColorSumTmpSize( const int nhel, const int nevt )
   {
-    std::size_t nfptype2PerEvent = ProcessData::ncolor * mgOnGpu::nx2;
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+    std::size_t nfptype2PerEvent = ProcessData::ncolor * madmatrix::nx2;
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
     nfptype2PerEvent *= 2;  // the jamps converted to float need a buffer of their own
     nfptype2PerEvent += 1;  // the fptype2 matrix elements
 #endif
@@ -52,9 +52,10 @@ namespace madmatrix
     {
       // the number of jamps: ncolor per amplitude split order (njampso == ncolor
       // without split orders); the real and the imaginary planes are that long
-      const int ncolor = ProcessData::njampso;
-      const int nevt = gridDim.x * blockDim.x;
-      const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
+      // size_t avoids int overflow in the index products below
+      const size_t ncolor = ProcessData::njampso;
+      const size_t nevt = gridDim.x * blockDim.x;
+      const size_t ievt = blockDim.x * blockIdx.x + threadIdx.x;
       // (ONE HELICITY) Original "old" striding for CUDA kernels: ncolor separate 2*nevt matrices for each color (ievt last)
       //return cxtype_ref( buffer[icol * 2 * nevt + ievt], buffer[icol * 2 * nevt + nevt + ievt] ); // "old"
       // (ONE HELICITY) New "new1" striding for cuBLAS: two separate ncolor*nevt matrices for each of real and imag (ievt last)
@@ -69,9 +70,10 @@ namespace madmatrix
     {
       // the number of jamps: ncolor per amplitude split order (njampso == ncolor
       // without split orders); the real and the imaginary planes are that long
-      const int ncolor = ProcessData::njampso;
-      const int nevt = gridDim.x * blockDim.x;
-      const int ievt = blockDim.x * blockIdx.x + threadIdx.x;
+      // size_t avoids int overflow in the index products below
+      const size_t ncolor = ProcessData::njampso;
+      const size_t nevt = gridDim.x * blockDim.x;
+      const size_t ievt = blockDim.x * blockIdx.x + threadIdx.x;
       // (ONE HELICITY) Original "old" striding for CUDA kernels: ncolor separate 2*nevt matrices for each color (ievt last)
       //return cxtype_ref( buffer[icol * 2 * nevt + ievt], buffer[icol * 2 * nevt + nevt + ievt] ); // "old"
       // (ONE HELICITY) New "new1" striding for cuBLAS: two separate ncolor*nevt matrices for each of real and imag (ievt last)

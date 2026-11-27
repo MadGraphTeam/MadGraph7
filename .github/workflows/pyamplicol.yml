@@ -3,12 +3,12 @@ name: pyAmpliCol
 # Ported from the standalone pyamplicol repository (tests.yml and
 # release-artifacts.yml). Every job runs inside pyamplicol/.
 on:
-  push:
-    # All branches, no tags (see madspace.yml): release.yml gates on the run
-    # for the commit on main and then calls this workflow to build the wheels.
-    branches:
-      - '**'
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  push:
+    # main only: other branches run through workflow_dispatch
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       full_matrix:
@@ -23,6 +23,7 @@ on:
         default: false
 
 permissions:
+  actions: write
   contents: read
 
 concurrency:
@@ -41,6 +42,7 @@ jobs:
   # Skips the heavy jobs unless pyamplicol changed; a job, not `paths:`, so every
   # commit still gets a (green) run for release.yml's CI gate.
   changes:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     outputs:
       pyamplicol: ${{ steps.diff.outputs.pyamplicol }}
@@ -70,20 +72,38 @@ jobs:
             pull_request) base="$PR_BASE" ;;
             *) base="" ;;
           esac
+          # The file list is read into a variable first: piped into `grep -q`,
+          # a long list (pull requests) made git exit on SIGPIPE once grep had
+          # matched, and pipefail then turned the match into "false".
           if [[ -z "$base" || "$base" =~ ^0+$ ]] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
             changed=true
-          elif git diff --name-only "$base" HEAD \
-              | grep -qE '^(pyamplicol/|\.github/workflows/pyamplicol|\.github/actions/(pyamplicol|build_pyamplicol|install_pyamplicol)|madspace/include/madspace/umami\.h$|madgraph/mg7/bootstrap\.py$|VERSION$)'; then
+          elif files=$(git diff --name-only "$base" HEAD) && grep -qE \
+              '^(pyamplicol/|\.github/workflows/pyamplicol|\.github/actions/(pyamplicol|build_pyamplicol|install_pyamplicol)|madspace/include/madspace/umami\.h$|madgraph/mg7/bootstrap\.py$|VERSION$)' \
+              <<< "$files"; then
             changed=true
           else
             changed=false
           fi
           echo "pyamplicol=$changed" | tee -a "$GITHUB_OUTPUT"
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   python-compatibility:
     name: Python ${{ matrix.python-version }} lightweight API
     needs: changes
-    if: needs.changes.outputs.pyamplicol == 'true'
+    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true')) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -108,14 +128,32 @@ jobs:
           tests/unit/test_config_models.py
           tests/unit/test_config_resolution.py
           -q
-      - name: Check the CI memory watchdog
+      - name: Check the CI tools
         if: matrix.python-version == '3.11'
-        run: python -m pytest tests/unit/test_ci_memory_watchdog.py -q
+        run: >-
+          python -m pytest
+          tests/unit/test_ci_fetch_loop_reference_ufos.py
+          tests/unit/test_ci_memory_watchdog.py
+          -q
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   source-contracts:
     name: Python 3.11 source and release contracts
     needs: changes
-    if: needs.changes.outputs.pyamplicol == 'true'
+    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true')) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -151,10 +189,24 @@ jobs:
 
   # Builds through the MadGraph installer and checks that Symbolica accepts the
   # package library key; the install is cached for install_pyamplicol.
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
   installer:
     name: MadGraph installer and Symbolica library key
     needs: changes
-    if: needs.changes.outputs.pyamplicol == 'true'
+    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true')) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -200,11 +252,25 @@ jobs:
           print(state)
           assert state.licensed, "Symbolica runs in restricted mode"
           EOF
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   release-runtime:
     name: Published-dependency generation, runtime, and native SDK
     needs: [changes, python-compatibility, source-contracts]
-    if: needs.changes.outputs.pyamplicol == 'true' && github.event_name != 'push'
+    if: ${{ (github.event_name != 'pull_request' && (needs.changes.outputs.pyamplicol == 'true' && github.event_name != 'push')) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     env:
       CARGO_INCREMENTAL: "0"
@@ -287,6 +353,8 @@ jobs:
             tests/unit/test_recurrence_numerical_current_warmup.py \
             tests/unit/test_recurrence_exact_contracted_color.py \
             tests/unit/test_recurrence_direct_intrinsics.py \
+            tests/unit/test_recurrence_export.py \
+            tests/unit/test_run_cargo.py \
             tests/unit/test_config_models.py \
             tests/unit/test_config_resolution.py \
             tests/unit/test_dag_model_independence.py \
@@ -300,8 +368,16 @@ jobs:
             tests/unit/test_correlat*.py \
             tests/unit/test_nlo_limit_study.py \
             tests/unit/test_exact_vertex_normalization.py \
+            tests/unit/test_examples.py \
             tests/unit/test_external_model_independence.py \
             tests/unit/test_generation_config_provenance.py \
+            tests/unit/test_generation_statistics.py \
+            tests/unit/test_loop_profile_statistics.py \
+            tests/unit/test_profile_plan.py \
+            tests/unit/test_progress_eta.py \
+            tests/unit/test_progress_failsafe.py \
+            tests/unit/test_progress_renderer.py \
+            tests/unit/test_progress_resources.py \
             tests/unit/test_generation_execution_schema.py \
             tests/unit/test_generation_stage_contract.py \
             tests/unit/test_model_loading.py \
@@ -320,6 +396,12 @@ jobs:
           -q
       - name: Run focused generation and runtime integration (30 GiB RSS limit)
         # The restricted child must run first with an uninitialized parent.
+        # The recurrence export tests keep their generated d d~ > z g
+        # artifacts (both LC layouts, and one with packed payloads) for the
+        # Rust parity test below, which interprets their exports and compares
+        # them with RustiCol bit for bit.
+        env:
+          PYAMPLICOL_RECURRENCE_EXPORT_ARTIFACTS: ${{ runner.temp }}/recurrence-export
         run: |
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
             .venv/bin/python -m pytest tests/integration/test_spenso_restricted_mode.py -q
@@ -336,12 +418,121 @@ jobs:
             tests/integration/test_adjoint_fft_runtime.py \
             tests/integration/test_generalized_adjoint_fft_runtime.py \
             tests/integration/test_recurrence_generation_runtime.py::test_ufo_sm_recurrence_refreshes_real_and_complex_derived_couplings \
+            tests/integration/test_recurrence_generation_runtime.py::test_lc_recurrence_export_is_resolved_complete_and_static \
+            tests/integration/test_recurrence_export_packed.py \
             -q
+      # One-loop support: a light subset of the loop tests (no nightly or
+      # provider-campaign tier) and a generate/evaluate smoke of a virtual
+      # and a loop-induced process. No SYMBOLICA_LICENSE is passed: the
+      # package's own Symbolica library key licenses the loop engine, and
+      # PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE makes the loop tests fail
+      # instead of skip if that key were refused. Deselected: the sgluon NLO
+      # UFO is not fetched here, and the canonical-stage probe drives
+      # Symbolica from a test script (outside the package, so the library key
+      # does not apply), which aborts without a personal licence. Tests that
+      # ask symbolica.is_licensed() from test code skip for the same reason.
+      # test_native_glibc_floor.py needs a runtime staged by
+      # tools/developer/build_loop_native.py, not the wheel staged here.
+      # The library-key guard scan (every native entry point holds the
+      # package key) and the Spenso thread-policy tests run here rather than
+      # in source-contracts: they are loop tests, which skip without a
+      # Symbolica that accepts the package key, and source-contracts installs
+      # no Symbolica.
+      # The last seven files are the fastest of the restored one-loop engine
+      # tests (about 70 s together).
+      - name: Run the light one-loop tests without SYMBOLICA_LICENSE (30 GiB RSS limit)
+        env:
+          PYAMPLICOL_REQUIRE_SYMBOLICA_LICENSE: "1"
+          PYAMPLICOL_NLO_UFO_REFERENCE: ${{ github.workspace }}/pyamplicol/src/pyamplicol/assets/models/ufo/loop_sm
+          PYAMPLICOL_EW_UFO_REFERENCE: ${{ github.workspace }}/pyamplicol/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm_Gmu
+          PYAMPLICOL_EW_NLO_UFO_REFERENCE: ${{ github.workspace }}/pyamplicol/src/pyamplicol/assets/models/ufo/loop_qcd_qed_sm
+        run: |
+          env -u SYMBOLICA_LICENSE .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 -- \
+            .venv/bin/python -m pytest -m "not loop_nightly" \
+            tests/unit/test_loop_adjoint_scalar_counterterms.py \
+            tests/unit/test_loop_color_projection.py \
+            tests/unit/test_loop_request_scope.py \
+            tests/unit/test_loop_exact.py \
+            tests/unit/test_loop_model_color.py \
+            tests/unit/test_loop_native_loading.py \
+            tests/unit/test_loop_orders.py \
+            tests/unit/test_loop_request.py \
+            tests/unit/test_loop_tensor_components.py \
+            tests/unit/test_loop_charge_source.py \
+            tests/unit/test_loop_compiler.py \
+            tests/unit/test_loop_counterterms.py \
+            tests/unit/test_loop_control_models.py \
+            tests/unit/test_loop_flavor_grouping.py \
+            tests/unit/test_public_virtual_colour.py \
+            tests/unit/test_virtual_results.py \
+            tests/unit/test_cli_virtual.py \
+            tests/unit/test_loop_preparation.py \
+            tests/unit/test_api_services.py \
+            tests/unit/test_loop_color_declaration.py \
+            tests/unit/test_runtime_virtual.py \
+            tests/unit/test_loop_model_declaration.py \
+            tests/unit/test_virtual_api_bundle.py \
+            tests/unit/test_loop_color_grades.py \
+            tests/unit/test_loop_model_restrictions.py \
+            tests/unit/test_loop_flavor_mappings.py \
+            tests/unit/test_loop_source_color.py \
+            tests/unit/test_loop_config.py \
+            tests/unit/test_loop_generation_service.py \
+            tests/unit/test_loop_model.py \
+            tests/unit/test_loop_upstream_import.py \
+            tests/unit/test_loop_order_names.py \
+            tests/unit/test_loop_qcd_r2_color.py \
+            tests/unit/test_loop_model_import.py \
+            tests/unit/test_loop_v2_ct_colour_projection.py \
+            tests/unit/test_loop_source_colour_declaration.py \
+            tests/unit/test_loop_color_declaration_binding.py \
+            tests/unit/test_loop_v2_frame_rows.py \
+            tests/unit/test_loop_public_preparation.py \
+            tests/unit/test_loop_v2_observables_fast.py \
+            tests/unit/test_loop_scalar_bindings.py \
+            tests/unit/test_loop_scalar_frontend.py \
+            tests/unit/test_loop_paired_model.py \
+            tests/unit/test_unlicensed_generation.py::test_every_native_entry_point_holds_the_library_key \
+            tests/unit/test_symbolica_thread_license.py \
+            tests/unit/test_loop_packed_payloads.py \
+            tests/unit/test_loop_v2_oracles.py \
+            tests/unit/test_loop_v2_levi_civita.py \
+            tests/unit/test_model_levi_civita_kernels.py \
+            tests/unit/test_loop_njet_reference_fixture.py \
+            tests/unit/test_loop_model_compatibility.py \
+            tests/unit/test_loop_v2_colour.py \
+            tests/unit/test_loop_v2_ct_recursion.py \
+            --deselect tests/unit/test_loop_adjoint_scalar_counterterms.py::test_np_zero_is_exact_source_selection_not_particle_or_arity_pruning \
+            --deselect tests/unit/test_loop_v2_observables_fast.py::test_canonical_stages_do_not_depend_on_the_process_history \
+            -q -rs
+      - name: One-loop generate and evaluate smoke without SYMBOLICA_LICENSE
+        run: |
+          set -euo pipefail
+          smoke="$RUNNER_TEMP/loop-smoke"
+          mkdir -p "$smoke"
+          for case in "uux_ddxg|u u~ > d d~ g [QCD]" "gg_zz|g g > z z [noborn=QCD]"; do
+            name="${case%%|*}"
+            expression="${case#*|}"
+            env -u SYMBOLICA_LICENSE .venv/bin/python -m pyamplicol generate \
+              "$expression" "$smoke/$name" --model loop_sm
+            env -u SYMBOLICA_LICENSE .venv/bin/python -m pyamplicol evaluate \
+              "$smoke/$name" --json > "$smoke/$name.json"
+            .venv/bin/python - "$smoke/$name.json" <<'EOF'
+          import json, math, sys
+          result = json.load(open(sys.argv[1]))
+          assert result["statuses"] and set(result["statuses"]) == {"success"}, result["statuses"]
+          values = [v for point in result["values"] for sector in point for v in sector]
+          assert values and all(math.isfinite(v) for v in values), values
+          print(result["contribution"], result["values"])
+          EOF
+          done
       - name: Check Rust workspace (30 GiB RSS limit)
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           env PYTHON=$PWD/.venv/bin/python just rust-check
       - name: Test Rust workspace (30 GiB RSS limit)
+        env:
+          RUSTICOL_RECURRENCE_ARTIFACT: ${{ runner.temp }}/recurrence-export/topology-replay:${{ runner.temp }}/recurrence-export/all-flow-union:${{ runner.temp }}/recurrence-export/packed
         run: >-
           .venv/bin/python tools/ci/memory_watchdog.py --limit-gib 30 --
           env PYTHON=$PWD/.venv/bin/python just rust-test
@@ -351,10 +542,24 @@ jobs:
           .venv/bin/python -m pytest tests/integration/test_examples.py -q
 
   # ---- Release artifacts (release.yml, or a manual run with full_matrix) ----
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   prepared-models:
     name: Release prepared-model archive
-    if: inputs.full_matrix
+    if: ${{ (github.event_name != 'pull_request' && (inputs.full_matrix)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -370,8 +575,23 @@ jobs:
           name: pyamplicol-prepared-models
           path: pyamplicol/.artifacts/prepared-models/pyamplicol-prepared-models.tar.gz
           if-no-files-found: error
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   release-source-preflight:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Focused release source preflight
     needs: prepared-models
     runs-on: ubuntu-24.04
@@ -408,10 +628,24 @@ jobs:
           tests/release
           tests/unit/test_dependency_gate.py
           tests/unit/test_release_*.py
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   independent-physics-oracle:
     name: Independent Fortran physics oracle
-    if: inputs.full_matrix
+    if: ${{ (github.event_name != 'pull_request' && (inputs.full_matrix)) || (github.event_name == 'pull_request' && !github.event.pull_request.draft) }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -431,8 +665,23 @@ jobs:
             --prepare-checkout \
             --fixture tests/fixtures/reference/physics-v2.json \
             --jobs 2 >/dev/null
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   retained-sdist:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Build retained source distribution
     needs: [release-source-preflight, independent-physics-oracle]
     runs-on: ubuntu-24.04
@@ -462,8 +711,23 @@ jobs:
           name: pyamplicol-retained-sdist
           path: pyamplicol/.artifacts/release-source/
           if-no-files-found: error
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   macos-wheels:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: macOS release wheel and native deployment (${{ matrix.target }})
     needs: retained-sdist
     strategy:
@@ -481,6 +745,13 @@ jobs:
       RUSTUP_TOOLCHAIN: "1.99.1"
     steps:
       - uses: actions/checkout@v5
+      - name: Keep build scratch out of macOS's daily temporary-file cleanup
+        # dirhelper deletes /var/folders/*/T files that look unused for three
+        # days, daily at 03:35 UTC: crate sources in a build's CARGO_HOME there.
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/tmp"
+          printf 'TMPDIR=%s\n' "$RUNNER_TEMP/tmp" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v5
         with:
           name: pyamplicol-retained-sdist
@@ -497,6 +768,7 @@ jobs:
           python tools/ci/memory_watchdog.py --limit-gib 30 --
           python tools/release/build_release_artifacts.py
           --retained-sdist .artifacts/retained/pyamplicol-*.tar.gz
+          --skip-checkout-wheel
           --output-dir .artifacts/platform
       - name: Require C++17 and Fortran 2008 SDK toolchains
         shell: bash
@@ -541,8 +813,23 @@ jobs:
           name: pyamplicol-release-${{ matrix.target }}
           path: pyamplicol/.artifacts/platform/
           if-no-files-found: error
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   manylinux-wheel:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: manylinux release wheel and native deployment
     needs: retained-sdist
     runs-on: ubuntu-24.04
@@ -595,8 +882,23 @@ jobs:
           name: pyamplicol-release-manylinux-x86_64
           path: pyamplicol/.artifacts/platform/
           if-no-files-found: error
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
   validated-artifacts:
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     name: Collect validated release artifacts
     needs: [retained-sdist, macos-wheels, manylinux-wheel]
     runs-on: ubuntu-24.04
@@ -625,3 +927,17 @@ jobs:
           name: pyamplicol-validated-release
           path: pyamplicol/.artifacts/validated/
           if-no-files-found: error
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true

@@ -324,6 +324,79 @@ def test_sdist_build_uses_clean_external_source_without_byte_parity(
     assert "PYTHONPATH" not in observed["env"]
 
 
+def test_retained_sdist_wheel_only_builds_once_without_checkout_wheel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sdist = tmp_path / "pyamplicol-0.1.0.tar.gz"
+    sdist.write_bytes(b"sdist")
+    wheel_name = "pyamplicol-0.1.0-cp311-abi3-test.whl"
+    scratch = tmp_path / "scratch"
+    extracted = tmp_path / "unpacked" / "pyamplicol-0.1.0"
+    extracted.mkdir(parents=True)
+    audited: list[str] = []
+    builds: list[Path] = []
+
+    @contextlib.contextmanager
+    def fake_temporary(prefix: str):
+        directory = scratch / prefix
+        directory.mkdir(parents=True)
+        yield directory
+
+    def fake_run(command, *, cwd, env, **_kwargs):
+        builds.append(cwd)
+        output = Path(command[command.index("--outdir") + 1])
+        output.mkdir(exist_ok=True)
+        (output / wheel_name).write_bytes(b"sdist wheel")
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    def fake_audit_wheel(path: Path, **_kwargs):
+        audited.append(Path(path).name)
+        return SimpleNamespace(target="test")
+
+    def unexpected_checkout_build(*_args, **_kwargs) -> None:
+        raise AssertionError("the checkout wheel must not be built")
+
+    for module in (build_release_artifacts, build_from_sdist):
+        monkeypatch.setattr(module, "external_temporary_directory", fake_temporary)
+        monkeypatch.setattr(module, "audit_sdist", lambda *_a, **_k: None)
+        monkeypatch.setattr(module, "audit_wheel", fake_audit_wheel)
+    monkeypatch.setattr(
+        build_release_artifacts, "check_dependency_gate", lambda _m: None
+    )
+    monkeypatch.setattr(build_release_artifacts, "_build", unexpected_checkout_build)
+    monkeypatch.setattr(
+        build_release_artifacts, "wheel_size_summary", lambda path: Path(path).name
+    )
+    monkeypatch.setattr(build_from_sdist, "safe_extract_sdist", lambda *_a: extracted)
+    monkeypatch.setattr(build_from_sdist, "run", fake_run)
+
+    artifacts = build_release_artifacts.build_release_artifacts(
+        tmp_path / "output",
+        mode="release",
+        python=Path(sys.executable),
+        allow_dirty_candidate=False,
+        sdist_only=False,
+        retained_sdist_path=sdist,
+        skip_checkout_wheel=True,
+    )
+
+    assert [path.name for path in artifacts] == [wheel_name]
+    assert artifacts[0].read_bytes() == b"sdist wheel"
+    assert builds == [extracted]
+    assert audited == [wheel_name]
+    with pytest.raises(ReleaseError, match="requires --retained-sdist"):
+        build_release_artifacts.build_release_artifacts(
+            tmp_path / "other",
+            mode="release",
+            python=Path(sys.executable),
+            allow_dirty_candidate=False,
+            sdist_only=False,
+            retained_sdist_path=None,
+            skip_checkout_wheel=True,
+        )
+
+
 def test_release_gate_failure_prevents_artifact_build(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

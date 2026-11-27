@@ -588,8 +588,9 @@ def test_lexicographic_rank_unrank_matches_itertools_order(degree: int) -> None:
 def test_lexicographic_rank_unrank_rejects_invalid_inputs() -> None:
     symmetric_group_module = importlib.import_module("pyamplicol.color.symmetric_group")
 
+    # No degree cap (degree 11 is admitted): only invalid degrees refuse.
     with pytest.raises(ValueError, match="degree"):
-        symmetric_group_module._lexicographic_permutation_unrank(11, 0)
+        symmetric_group_module._lexicographic_permutation_unrank(-1, 0)
     with pytest.raises(ValueError, match="out of bounds"):
         symmetric_group_module._lexicographic_permutation_unrank(4, math.factorial(4))
     with pytest.raises(ValueError, match="bijection"):
@@ -748,3 +749,25 @@ def test_single_trace_kernel_quotient_stays_off_for_open_line_channels(
     assert block is not None
     assert block.channel_count == 6
     _assert_dense_reconstruction(color_plan, block)
+
+
+def test_symmetric_group_degrees_past_ten_have_orders_and_ranks() -> None:
+    """No literal degree cap (the old one refused degree 11): orders are
+    computed on demand and lexicographic rank/unrank stay inverse."""
+
+    from pyamplicol.color.symmetric_group import (
+        _lexicographic_permutation_rank,
+        _lexicographic_permutation_unrank,
+        _LexicographicPermutations,
+        _symmetric_group_order,
+    )
+
+    for degree in (11, 12, 13):
+        assert _symmetric_group_order(degree) == math.factorial(degree)
+        assert len(_LexicographicPermutations(degree)) == math.factorial(degree)
+        for rank in (0, 1, math.factorial(degree) // 3, math.factorial(degree) - 1):
+            permutation = _lexicographic_permutation_unrank(degree, rank)
+            assert sorted(permutation) == list(range(degree))
+            assert _lexicographic_permutation_rank(permutation) == rank
+    with pytest.raises(ValueError, match="non-negative"):
+        _symmetric_group_order(-1)

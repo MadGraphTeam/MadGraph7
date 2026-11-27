@@ -9,7 +9,12 @@ channel's count, so handing out a channel with a zero share wraps an unsigned
 counter, and the channel is then drawn far beyond the events its file holds.
 """
 
+import pytest
+
 import madspace as ms
+
+# pure host-side channel selection
+pytestmark = pytest.mark.cpu_only
 
 
 def cumulative(counts):

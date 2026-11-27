@@ -47,8 +47,12 @@ C
         RETURN
       ENDIF
       COUP = MCOUP % VAL(FLV_INDEX1) % P
-      DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI
-     $ * W3))
+      IF (DBLE(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2).GT.0D0) THEN
+        DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 
+     $   -CI* W3))
+      ELSE
+        DENOM = COUP/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3**2)
+      ENDIF
       V3%W(1)= DENOM*(-CI)*(F2 % W(1)*F1 % W(3)+F2 % W(2)*F1 % W(4))
       V3%W(2)= DENOM*(-CI)*(F2 % W(2)*F1 % W(3)+F2 % W(1)*F1 % W(4))
       V3%W(3)= DENOM*(-CI)*(+CI*(F2 % W(2)*F1 % W(3))-CI*(F2 % W(1)*F1
@@ -122,8 +126,12 @@ C
       COUP2 = (0D0,0D0)
       IF(MCOUP2 % PARTNER(FLV_INDEX1).EQ.FLV_INDEX2) COUP2 = MCOUP2 %
      $  VAL(FLV_INDEX1) % P
-      DENOM = 1D0/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 -CI*
-     $  W3))
+      IF (DBLE(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2).GT.0D0) THEN
+        DENOM = 1D0/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3 * (M3 
+     $   -CI* W3))
+      ELSE
+        DENOM = 1D0/(P3(0)**2-P3(1)**2-P3(2)**2-P3(3)**2 - M3**2)
+      ENDIF
       V3%W(1)= DENOM*(-CI)*(COUP1*(F2 % W(1)*F1 % W(3)+F2 % W(2)*F1 %
      $  W(4))+COUP2*(F2 % W(3)*F1 % W(1)+F2 % W(4)*F1 % W(2)))
       V3%W(2)= DENOM*(-CI)*(COUP1*(F2 % W(2)*F1 % W(3)+F2 % W(1)*F1 %

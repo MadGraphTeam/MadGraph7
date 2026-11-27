@@ -17,7 +17,7 @@
 # work its slots are immediately picked up by the others.
 #
 # Every variable understood by madmatrix.mk (BACKEND, FPTYPE, USEBUILDDIR,
-# HELINL, HRDCOD, LIBDIR, DEBUG, PROFILE, ...) can be given on the command line
+# HELINL, LIBDIR, DEBUG, PROFILE, ...) can be given on the command line
 # as usual; make forwards command-line variables to the sub-makes by itself.
 
 SHELL := /bin/bash

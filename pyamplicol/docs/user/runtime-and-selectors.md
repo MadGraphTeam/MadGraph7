@@ -629,6 +629,28 @@ coefficients for higher-precision evaluation; native evaluation continues to
 use their binary64 values.
 This matters when subtracting matrix elements at different multiplicities.
 
+One-loop virtuals of the v2 engine choose their arithmetic with the
+evaluation's `arithmetic` (`"double"`, `"double-double"`, or `"arbitrary"` with
+`precision` digits). Every arithmetic takes each external leg's p² in the loop
+integrals to be its squared mass, so a binary64-rounded point gives the same
+finite part and poles in all three, to binary64's accuracy (see
+[Configuration, the v2 loop engine](configuration.md#the-v2-loop-engine)).
+
+**The precision ladder and the input point.** Above binary64 the point is
+first improved in each carrier (`kinematics_improvement`, MadLoop's
+`"z-shift"` by default; binary64 only with `kinematics_improvement_binary64`,
+off by default): binary64 (as given) -> double-double (the point improved in
+double-double) -> arbitrary precision (improved at its working digits). Each
+rescue level and the per-point NinjaRS fallback start from the caller's
+original inputs in their own carrier, never from another level's improved
+point, and the stability rotations rotate the improved point. A tree
+evaluation at a precision other than 16 (an exact executor) and the
+correlated default (`arithmetic="arbitrary"`, any precision, 16 included)
+are improved the same way (the record in `take_warnings`). The value is then
+the value at the improved point of the given inputs: it moves at the level
+of the input's own defect (about 1e-16 relative at regular points); see
+[Configuration](configuration.md#kinematics-improvement-of-the-input-points).
+
 After updating from a version that rounded these definitions during generation,
 regenerate the prepared model and process output: increasing `precision` cannot
 repair coefficients already rounded in an older output. The prepared-model
@@ -684,6 +706,64 @@ must not be subtracted from that headline as though they were measured in one
 identical call. `pyamplicol benchmark` is a compatibility alias for `profile`.
 
 ## Handle ownership and warnings
+
+### Virtual (one-loop) artifacts
+
+A one-loop artifact (plan v4 processes of the v2 engine, runtime capability
+`rusticol.loop-runtime.v4`, for Born-interfered virtuals; plan v5 processes,
+`rusticol.loop-runtime.v5`, for loop-induced ones) loads through the same
+`Runtime.load` entry point.
+Directory and direct `artifact.json` paths are accepted. The native loader
+checks the selected process, payloads, coupling orders and declared scheme and
+binds the saved program; no model import or regeneration happens at load. An
+artifact of the removed legacy engine (`rusticol.loop-runtime.v3`) is refused
+with the reason; regenerate it.
+
+```python
+from pyamplicol import Runtime
+
+runtime = Runtime.load("virtual-artifact", process="gg")
+result = runtime.evaluate(
+    momenta,                         # [point, external leg, E/px/py/pz]
+    mu_r2="1000000",                 # scalar or one positive value per point
+    arithmetic="double-double",      # DoubleFloat; distinct from arbitrary precision
+)
+finite = result.finite               # [point, squared coupling order]
+single_pole = result.single_pole
+double_pole = result.double_pole
+qcd = result.for_order((("QCD", 6),))
+summed = result.sum_orders()          # explicit order sum; retains all three poles
+```
+
+The ordinary virtual result is a `VirtualEvaluation`, with Born shape
+`[point, born_squared_order]` and virtual shape
+`[point, virtual_squared_order, epsilon]`; epsilon powers are `(0, -1, -2)`.
+Values include physical couplings and the declared normalization. High-precision
+output uses `Decimal`, preserving the native carrier's digits. Use
+`arithmetic="arbitrary", precision=70` for 70 decimal digits; when arithmetic is
+omitted, precision 16 chooses double and other digit counts choose arbitrary
+precision. Explicit `double` and `double-double` select their fixed carriers.
+Arithmetic and precision can also be chosen at load time
+(`Runtime.load(path, arithmetic="arbitrary", precision=70, model_parameters=params)`).
+
+Decimal strings and `Decimal` inputs avoid a binary64 conversion. Named model
+parameter updates accept real values or exact `(real, imaginary)` pairs and are
+atomic. `mu_r2` is required explicitly; it is the renormalization scale squared.
+
+`evaluate` also takes `poles` (`"all"`, `"none"` for the finite part only,
+`"uv"`, `"ir"`), `stability_checks` (a `VirtualStabilityChecks`: rotations and
+the reduction-direction and rescaled checks; one estimate per point, none
+without checks) and `on_failure` (the default `"best-effort"`: a point the
+backend refuses is returned with its best available value, status
+`"best-effort"`, its refusal and an uncertainty; `"return"`: a failed point
+is `None` with its reason; `"raise"`: `EvaluationError` at the first such
+point). Declared colour and spin correlations are served by
+`evaluate_correlated` and `evaluate_correlated_many`, per-helicity and
+per-colour components by `evaluate_resolved`, with the same options. See
+[The v2 loop engine](configuration.md#the-v2-loop-engine) for the generation
+and evaluation settings.
+
+### Shared handle state
 
 Parameter and warning state belongs to one runtime handle. Do not invoke the
 same mutable handle concurrently. Independent handles may execute on separate

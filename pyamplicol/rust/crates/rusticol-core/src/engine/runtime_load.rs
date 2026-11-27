@@ -2026,7 +2026,7 @@ fn build_helicity_recurrence_runtime_from_view(
         != represented_complete_domains
             .union(&structural_zero_domains)
             .copied()
-            .collect()
+            .collect::<BTreeSet<_>>()
     {
         return Err(RusticolError::artifact(
             "helicity amplitude and structural-zero domains do not cover every complete selector domain",
@@ -2450,7 +2450,7 @@ fn validate_helicity_materialized_source_routes(
             factor: route.factor,
         });
     }
-    if routed_source_ids != schema.sources.keys().copied().collect() {
+    if routed_source_ids != schema.sources.keys().copied().collect::<BTreeSet<_>>() {
         return Err(RusticolError::artifact(
             "helicity materialized source routes do not cover every final runtime source",
         ));
@@ -3591,12 +3591,23 @@ impl ExecutionRuntime {
                 input_parameter_indices: manifest.input_parameter_indices,
                 outputs: manifest.outputs,
                 evaluator: EvaluatorGroup::load_from_store(&manifest.evaluator, payloads)?,
+                #[cfg(feature = "symbolica-runtime")]
+                exact: None,
             });
             runtime.refresh_derived_model_parameters()?;
         }
         if let Some(stage_evaluators) = stage_evaluators {
             #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
             if compiled_plane_arena {
+                #[cfg(feature = "symbolica-runtime")]
+                let has_exact_states = stage_evaluators
+                    .stages
+                    .iter()
+                    .chain(std::iter::once(&stage_evaluators.amplitude_stage))
+                    .try_fold(true, |available, stage| {
+                        EvaluatorGroup::has_exact_plane_state(stage)
+                            .map(|has_state| available && has_state)
+                    })?;
                 #[cfg(feature = "symbolica-runtime")]
                 let (stages, mut amplitude) = match compiled_color_contraction.take() {
                     Some(color) => (
@@ -3607,7 +3618,7 @@ impl ExecutionRuntime {
                             Some(color),
                         )?,
                     ),
-                    None => {
+                    None if has_exact_states => {
                         // Preserve the public exact-precision API for ordinary
                         // compiled artifacts without instantiating a second f64
                         // evaluator representation. The selected-helicity SG
@@ -3626,6 +3637,13 @@ impl ExecutionRuntime {
                             )?,
                         )
                     }
+                    None => (
+                        Vec::new(),
+                        AmplitudeRuntime::load_reducer_only(
+                            &amplitude_stage_manifest,
+                            &stage_evaluators.amplitude_stage,
+                        )?,
+                    ),
                 };
                 #[cfg(not(feature = "symbolica-runtime"))]
                 let (stages, mut amplitude) = (

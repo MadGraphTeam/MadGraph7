@@ -14,6 +14,7 @@
 use std::collections::BTreeMap;
 
 use super::*;
+use crate::recurrence::construct::DiracWeylClosureGuard;
 use crate::recurrence::contact_orbit_owner::ContactOrbitParentTopologyDomain;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, bincode::Encode, bincode::Decode)]
@@ -428,6 +429,7 @@ fn closure_has_canonical_anchor(
 }
 
 fn collect_viable_total_orders(
+    templates: &ValidatedRecurrenceTemplateInput,
     seed: &OnTheFlyProcessSeedV1,
     grammar: &PreparedOnTheFlyGrammarV1,
     nodes: &[GlobalTopologyNode],
@@ -435,6 +437,13 @@ fn collect_viable_total_orders(
 ) -> RusticolResult<Vec<Box<[u32]>>> {
     let source_count = seed.source_anchors.len();
     let mut totals = Vec::new();
+    let states = &templates.input().current_states;
+    let dirac_weyl =
+        DiracWeylClosureGuard::from_state_pairs(states, grammar.closures.keys().copied());
+    // Dirac-Weyl pairs (a singleton and its complement no closure row joins)
+    // and the total orders of the diagrams they would close.
+    let mut dirac_weyl_totals = Vec::<([u32; 2], Vec<u32>)>::new();
+    let mut closure_orders = None;
     let pair_index = SupportSizePairIndex::new(nodes.iter().map(|node| node.key.support.len()));
     for (left_index, left) in nodes.iter().enumerate() {
         // Physical closure below requires a singleton canonical anchor.
@@ -456,6 +465,23 @@ fn collect_viable_total_orders(
                 left.key.current_state_template_id,
                 right.key.current_state_template_id,
             )) else {
+                // A singleton against its complement (either order): which
+                // singleton a query closes on is known only per query, so
+                // the pair's orders are checked against the envelope below.
+                let pair = [
+                    left.key.current_state_template_id,
+                    right.key.current_state_template_id,
+                ];
+                if dirac_weyl.joins(states, pair[0], pair[1]) {
+                    collect_dirac_weyl_totals(
+                        seed,
+                        closure_orders
+                            .get_or_insert_with(|| closure_orders_by_particles(grammar, states)),
+                        states,
+                        [left, right],
+                        &mut dirac_weyl_totals,
+                    )?;
+                }
                 continue;
             };
             for closure in rows {
@@ -528,9 +554,134 @@ fn collect_viable_total_orders(
             }
         }
     }
+    refuse_dirac_weyl_orders_outside_the_envelope(
+        &dirac_weyl,
+        states,
+        &totals,
+        &dirac_weyl_totals,
+        seed.coupling_hierarchies(),
+    )?;
     census.viable_total_order_count = u64::try_from(totals.len())
         .map_err(|_| invalid("global viable-total-order count exceeds u64"))?;
     Ok(totals)
+}
+
+/// The local orders of the closure rows by the ordered pair of particles
+/// they join (both orders).
+fn closure_orders_by_particles<'a>(
+    grammar: &'a PreparedOnTheFlyGrammarV1,
+    states: &[CurrentStateRow],
+) -> BTreeMap<[i32; 2], Vec<&'a [u32]>> {
+    let mut orders = BTreeMap::<[i32; 2], Vec<&[u32]>>::new();
+    for closure in grammar.closures.values().flatten() {
+        let [Some(left), Some(right)] = closure
+            .input_states
+            .map(|state| states.get(state as usize).map(|row| row.particle_id))
+        else {
+            continue;
+        };
+        for pair in [[left, right], [right, left]] {
+            let local = orders.entry(pair).or_default();
+            if !local.contains(&&*closure.local_orders) {
+                local.push(&closure.local_orders);
+            }
+        }
+    }
+    orders
+}
+
+/// The total orders of the diagrams a Dirac-Weyl pair (`parents`, a singleton
+/// and its complement that no closure row joins) would close, with the local
+/// orders of the closures joining the same two particles in other chirality
+/// states (`closure_orders`), when the pair's pairing lineage is complete.
+fn collect_dirac_weyl_totals(
+    seed: &OnTheFlyProcessSeedV1,
+    closure_orders: &BTreeMap<[i32; 2], Vec<&[u32]>>,
+    states: &[CurrentStateRow],
+    parents: [&GlobalTopologyNode; 2],
+    totals: &mut Vec<([u32; 2], Vec<u32>)>,
+) -> RusticolResult<()> {
+    let lineages = combine_pairing_lineage_sets(
+        seed,
+        std::slice::from_ref(&parents[0].key.pairing_lineage),
+        std::slice::from_ref(&parents[1].key.pairing_lineage),
+        false,
+    )?;
+    if !lineages.iter().try_fold(false, |complete, lineage| {
+        Ok::<_, RusticolError>(complete || complete_pairing_lineage(seed, lineage)?)
+    })? {
+        return Ok(());
+    }
+    let pair = parents.map(|parent| parent.key.current_state_template_id);
+    let [Some(left), Some(right)] =
+        pair.map(|state| states.get(state as usize).map(|row| row.particle_id))
+    else {
+        return Ok(());
+    };
+    for local in closure_orders.get(&[left, right]).into_iter().flatten() {
+        for left_orders in &parents[0].orders {
+            for right_orders in &parents[1].orders {
+                if let Some(total) = combined_coupling_orders(
+                    left_orders,
+                    right_orders,
+                    local,
+                    seed.explicit_coupling_limits(),
+                )? {
+                    totals.push((pair, total));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Refuses (`dirac-weyl-closure`) when the diagrams of a Dirac-Weyl pair
+/// could change the minimal policy's limits: their total orders have a lower
+/// hierarchy degree than every viable total, or its minimum but lie outside
+/// the envelope. Otherwise the limits hold with or without them, and the
+/// query that closes on such a pair's singleton (`sweep::build_selected_closures`)
+/// meets its complement within the limits and refuses there, while a query
+/// that closes elsewhere counts those diagrams at its own anchor.
+fn refuse_dirac_weyl_orders_outside_the_envelope(
+    dirac_weyl: &DiracWeylClosureGuard,
+    states: &[CurrentStateRow],
+    totals: &[Box<[u32]>],
+    dirac_weyl_totals: &[([u32; 2], Vec<u32>)],
+    hierarchies: &[u32],
+) -> RusticolResult<()> {
+    if dirac_weyl_totals.is_empty() {
+        return Ok(());
+    }
+    let minimum = totals
+        .iter()
+        .map(|orders| hierarchy_degree(orders, hierarchies))
+        .collect::<RusticolResult<Vec<_>>>()?
+        .into_iter()
+        .min();
+    let envelope = minimal_envelope(totals, hierarchies)?;
+    for (pair, total) in dirac_weyl_totals {
+        let inside = match (minimum, &envelope) {
+            (Some(minimum), Some(envelope)) => {
+                let degree = hierarchy_degree(total, hierarchies)?;
+                degree > minimum
+                    || (degree == minimum
+                        && total
+                            .iter()
+                            .zip(envelope)
+                            .all(|(order, limit)| limit.is_none_or(|limit| *order <= limit)))
+            }
+            _ => false,
+        };
+        if !inside {
+            dirac_weyl.check(
+                states,
+                pair[0],
+                pair[1],
+                "the coupling-order policy's closure",
+            )?;
+        }
+    }
+    Ok(())
 }
 
 fn hierarchy_degree(orders: &[u32], hierarchies: &[u32]) -> RusticolResult<u64> {
@@ -598,7 +749,7 @@ pub(super) fn resolve_on_the_fly_coupling_policy_from_grammar_v1(
     }
     let mut census = OnTheFlyCouplingPolicyCensusV1::default();
     let nodes = build_global_topologies(templates, seed, grammar, &mut census)?;
-    let totals = collect_viable_total_orders(seed, grammar, &nodes, &mut census)?;
+    let totals = collect_viable_total_orders(templates, seed, grammar, &nodes, &mut census)?;
     let effective_limits = minimal_envelope(&totals, seed.coupling_hierarchies())?
         .unwrap_or_else(|| seed.explicit_coupling_limits().to_vec());
     Ok(OnTheFlyResolvedCouplingPolicyV1 {
@@ -982,6 +1133,61 @@ mod tests {
             minimal_envelope(&totals, &[1, 2]).unwrap().unwrap(),
             [Some(2), Some(1)]
         );
+    }
+
+    #[test]
+    fn dirac_weyl_orders_refuse_only_where_they_would_change_the_minimal_limits() {
+        use crate::recurrence::template::ParticleStatistics;
+
+        let fermion = |id, particle_id, chirality| CurrentStateRow {
+            id,
+            template_string_id: 0,
+            particle_id,
+            anti_particle_id: -particle_id,
+            species_string_id: 0,
+            orientation: 0,
+            statistics: ParticleStatistics::Fermion as u8,
+            color_representation: 3,
+            basis_string_id: 0,
+            tensor_ordering_sequence_id: 0,
+            dimension: 4,
+            chirality,
+            lc_color_shape_string_id: 0,
+            auxiliary_kind_string_id: 0,
+            mass_parameter_id: 0,
+            width_parameter_id: 0,
+            semantic_digest_id: 0,
+        };
+        // A Weyl b~ (1) and a Dirac b (0); a Dirac b~ (2) closes on the b.
+        let states = [fermion(0, 5, 0), fermion(1, -5, 1), fermion(2, -5, 0)];
+        let guard = DiracWeylClosureGuard::from_state_pairs(&states, [(0, 2)]);
+        let totals = [vec![2_u32, 0].into_boxed_slice()];
+        let hierarchies = [1, 2];
+        let check = |totals: &[Box<[u32]>], total: Vec<u32>| {
+            refuse_dirac_weyl_orders_outside_the_envelope(
+                &guard,
+                &states,
+                totals,
+                &[([1, 0], total)],
+                &hierarchies,
+            )
+        };
+        // A higher hierarchy degree than the minimum (2), or the minimum
+        // inside the envelope (2, 0): the limits hold without the pair.
+        check(&totals, vec![0, 2]).expect("higher degree");
+        check(&totals, vec![2, 0]).expect("inside the envelope");
+        // A lower degree, the minimum outside the envelope, or no viable
+        // total at all: the pair's diagrams would change the limits.
+        for (totals, total) in [
+            (&totals[..], vec![1, 0]),
+            (&totals[..], vec![0, 1]),
+            (&[][..], vec![0, 1]),
+        ] {
+            let error = check(totals, total).expect_err("refused");
+            assert!(error.to_string().starts_with(
+                "dirac-weyl-closure: the coupling-order policy's closure would close a Dirac"
+            ));
+        }
     }
 
     #[test]

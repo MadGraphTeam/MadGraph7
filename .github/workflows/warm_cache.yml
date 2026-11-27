@@ -6,7 +6,7 @@ permissions:
   contents: read
 on:
   push:
-    # Only these two branches warm the caches automatically. Every warm run
+    # Only main warms the caches automatically. Every warm run
     # rebuilds ~3.5GB of intermediate caches across both images against a 10GB
     # per-repo quota, so letting a push to any feature branch that happens to
     # touch one of the paths below start one is how the quota gets exhausted
@@ -16,9 +16,8 @@ on:
     # The schedule trigger needs no equivalent filter: GitHub only ever runs
     # cron workflows on the default branch, which is main here (3.x upstream).
     branches:
-      - 'main'
-      - 'test_ci'
-    # NB both filters must match: a push to main/test_ci that touches none of
+      - main
+    # NB both filters must match: a push to main that touches none of
     # these paths does not warm anything either.
     paths:
       - '.github/workflows/warm_cache.yml'

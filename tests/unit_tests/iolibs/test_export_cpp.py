@@ -12,7 +12,7 @@
 # For more information, visit madgraph.phys.ucl.ac.be and amcatnlo.web.cern.ch
 #
 ################################################################################
-"""Unit test library for the export Pythia8 format routines"""
+"""Unit test library for the C++ export routines"""
 
 from __future__ import absolute_import
 import copy
@@ -21,7 +21,6 @@ import os
 import re
 import shutil
 import tempfile
-import tests.IOTests as IOTests
 from tests import test_manager
 
 import tests.unit_tests as unittest
@@ -54,20 +53,17 @@ import tests.unit_tests.iolibs.test_file_writers as test_file_writers
 pjoin = os.path.join
 
 #===============================================================================
-# IOExportPythia8Test
+# CPPTemplateWriterTest
 #===============================================================================
-class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCreate):
-    """Test class for the export v4 module"""
+class CPPTemplateWriterTest(unittest.TestCase, test_file_writers.CheckFileCreate):
+    """The C++ process templates and the CPPWriter (formerly IOExportPythia8Test,
+    whose setUp built a Pythia 8 process exporter that none of these tests
+    used: 'output pythia8' is gone from MadGraph7)."""
 
-    mymodel = base_objects.Model()
-    mymatrixelement = helas_objects.HelasMatrixElement()
-    created_files = ['test.h', 'test.cc'
-                    ]
+    created_files = ['cppprocess.cc']
 
     def assertFileContains(self,*args,**opts):
-        """Wrapper to make sure that the function assertFileContains, of
-        test_file_writers is used. We cannot put IOTests.IOTestManager last
-        in the hierarchy because the structure requires it to be first always."""
+        """Use the assertFileContains of test_file_writers."""
         return test_file_writers.CheckFileCreate.assertFileContains(
                                                                self,*args,**opts)
 
@@ -76,239 +72,6 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
                               'cpp_process_wavefunctions.inc')).read()
         self.assertIn('%(flavor_mask_decl)s', template)
         self.assertIn('%(flavor_mask_setup)s', template)
-
-    def setUp(self):
-
-        test_file_writers.CheckFileCreate.clean_files
-
-        # Set up model
-        mypartlist = base_objects.ParticleList()
-        myinterlist = base_objects.InteractionList()
-
-        # u and c quarkd and their antiparticles
-        mypartlist.append(base_objects.Particle({'name':'u',
-                      'antiname':'u~',
-                      'spin':2,
-                      'color':3,
-                      'mass':'ZERO',
-                      'width':'ZERO',
-                      'texname':'u',
-                      'antitexname':'\bar u',
-                      'line':'straight',
-                      'charge':2. / 3.,
-                      'pdg_code':2,
-                      'propagating':True,
-                      'is_part':True,
-                      'self_antipart':False}))
-        u = mypartlist[len(mypartlist) - 1]
-        antiu = copy.copy(u)
-        antiu.set('is_part', False)
-
-        mypartlist.append(base_objects.Particle({'name':'c',
-                      'antiname':'c~',
-                      'spin':2,
-                      'color':3,
-                      'mass':'MC',
-                      'width':'ZERO',
-                      'texname':'c',
-                      'antitexname':'\bar c',
-                      'line':'straight',
-                      'charge':2. / 3.,
-                      'pdg_code':4,
-                      'propagating':True,
-                      'is_part':True,
-                      'self_antipart':False}))
-        c = mypartlist[len(mypartlist) - 1]
-        antic = copy.copy(c)
-        antic.set('is_part', False)
-
-        # A gluon
-        mypartlist.append(base_objects.Particle({'name':'g',
-                      'antiname':'g',
-                      'spin':3,
-                      'color':8,
-                      'mass':'ZERO',
-                      'width':'ZERO',
-                      'texname':'g',
-                      'antitexname':'g',
-                      'line':'curly',
-                      'charge':0.,
-                      'pdg_code':21,
-                      'propagating':True,
-                      'is_part':True,
-                      'self_antipart':True}))
-
-        g = mypartlist[len(mypartlist) - 1]
-
-        # A photon
-        mypartlist.append(base_objects.Particle({'name':'Z',
-                      'antiname':'Z',
-                      'spin':3,
-                      'color':1,
-                      'mass':'MZ',
-                      'width':'WZ',
-                      'texname':'Z',
-                      'antitexname':'Z',
-                      'line':'wavy',
-                      'charge':0.,
-                      'pdg_code':23,
-                      'propagating':True,
-                      'is_part':True,
-                      'self_antipart':True}))
-        z = mypartlist[len(mypartlist) - 1]
-
-        # A gluino
-        mypartlist.append(base_objects.Particle({'name':'go',
-                      'antiname':'go',
-                      'spin':2,
-                      'color':8,
-                      'mass':'MGO',
-                      'width':'WGO',
-                      'texname':'go',
-                      'antitexname':'go',
-                      'line':'straight',
-                      'charge':0.,
-                      'pdg_code':1000021,
-                      'propagating':True,
-                      'is_part':True,
-                      'self_antipart':True}))
-
-        go = mypartlist[len(mypartlist) - 1]
-
-        # A sextet diquark
-        mypartlist.append(base_objects.Particle({'name':'six',
-                      'antiname':'six~',
-                      'spin':1,
-                      'color':6,
-                      'mass':'MSIX',
-                      'width':'WSIX',
-                      'texname':'six',
-                      'antitexname':'sixbar',
-                      'line':'straight',
-                      'charge':4./3.,
-                      'pdg_code':6000001,
-                      'propagating':True,
-                      'is_part':True,
-                      'self_antipart':False}))
-
-        six = mypartlist[len(mypartlist) - 1]
-        antisix = copy.copy(six)
-        antisix.set('is_part', False)
-        
-
-        # Gluon couplings to quarks
-        myinterlist.append(base_objects.Interaction({
-                      'id': 1,
-                      'particles': base_objects.ParticleList(\
-                                            [antiu, \
-                                             u, \
-                                             g]),
-                      'color': [color.ColorString([color.T(2, 1, 0)])],
-                      'lorentz':['FFV1'],
-                      'couplings':{(0, 0):'GC_10'},
-                      'orders':{'QCD':1}}))
-
-        # Gamma couplings to quarks
-        myinterlist.append(base_objects.Interaction({
-                      'id': 2,
-                      'particles': base_objects.ParticleList(\
-                                            [antiu, \
-                                             u, \
-                                             z]),
-                      'color': [color.ColorString([color.T(1, 0)])],
-                      'lorentz':['FFV2', 'FFV5'],
-                      'couplings':{(0,0): 'GC_35', (0,1): 'GC_47'},
-                      'orders':{'QED':1}}))
-
-        # Gluon couplings to gluinos
-        myinterlist.append(base_objects.Interaction({
-                      'id': 3,
-                      'particles': base_objects.ParticleList(\
-                                            [go, \
-                                             go, \
-                                             g]),
-                      'color': [color.ColorString([color.f(0,1,2)])],
-                      'lorentz':['FFV1'],
-                      'couplings':{(0, 0):'GC_8'},
-                      'orders':{'QCD':1}}))
-
-        # Sextet couplings to quarks
-        myinterlist.append(base_objects.Interaction({
-                      'id': 4,
-                      'particles': base_objects.ParticleList(\
-                                            [u, \
-                                             u, \
-                                             antisix]),
-                      'color': [color.ColorString([color.K6Bar(2, 0, 1)])],
-                      'lorentz':['FFS1'],
-                      'couplings':{(0,0): 'GC_24'},
-                      'orders':{'QSIX':1}}))
-
-        myinterlist.append(base_objects.Interaction({
-                       'id': 5,
-                       'particles': base_objects.ParticleList(\
-                                             [antiu, \
-                                             antiu, \
-                                             six]),
-                      'color': [color.ColorString([color.K6(2, 0, 1)])],
-                      'lorentz':['FFS1'],
-                      'couplings':{(0,0): 'GC_24'},
-                      'orders':{'QSIX':1}}))
-
-        self.mymodel.set('particles', mypartlist)
-        self.mymodel.set('interactions', myinterlist)
-        self.mymodel.set('name', 'sm')
-
-        myleglist = base_objects.LegList()
-
-        myleglist.append(base_objects.Leg({'id':2,
-                                         'state':False}))
-        myleglist.append(base_objects.Leg({'id':-2,
-                                         'state':False}))
-        myleglist.append(base_objects.Leg({'id':2,
-                                         'state':True}))
-        myleglist.append(base_objects.Leg({'id':-2,
-                                         'state':True}))
-
-        myproc = base_objects.Process({'legs':myleglist,
-                                       'model':self.mymodel,
-                                       'orders':{'QSIX':0}})
-        
-        myamplitude = diagram_generation.Amplitude({'process': myproc})
-
-        self.mymatrixelement = helas_objects.HelasMultiProcess(myamplitude)
-
-        myleglist = base_objects.LegList()
-
-        myleglist.append(base_objects.Leg({'id':4,
-                                           'state':False,
-                                           'number' : 1}))
-        myleglist.append(base_objects.Leg({'id':-4,
-                                         'state':False,
-                                           'number' : 2}))
-        myleglist.append(base_objects.Leg({'id':4,
-                                         'state':True,
-                                           'number' : 3}))
-        myleglist.append(base_objects.Leg({'id':-4,
-                                         'state':True,
-                                           'number' : 4}))
-
-        myproc = base_objects.Process({'legs':myleglist,
-                                       'model':self.mymodel,
-                                       'orders':{'QSIX':0}})
-
-        self.mymatrixelement.get('matrix_elements')[0].\
-                                               get('processes').append(myproc)
-
-        self.mycppwriter = helas_call_writer.CPPUFOHelasCallWriter(self.mymodel)
-    
-        self.pythia8_exporter = export_cpp.OneProcessExporterPythia8(\
-            self.mymatrixelement, self.mycppwriter,
-            process_string = "q q~ > q q~")
-        
-        self.cpp_exporter = export_cpp.OneProcessExporterCPP(\
-            self.mymatrixelement, self.mycppwriter,
-            process_string = "q q~ > q q~")
 
     tearDown = test_file_writers.CheckFileCreate.clean_files
 
@@ -325,7 +88,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
                           bool debug )
     : m_verbose( verbose )
     , m_debug( debug )
-#ifndef MGONGPU_HARDCODE_PARAM
+#ifndef MADMATRIX_GPUIMPL
     , m_pars( 0 )
 #endif
     , m_masses()
@@ -351,7 +114,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
       { 1, 1, 1, -1 } };
     static constexpr short tFlavors[nmaxflavor][npar] = {
       { 20, 20, 5, 5 } };
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     gpuMemcpyToSymbol( cHel, tHel, ncomb * npar * sizeof( short ) );
     gpuMemcpyToSymbol( cFlavors, tFlavors, nmaxflavor * npar * sizeof( short ) );
 #else
@@ -360,7 +123,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
 #endif
 
     // Enable SIGFPE traps for Floating Point Exceptions
-#ifdef MGONGPUCPP_DEBUG
+#ifdef MADMATRIX_DEBUG
     fpeEnable();
 #endif
   }
@@ -381,7 +144,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
         nGoodHel++;
       }
     }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     gpuMemcpyToSymbol( dcNGoodHel, &nGoodHel, sizeof( int ) );
     gpuMemcpyToSymbol( dcGoodHel, goodHel, ncomb * sizeof( int ) );
 #endif
@@ -392,7 +155,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   __global__ void
   add_and_select_hel( int* allselhel,          // output: helicity selection[nevt]
                       const fptype* allrndhel, // input: random numbers[nevt] for helicity selection
@@ -413,7 +176,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
     {
       if( allrndhel[ievt] < ( ghelAllMEs[ighel * nevt + ievt] / allMEs[ievt] ) )
       {
-        const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+        const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
         allselhel[ievt] = ihelF;
         //printf( "select_hel: ievt=%4d ihel=%4d\n", ievt, ihelF );
         break;
@@ -435,7 +198,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
                           bool debug )
     : m_verbose( verbose )
     , m_debug( debug )
-#ifndef MGONGPU_HARDCODE_PARAM
+#ifndef MADMATRIX_GPUIMPL
     , m_pars( 0 )
 #endif
     , m_masses()
@@ -461,7 +224,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
       { 1, 1, 1, -1 } };
     static constexpr short tFlavors[nmaxflavor][npar] = {
       { 20, 20, 5, 5 } };
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     gpuMemcpyToSymbol( cHel, tHel, ncomb * npar * sizeof( short ) );
     gpuMemcpyToSymbol( cFlavors, tFlavors, nmaxflavor * npar * sizeof( short ) );
 #else
@@ -470,7 +233,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
 #endif
 
     // Enable SIGFPE traps for Floating Point Exceptions
-#ifdef MGONGPUCPP_DEBUG
+#ifdef MADMATRIX_DEBUG
     fpeEnable();
 #endif
   }
@@ -491,7 +254,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
         nGoodHel++;
       }
     }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     gpuMemcpyToSymbol( dcNGoodHel, &nGoodHel, sizeof( int ) );
     gpuMemcpyToSymbol( dcGoodHel, goodHel, ncomb * sizeof( int ) );
 #endif
@@ -502,7 +265,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
 
   //--------------------------------------------------------------------------
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   __global__ void
   add_and_select_hel( int* allselhel,          // output: helicity selection[nevt]
                       const fptype* allrndhel, // input: random numbers[nevt] for helicity selection
@@ -524,7 +287,7 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
     {
       if( allrndhel[ievt] < ( ghelAllMEs[ighel * nevt + ievt] / allMEs[ievt] ) )
       {
-        const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], cudacpp [0,ncomb-1]
+        const int ihelF = dcGoodHel[ighel] + 1; // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
         allselhel[ievt] = ihelF;
         //printf( "select_hel: ievt=%4d ihel=%4d
 ", ievt, ihelF );
@@ -540,30 +303,6 @@ class IOExportPythia8Test(IOTests.IOTestManager, test_file_writers.CheckFileCrea
         self.assertFileContains('cppprocess.cc', goal_string)
 
 
-
-
-    def disabled_test_write_process_files(self):
-        """Test writing the .h  and .cc Pythia file for a matrix element"""
-
-        export_cpp.generate_process_files_pythia8(self.mymatrixelement,
-                                                      self.mycppwriter,
-                                                      process_string = "q q~ > q q~",
-                                                      path = "/tmp")
-        
-        print("Please try compiling the file /tmp/Sigma_sm_qqx_qqx.cc:")
-        print("cd /tmp; g++ -c -I $PATH_TO_PYTHIA8/include Sigma_sm_qqx_qqx.cc.cc")
-
-
-#===============================================================================
-# ExportUFOModelPythia8Test
-#===============================================================================
-
-
-
-
-#===============================================================================
-# IOExportPythia8Test
-#===============================================================================
 class IOExportMatchBox(unittest.TestCase,
                          test_file_writers.CheckFileCreate):
     """Test class for the export v4 module"""
@@ -925,7 +664,8 @@ class BrokenSymmetryCPPExportTest(unittest.TestCase):
             'broken_sym_component_old_factors': ",".join(str(v) for v in sym_data['component_old_factors']),
             'broken_sym_pid_list': ",".join(str(v) for v in sym_data['pid_list']),
             'broken_sym_block_starts': ",".join(str(v) for v in sym_data['block_starts']),
-            'broken_sym_block_lengths': ",".join(str(v) for v in sym_data['block_lengths'])
+            'broken_sym_block_lengths': ",".join(str(v) for v in sym_data['block_lengths']),
+            'ident_cross_function': ''
         }
         template_path = pjoin(MG5DIR, 'madgraph', 'iolibs', 'template_files',
                               'cpp_process_function_definitions.inc')
@@ -946,10 +686,12 @@ class DDMColorFlowMG7Test(unittest.TestCase):
     basis changes how the jamps are computed, never which color flows exist,
     so none of it may depend on the mode."""
 
-    def get_exporter(self, ids, ddm):
+    def get_exporter(self, ids, ddm, cls=None):
         """The mg7 exporter for the all-gluon process with npar = len(ids),
-        built with or without the DDM color basis."""
+        built with or without the DDM color basis. `cls` selects a subclass
+        (the madmatrix one shares this constructor)."""
 
+        cls = cls if cls else export_mg7.OneProcessExporterMG7
         color_amp.set_ddm_basis(ddm, with_flow=ddm)
         try:
             model = import_ufo.import_model('sm')
@@ -959,7 +701,7 @@ class DDMColorFlowMG7Test(unittest.TestCase):
             amplitude = diagram_generation.Amplitude(
                 base_objects.Process({'legs': legs, 'model': model}))
             matrix_element = helas_objects.HelasMatrixElement(amplitude)
-            return export_mg7.OneProcessExporterMG7(
+            return cls(
                 matrix_element, helas_call_writer.CPPUFOHelasCallWriter(model))
         finally:
             color_amp.set_ddm_basis(False)
@@ -987,6 +729,38 @@ class DDMColorFlowMG7Test(unittest.TestCase):
             for active_colors in ddm.active_color_map:
                 self.assertTrue(active_colors)
                 self.assertLess(max(active_colors), nflow)
+
+    def test_ddm_colordata_is_written_and_mode_independent(self):
+        """ColorData.h bakes the canonical color flow code of each flow, which
+        has to be decomposed on the flow basis: asking the DDM basis itself
+        raises (its elements are products of f's and have no single flow
+        each). That left a 0 byte header and no CPPProcess.cc at all for
+        every all-gluon process, silently and with a zero exit code."""
+
+        import madmatrix.model_handling as model_handling
+
+        written = {}
+        for npar in (4, 5):
+            for ddm in (False, True):
+                exporter = self.get_exporter(
+                    [21] * npar, ddm=ddm,
+                    cls=model_handling.OneProcessExporterMadMatrix)
+                exporter.path = tempfile.mkdtemp()
+                try:
+                    exporter.edit_colordata()
+                    with open(pjoin(exporter.path, 'ColorData.h')) as stream:
+                        # the color flow half: the color matrix before it is
+                        # the one of the basis the color sum runs on
+                        text = stream.read()
+                        written[(npar, ddm)] = text[text.index('namespace madmatrix'):]
+                finally:
+                    shutil.rmtree(exporter.path)
+                self.assertTrue(written[(npar, ddm)])
+                self.assertIn('colorflowcode_valid = true',
+                              written[(npar, ddm)])
+            # switching the color basis changes how the jamps are computed,
+            # never which color flows exist
+            self.assertEqual(written[(npar, True)], written[(npar, False)])
 
 
 #===============================================================================
@@ -1112,3 +886,87 @@ class MG7LeptonDensityShippingTest(unittest.TestCase):
         os.makedirs(target)
         self.exporter(2, [-11], [11]).copy_lepton_densities()
         self.assertEqual(os.listdir(target), [])
+
+
+class TestFlavorTableGuard(unittest.TestCase):
+    """The C++ output refuses a flavored coupling whose table cannot hold its
+    keys (FLV_Coupling.assert_table_representable), fixed or running: it
+    would lose all its keys but one, with no error."""
+
+    def test_a_coupling_the_table_cannot_hold_is_refused(self):
+        import madgraph.core.base_objects as base_objects
+        from madgraph import InvalidCmd
+        FLV = base_objects.FLV_Coupling
+        # one heavy quark coupled to two merged quarks sitting second
+        lossy = FLV(name='FLV_TEST', flavors={(0, 1, 0): 'GC_XD',
+                                               (0, 3, 0): 'GC_XS'})
+        # through the guard of the fixed couplings (write_flv_couplings)
+        converter = export_cpp.UFOModelConverterCPP.__new__(
+                                            export_cpp.UFOModelConverterCPP)
+        self.assertRaises(InvalidCmd,
+                          converter._assert_flv_couplings_supported, [lossy])
+        # the tables that can be written pass, the merged leg first included
+        for flavors in ({(2, 1, 0): 'GC_100', (4, 3, 0): 'GC_100'},
+                        {(1, 0, 0): 'GC_XD', (3, 0, 0): 'GC_XS'},
+                        {(0, 2, 0): 'GC_1'}):
+            converter._assert_flv_couplings_supported([FLV(flavors=flavors)])
+
+
+#===============================================================================
+# MG7MergedChannelsTest
+#===============================================================================
+class MG7MergedChannelsTest(unittest.TestCase):
+    """get_merged_info when the diagrams of one channel sit in several merged
+    channels.
+
+    A crossed subprocess folded into its base keeps, per crossing-table row,
+    only the diagrams that row needs (export_mg7.crossed_entries_of), so the
+    diagrams of one of its channels can land in two merged channels. A later
+    subprocess whose channel holds both used to take the merged channel of the
+    last match with the diagram index of another one: an IndexError in the
+    output of p p > l+ l- + 0-4 jets, or a diagram filed under the wrong
+    channel.
+    """
+
+    @staticmethod
+    def merged(subprocesses):
+        # get_merged_info only reads merged_subprocesses and process_info;
+        # ProcessExporterMG7.__init__ wants a full set of export arguments
+        exporter = export_cpp.ProcessExporterMG7.__new__(
+            export_cpp.ProcessExporterMG7)
+        exporter.process_info = []
+        group = []
+        for index, channels in enumerate(subprocesses):
+            exporter.process_info.append({
+                'incoming': [21, 21], 'outgoing': [21, 21],
+                'flavors': [{'options': [[21, 21, 21, 21]]}],
+                'channels': [{'diagrams': [
+                    {'diagram': diagram, 'permutation': [0, 1, 2, 3],
+                     'active_flavors': [0]}
+                    for diagram, _ in channel]} for channel in channels]})
+            group.append((index, [[tag for _, tag in channel]
+                                  for channel in channels]))
+        exporter.merged_subprocesses = {'class': group}
+        (info,) = exporter.get_merged_info()
+        return info['channels']
+
+    def test_channel_split_over_two_merged_channels(self):
+        channels = self.merged([
+            # the first subprocess: tags a, b in one channel, c in another
+            [[(1, 'a'), (2, 'b')], [(3, 'c')]],
+            # the second one: b and c together, and a new d
+            [[(10, 'b'), (11, 'c'), (12, 'd')]]])
+        self.assertEqual(len(channels), 2)
+        # each diagram stays in the merged channel that holds its tag
+        self.assertEqual([d['diagram'] for d in channels[0]['diagrams']],
+                         [[1, -1], [2, 10], [-1, 12]])
+        self.assertEqual([d['diagram'] for d in channels[1]['diagrams']],
+                         [[3, 11]])
+        # the flavours of the second subprocess follow the first one's
+        self.assertEqual(channels[0]['diagrams'][1]['active_flavors'], [0, 1])
+        self.assertEqual(channels[1]['diagrams'][0]['active_flavors'], [0, 1])
+
+    def test_new_channel_when_nothing_matches(self):
+        channels = self.merged([[[(1, 'a')]], [[(5, 'z')]]])
+        self.assertEqual([c['subprocess'] for c in channels], [0, 1])
+        self.assertEqual(channels[1]['diagrams'][0]['diagram'], [-1, 5])

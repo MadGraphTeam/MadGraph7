@@ -57,6 +57,7 @@ def test_one_dimensional_flow_is_refused():
             ms.Flow(input_dim=input_dim)
 
 
+@pytest.mark.cpu_only  # CPU context
 @pytest.mark.parametrize("input_dim", [2, 3, 5])
 def test_flow_initialize_from_vegas(input_dim):
     context = ms.Context(ms.cpu_device())

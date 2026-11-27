@@ -1,0 +1,141 @@
+{
+  "fixture": "multiquark-sixleg-decimal-control/report.json",
+  "scope": "Independent diagnostic components. Bare is unmodified full MadLoop minus generated CT contribution; no timing or stability claim.",
+  "instrumentation": "Generated SKIPLOOPEVAL switch and CT interference index selection only; original export/Feynman rules unchanged. Exact diffs beside binaries. Corrected runtime cards reused.",
+  "amplitude_counts": {
+    "r2_quark_two_point": 6,
+    "r2": 139,
+    "uv": 224
+  },
+  "rows": [
+    {
+      "born": 9.615284988712139e-10,
+      "full": {
+        "finite": -5.51736886825548e-10,
+        "single_pole": -4.5208187714698847e-10,
+        "double_pole": -1.444622207620253e-10
+      },
+      "bare": {
+        "finite": -5.629843299949967e-10,
+        "single_pole": -1.9927299081346245e-10,
+        "double_pole": -1.444622207620253e-10
+      },
+      "ct": {
+        "finite": 1.1247443169448702e-11,
+        "single_pole": -2.52808886333526e-10,
+        "double_pole": 0.0
+      },
+      "r2": {
+        "finite": -7.323713019952387e-11,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      },
+      "uv": {
+        "finite": 8.448457336897238e-11,
+        "single_pole": -2.52808886333526e-10,
+        "double_pole": 0.0
+      },
+      "wf": {
+        "finite": 0.0,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      },
+      "uv_vertex": {
+        "finite": 8.448457336897238e-11,
+        "single_pole": -2.52808886333526e-10,
+        "double_pole": 0.0
+      },
+      "r2_quark_two_point": {
+        "finite": 2.2560233286407057e-11,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      }
+    },
+    {
+      "born": 3.089036783849266e-10,
+      "full": {
+        "finite": 5.663256036410812e-12,
+        "single_pole": -7.65731321982133e-11,
+        "double_pole": -4.6410388702392354e-11
+      },
+      "bare": {
+        "finite": 6.489006300282225e-12,
+        "single_pole": 4.645048030976391e-12,
+        "double_pole": -4.6410388702392354e-11
+      },
+      "ct": {
+        "finite": -8.257502638714129e-13,
+        "single_pole": -8.121818022918969e-11,
+        "double_pole": 0.0
+      },
+      "r2": {
+        "finite": -2.2449723188055195e-11,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      },
+      "uv": {
+        "finite": 2.16239729241837e-11,
+        "single_pole": -8.121818022918969e-11,
+        "double_pole": 0.0
+      },
+      "wf": {
+        "finite": 0.0,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      },
+      "uv_vertex": {
+        "finite": 2.16239729241837e-11,
+        "single_pole": -8.121818022918969e-11,
+        "double_pole": 0.0
+      },
+      "r2_quark_two_point": {
+        "finite": 5.580841909770783e-12,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      }
+    },
+    {
+      "born": 2.421266971975401e-10,
+      "full": {
+        "finite": -3.381585305117746e-11,
+        "single_pole": -9.72388039052662e-11,
+        "double_pole": -3.6377663713547435e-11
+      },
+      "bare": {
+        "finite": -4.569246515778317e-11,
+        "single_pole": -3.357789240655936e-11,
+        "double_pole": -3.6377663713547435e-11
+      },
+      "ct": {
+        "finite": 1.187661210660571e-11,
+        "single_pole": -6.366091149870683e-11,
+        "double_pole": 0.0
+      },
+      "r2": {
+        "finite": -1.3477842488245654e-11,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      },
+      "uv": {
+        "finite": 2.5354454594851296e-11,
+        "single_pole": -6.366091149870683e-11,
+        "double_pole": 0.0
+      },
+      "wf": {
+        "finite": 0.0,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      },
+      "uv_vertex": {
+        "finite": 2.5354454594851296e-11,
+        "single_pole": -6.366091149870683e-11,
+        "double_pole": 0.0
+      },
+      "r2_quark_two_point": {
+        "finite": 6.3308089529121e-12,
+        "single_pole": 0.0,
+        "double_pole": 0.0
+      }
+    }
+  ]
+}

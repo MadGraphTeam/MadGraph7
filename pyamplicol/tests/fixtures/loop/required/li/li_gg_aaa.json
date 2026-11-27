@@ -1,0 +1,328 @@
+{
+  "name": "li_gg_aaa",
+  "li_row": "LI-Z1b",
+  "loop_induced": true,
+  "pdgs": [
+    21,
+    21,
+    22,
+    22,
+    22
+  ],
+  "initial": 2,
+  "madloop_process": "g g > a a a [sqrvirt=QCD]",
+  "recola_process": "g g -> A A A",
+  "openloops": {
+    "unavailable": "zero row: no designated OpenLoops ls library (PLAN \u00a74.1 LI-Z*)"
+  },
+  "loop_orders": {
+    "QCD": 2,
+    "QED": 3
+  },
+  "squared_orders": {
+    "QCD": 4,
+    "QED": 6
+  },
+  "correction": "QCD",
+  "scheme": "qcd",
+  "scheme_data": {
+    "description": "QCD corrections in the MG5 loop_sm-no_b_mass model: alpha=1/aEWM1 fixed with Gf and MZ (MW derived at tree level), stable top, massless b/tau/light fermions, all widths zero, five-flavour alpha_s renormalization with decoupled top, six quark flavours in loops, Feynman gauge.",
+    "restriction": "no_b_mass",
+    "madloop_model": "{mg5}/models/loop_sm-no_b_mass",
+    "parameters": {
+      "aS": "0.118",
+      "aEWM1": "132.507",
+      "Gf": "0.0000116639",
+      "MZ": "91.188",
+      "MH": "125",
+      "MT": "173",
+      "ymt": "173"
+    },
+    "fixed_parameters": {
+      "MB": "0",
+      "ymb": "0",
+      "MTA": "0",
+      "ymtau": "0",
+      "WT": "0",
+      "WW": "0",
+      "WZ": "0",
+      "WH": "0"
+    },
+    "electroweak_inputs": "alpha_fixed",
+    "complex_mass_scheme": false,
+    "active_flavours": 5,
+    "loop_quark_flavours": 6
+  },
+  "derived_parameters": {
+    "MW": "80.4190024457561601055171371731",
+    "alpha": "0.00754677111397888413442308708219"
+  },
+  "normalization": {
+    "initial_average": 256,
+    "final_symmetry": 6,
+    "denominator": 1536,
+    "convention": "|A_loop|^2 summed over final and averaged over initial helicities and colours, with the final identical-particle factor; physical couplings"
+  },
+  "point_construction": {
+    "process_name": "li_gg_aaa",
+    "masses": [
+      "0",
+      "0",
+      "0",
+      "0",
+      "0"
+    ],
+    "construction": "tools/loop_reference/exact_points.py: deterministic exact terminating-decimal sequential construction; mass shells and momentum conservation exact",
+    "cuts": {
+      "min_2pipj_over_s": "1/1000",
+      "resonance_exclusion": "|s_ij-M^2| >= M^2/10 for final particle-antiparticle pairs",
+      "resonances": [
+        "91.188",
+        "125",
+        "173"
+      ]
+    },
+    "sqrt_s": [
+      "1024",
+      "1562.5",
+      "800"
+    ]
+  },
+  "points": [
+    [
+      [
+        "512",
+        "0",
+        "0",
+        "512"
+      ],
+      [
+        "512",
+        "0",
+        "0",
+        "-512"
+      ],
+      [
+        "79.596704",
+        "-44.628535296",
+        "-65.904713728",
+        "0.70557312"
+      ],
+      [
+        "510.528296",
+        "294.540535296",
+        "399.120713728",
+        "120.77942688"
+      ],
+      [
+        "433.875",
+        "-249.912",
+        "-333.216",
+        "-121.485"
+      ]
+    ],
+    [
+      [
+        "781.25",
+        "0",
+        "0",
+        "781.25"
+      ],
+      [
+        "781.25",
+        "0",
+        "0",
+        "-781.25"
+      ],
+      [
+        "53.6763296",
+        "-28.6462826496",
+        "-44.5950435328",
+        "8.474723712"
+      ],
+      [
+        "778.7736704",
+        "449.1550826496",
+        "605.2734435328",
+        "195.939276288"
+      ],
+      [
+        "730.05",
+        "-420.5088",
+        "-560.6784",
+        "-204.414"
+      ]
+    ],
+    [
+      [
+        "400",
+        "0",
+        "0",
+        "400"
+      ],
+      [
+        "400",
+        "0",
+        "0",
+        "-400"
+      ],
+      [
+        "101.0176",
+        "-57.4046208",
+        "-82.9394944",
+        "-5.505024"
+      ],
+      [
+        "398.9824",
+        "230.2046208",
+        "313.3394944",
+        "89.505024"
+      ],
+      [
+        "300",
+        "-172.8",
+        "-230.4",
+        "-84"
+      ]
+    ]
+  ],
+  "mu_r": [
+    "1000",
+    "700",
+    "1400"
+  ],
+  "rows": [
+    {
+      "value": 3.958496002817545e-43,
+      "value_source": "recola",
+      "providers": {
+        "recola": {
+          "value": 3.958496002817545e-43,
+          "single_pole": 5.3301918861391136e-43,
+          "double_pole": -4.06395422145746e-46,
+          "lo_slot": 0.0,
+          "seconds": 0.196399421,
+          "pole_over_value": [
+            1.346519456466606,
+            0.001026640981464893
+          ]
+        }
+      },
+      "provider_pair_relative_errors": {}
+    },
+    {
+      "value": 1.4497453324690796e-43,
+      "value_source": "recola",
+      "providers": {
+        "recola": {
+          "value": 1.4497453324690796e-43,
+          "single_pole": 9.491709629950091e-44,
+          "double_pole": -6.550150876433632e-46,
+          "lo_slot": 0.0,
+          "seconds": 0.191090873,
+          "pole_over_value": [
+            0.6547156536648158,
+            0.004518138965329854
+          ]
+        }
+      },
+      "provider_pair_relative_errors": {}
+    },
+    {
+      "value": 1.4748355231661052e-42,
+      "value_source": "recola",
+      "providers": {
+        "recola": {
+          "value": 1.4748355231661052e-42,
+          "single_pole": 6.788491002239167e-43,
+          "double_pole": -3.664792412041884e-45,
+          "lo_slot": 0.0,
+          "seconds": 0.194797295,
+          "pole_over_value": [
+            0.4602880047034645,
+            0.002484882113616633
+          ]
+        }
+      },
+      "provider_pair_relative_errors": {}
+    }
+  ],
+  "max_provider_pair_relative_error": 0.0,
+  "rule": "PLAN \u00a74.0 L8 (numerical zero, Q13): the provider values are recorded, not compared; pyAmpliCol checks |A|^2 <= 10 E_abs against its own pre-cancellation estimate",
+  "passed": null,
+  "zero_row": true,
+  "providers": {
+    "recola": {
+      "provider": "recola",
+      "process_name": "li_gg_aaa",
+      "loop_induced": true,
+      "host": "itphlies",
+      "cpu": 292,
+      "points_file": "${LOOP_REFERENCE_ROOT}/runs/li/li_gg_aaa/points.json",
+      "timing_scope": "single thread pinned; untimed warm-up (MadLoop: past its initialisation), then each point timed once; not a benchmark campaign",
+      "settings": {
+        "recola_tree": "${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0",
+        "commands": [
+          "mass W 80.4190024457561601055171371731 0",
+          "mass Z 91.188 0",
+          "mass H 125 0",
+          "mass top 173 0",
+          "mass bottom 0 0",
+          "mass charm 0 0",
+          "mass strange 0 0",
+          "mass up 0 0",
+          "mass down 0 0",
+          "mass tau 0 0",
+          "mass muon 0 0",
+          "mass electron 0 0",
+          "alpha0 0.00754677111397888413442308708219",
+          "onshell",
+          "alphas 0.118 1000 5",
+          "legs 5",
+          "loop_induced",
+          "loop_gs 2",
+          "pow_nlo 2",
+          "process g g -> A A A",
+          "generate"
+        ],
+        "collier_cache": "on",
+        "dynamic_settings": 1,
+        "compute_ir_poles": 1
+      },
+      "version": "Recola2 2.2.5 (tree recola2-2.3.0)",
+      "provenance": {
+        "recola_tree": "${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0",
+        "linked": {
+          "librecola.so": {
+            "path": "${LOOP_REFERENCE_ROOT}/sources/recola2-2.3.0/librecola.so",
+            "version": "2.2.5"
+          },
+          "libcollier.so": {
+            "path": "${LOOP_REFERENCE_ROOT}/sources/COLLIER-1.2.8/libcollier.so",
+            "version": "1.2.8"
+          },
+          "libmodelfile.so": {
+            "path": "${LOOP_REFERENCE_ROOT}/models/SM_2.2.3/libmodelfile.so",
+            "version": "2.2.3"
+          }
+        }
+      },
+      "generation_seconds": 0.246358399,
+      "initial_call_seconds": 0.218124198,
+      "process_wall_seconds": 1.0715954729821533,
+      "evaluation_seconds": [
+        0.196399421,
+        0.191090873,
+        0.194797295
+      ]
+    }
+  },
+  "secondary_runs": {},
+  "unavailable": {
+    "madloop": "MG5 generates no diagram (NoDiagramException): its loop generation removes closed-fermion loops with an odd number of vector couplings by Furry's theorem (madgraph/loop/loop_diagram_generation.py, remove_Furry_loops), a rule-based zero (Q13); Recola's numerical values are the reference",
+    "openloops": "zero row: no designated OpenLoops ls library (PLAN \u00a74.1 LI-Z*)"
+  },
+  "excluded": {},
+  "misses_45_min": {},
+  "note": "Furry zero (an odd number of vector couplings to the closed quark loop): provider values recorded beside pyAmpliCol's L8 check"
+}

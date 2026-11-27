@@ -15,6 +15,7 @@
 #include "SigmaKin.h"
 
 #include "CPPProcess.h" // ProcessData.h, Parameters.h, HelAmps_<model>.h transitively
+#include "CrossingBlend.h" // the crossed externals of the recycled calls
 #include "ProcessTables.h"
 
 #include "MemoryAccessAmplitudes.h"
@@ -23,15 +24,17 @@
 #include "MemoryAccessIflavorVec.h"
 #include "MemoryAccessMomenta.h"
 #include "MemoryAccessWavefunctions.h"
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 namespace madmatrix
 {
   using namespace ProcessData;
   using namespace ProcessTables;
+  // As in SigmaKin.cc: the calls read the fixed couplings as COUPs[ndcoup + i]
+  using Parameters_dependentCouplings::ndcoup;
 
   // As in SigmaKin.cc: the chunks index the jamp tables with it
-#if defined MGONGPU_CPPSIMD and defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_SIMD and defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
   constexpr int nParity = 2;
 #else
   constexpr int nParity = 1;

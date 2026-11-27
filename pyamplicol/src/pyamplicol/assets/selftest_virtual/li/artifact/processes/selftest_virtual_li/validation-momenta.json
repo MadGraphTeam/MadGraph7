@@ -1,0 +1,40 @@
+{
+  "available": true,
+  "error": null,
+  "kind": "pyamplicol-rusticol-validation-momenta",
+  "points": [
+    [
+      {
+        "momentum": [
+          "62.5",
+          "0",
+          "0",
+          "62.5"
+        ],
+        "pdg": 21
+      },
+      {
+        "momentum": [
+          "62.5",
+          "0",
+          "0",
+          "-62.5"
+        ],
+        "pdg": 21
+      },
+      {
+        "momentum": [
+          "125",
+          "0",
+          "0",
+          "0"
+        ],
+        "pdg": 25
+      }
+    ]
+  ],
+  "process": "G G > H",
+  "process_id": "selftest_virtual_li",
+  "schema_version": 1,
+  "seed": 12345
+}

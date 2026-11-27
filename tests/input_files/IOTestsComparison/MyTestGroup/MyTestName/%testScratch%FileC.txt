@@ -1,1 +1,1 @@
-FileC
+../../_shared/MyTestGroup%MyTestName%%testScratch%FileC.txt

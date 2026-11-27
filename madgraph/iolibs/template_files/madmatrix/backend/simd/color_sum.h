@@ -7,14 +7,14 @@
 #ifndef COLOR_SUM_H
 #define COLOR_SUM_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
-#include "mgOnGpuVectors.h"
+#include "MadMatrixVectors.h"
 
 #include "ProcessData.h"
 
 #include <cstddef>
-#ifdef MGONGPU_CPP_HAS_BLAS
+#ifdef MADMATRIX_CPP_HAS_BLAS
 #include <vector> // the batched C++ color sum keeps the jamps of every good helicity
 #endif
 
@@ -32,14 +32,16 @@ namespace madmatrix
   // Only defined for processes whose color matrix is large enough that the
   // BLAS call is worth setting up (see blas_wanted): the color sum for every
   // good helicity of one event page in one go.
-#ifdef MGONGPU_CPP_HAS_BLAS
+#ifdef MADMATRIX_CPP_HAS_BLAS
   void
   color_sum_cpu_blas( fptype* allMEs,                  // input/output: allMEs[nevt], add |M|^2 summed over all good helicities
                       fptype_sv* MEs_ighel,            // output: [ncomb] running sum of |M|^2 up to ighel (first - and/or only - neppV page)
                       fptype_sv* MEs_ighel2,           // output: [ncomb] the same for the second neppV page (mixed mode only)
                       const cxtype_sv* ghelAllJamp_sv, // input: jamp_sv[nGoodHel][nParity*ncolor] for all good helicities
                       const int nGoodHel,              // input: number of good helicities
-                      const int ievt0 );               // input: first event number in current C++ event page
+                      const int ievt0,                 // input: first event number in current C++ event page
+                      const fptype* csymExtra,         // input: [neppV] 1 where this lane's C-parity de-duplication is on, 0 otherwise (nullptr: off everywhere)
+                      const fptype* csymExtra2 );      // input: [neppV] the same for the second neppV page (mixed mode only)
 #endif
 
   //--------------------------------------------------------------------------

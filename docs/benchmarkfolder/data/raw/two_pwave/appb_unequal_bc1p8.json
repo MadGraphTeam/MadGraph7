@@ -1,0 +1,261 @@
+{
+ "output": "P0_epem_Bcp11P18bcx_no_ztt",
+ "masses": [
+  0.0,
+  0.0,
+  6.25,
+  4.7,
+  1.55
+ ],
+ "note": "The self term of a P-wave state with unequal constituent masses: MadLoop's\ncomputed 1/eps against ONIA_IR_POLES (which keeps the self term and LDME\ncounterterm of arXiv:2402.19221 app. B, coefficient 8/(m_Q m_Qbar)) and\nagainst app. B of the two-P-wave manuscript\n(Manuscript/Quarkonium_FKS/JHEP_2Pwave, eq. (B.2)), which has no self-like\npole: its LDME coefficient kappa = 2 M^2/(m_Q m_Qbar)^2 (footnote of its\nsect. 5.1) cancels the self term. The two coefficients agree for equal\nmasses.\n\n    unequal_mass.py OUTDIR OUT.json ENERGY:NPTS ... [--modes 1,2]\n\nOUTDIR (one P-wave state, e.g. e+ e- > Bc1L+(1|1P11) b c~ / z t t~ QED=2\n[virt=QCD]) is patched in place (pass a copy): ONIA_PW_SOFT_POLE prints, per\nS-wave daughter S', the line\n  UNEQ  label  self  LDME(8/(m_Q m_Qbar))  LDME(kappa)  GMN\nwith self = -2/(3 P^2) C_eff g_mu nu M^mu nu and LDME = -c M(r_S'), and\nONIA_IR_POLES prints BORN2 before it (UNEQ_B). Per point: the computed 1/eps\n(c1), ONIA_IR_POLES (pred), and pred minus self and LDME (no_self, the\nprediction of eq. (B.2) if self + LDME(kappa) = 0), all per Born\nalpha_s/2pi.\n\nMadLoop's improvement of the phase-space point is off (ImprovePSPoint -1):\nfor these 2 -> 3 points it leaves the incoming e- with p_x, p_y of 1e-16\nand p_0 + p_z = 0, and the dual spinor (IXXXXX of\naloha/template_files/aloha_functions_dual.f) then takes the dual square root\nof 0, whose derivative component is NaN: every P-wave weight of the loop\nbecomes NaN (code 410).\n",
+ "rows": [
+  {
+   "energy": 20.0,
+   "point": 0,
+   "mode": "1",
+   "c1": 8.852802248769118,
+   "c2": 0.0,
+   "predicted": 62.565894181650876,
+   "predicted_c2": 0.0,
+   "code": 110,
+   "daughters": [
+    {
+     "label": "81",
+     "self": 190.60781597124776,
+     "ldme8": -142.19038098949528,
+     "ldme_kappa": -190.60781597124773,
+     "gmn": -291.33476029925805
+    },
+    {
+     "label": "88",
+     "self": 10.849968708531335,
+     "ldme8": -5.554311757402158,
+     "ldme_kappa": -7.445617811376863,
+     "gmn": -36.41684503740725
+    }
+   ],
+   "self_ldme8": 53.71309193288165,
+   "no_self": 8.852802248769223,
+   "self_ldme_kappa": 3.404350897154501,
+   "dev_predicted": 0.8585043438671826,
+   "dev_no_self": 1.1838630365790165e-14
+  },
+  {
+   "energy": 20.0,
+   "point": 1,
+   "mode": "1",
+   "c1": 7.376426476861274,
+   "c2": 0.0,
+   "predicted": 70.45836495663512,
+   "predicted_c2": 0.0,
+   "code": 110,
+   "daughters": [
+    {
+     "label": "81",
+     "self": 223.85437308071883,
+     "ldme8": -166.99178064824707,
+     "ldme_kappa": -223.85437308071903,
+     "gmn": -342.15050306882245
+    },
+    {
+     "label": "88",
+     "self": 12.742462478873781,
+     "ldme8": -6.523116431572159,
+     "ldme_kappa": -8.744311448465599,
+     "gmn": -42.76881288360286
+    }
+   ],
+   "self_ldme8": 63.08193847977338,
+   "no_self": 7.376426476861745,
+   "self_ldme_kappa": 3.9981510304079837,
+   "dev_predicted": 0.8953080094691208,
+   "dev_no_self": 6.381607190387634e-14
+  },
+  {
+   "energy": 20.0,
+   "point": 0,
+   "mode": "2",
+   "c1": 8.852802248769555,
+   "c2": 0.0,
+   "predicted": 62.565894181650876,
+   "predicted_c2": 0.0,
+   "code": 110,
+   "daughters": [
+    {
+     "label": "81",
+     "self": 190.60781597124776,
+     "ldme8": -142.19038098949528,
+     "ldme_kappa": -190.60781597124773,
+     "gmn": -291.33476029925805
+    },
+    {
+     "label": "88",
+     "self": 10.849968708531335,
+     "ldme8": -5.554311757402158,
+     "ldme_kappa": -7.445617811376863,
+     "gmn": -36.41684503740725
+    }
+   ],
+   "self_ldme8": 53.71309193288165,
+   "no_self": 8.852802248769223,
+   "self_ldme_kappa": 3.404350897154501,
+   "dev_predicted": 0.8585043438671756,
+   "dev_no_self": 3.752243861699595e-14
+  },
+  {
+   "energy": 20.0,
+   "point": 1,
+   "mode": "2",
+   "c1": 7.376426476861091,
+   "c2": 0.0,
+   "predicted": 70.45836495663512,
+   "predicted_c2": 0.0,
+   "code": 110,
+   "daughters": [
+    {
+     "label": "81",
+     "self": 223.85437308071883,
+     "ldme8": -166.99178064824707,
+     "ldme_kappa": -223.85437308071903,
+     "gmn": -342.15050306882245
+    },
+    {
+     "label": "88",
+     "self": 12.742462478873781,
+     "ldme8": -6.523116431572159,
+     "ldme_kappa": -8.744311448465599,
+     "gmn": -42.76881288360286
+    }
+   ],
+   "self_ldme8": 63.08193847977338,
+   "no_self": 7.376426476861745,
+   "self_ldme_kappa": 3.9981510304079837,
+   "dev_predicted": 0.8953080094691234,
+   "dev_no_self": 8.862005456840187e-14
+  },
+  {
+   "energy": 30.0,
+   "point": 0,
+   "mode": "1",
+   "c1": 9.867783519342641,
+   "c2": 0.0,
+   "predicted": 46.39248238801454,
+   "predicted_c2": 0.0,
+   "code": 110,
+   "daughters": [
+    {
+     "label": "81",
+     "self": 129.612592197531,
+     "ldme8": -96.68891997788295,
+     "ldme_kappa": -129.61259219753086,
+     "gmn": -198.10653244843422
+    },
+    {
+     "label": "88",
+     "self": 7.3779375856600655,
+     "ldme8": -3.776910936636056,
+     "ldme_kappa": -5.062991882716054,
+     "gmn": -24.7633165560543
+    }
+   ],
+   "self_ldme8": 36.52469886867206,
+   "no_self": 9.867783519342481,
+   "self_ldme_kappa": 2.3149457029441534,
+   "dev_predicted": 0.787297790258105,
+   "dev_no_self": 1.620142104178176e-14
+  },
+  {
+   "energy": 30.0,
+   "point": 1,
+   "mode": "1",
+   "c1": 13.887452888247818,
+   "c2": 0.0,
+   "predicted": 103.59405463610643,
+   "predicted_c2": 0.0,
+   "code": 110,
+   "daughters": [
+    {
+     "label": "81",
+     "self": 318.33541548366156,
+     "ldme8": -237.4731265841637,
+     "ldme_kappa": -318.3354154836613,
+     "gmn": -486.5601732653342
+    },
+    {
+     "label": "88",
+     "self": 18.120606855576447,
+     "ldme8": -9.276294007193883,
+     "ldme_kappa": -12.434977167330503,
+     "gmn": -60.82002165816668
+    }
+   ],
+   "self_ldme8": 89.70660174788043,
+   "no_self": 13.887452888226008,
+   "self_ldme_kappa": 5.6856296882462285,
+   "dev_predicted": 0.8659435337575104,
+   "dev_no_self": 1.570490243941509e-12
+  },
+  {
+   "energy": 30.0,
+   "point": 0,
+   "mode": "2",
+   "c1": 9.86778351934276,
+   "c2": 0.0,
+   "predicted": 46.39248238801454,
+   "predicted_c2": 0.0,
+   "code": 110,
+   "daughters": [
+    {
+     "label": "81",
+     "self": 129.612592197531,
+     "ldme8": -96.68891997788295,
+     "ldme_kappa": -129.61259219753086,
+     "gmn": -198.10653244843422
+    },
+    {
+     "label": "88",
+     "self": 7.3779375856600655,
+     "ldme8": -3.776910936636056,
+     "ldme_kappa": -5.062991882716054,
+     "gmn": -24.7633165560543
+    }
+   ],
+   "self_ldme8": 36.52469886867206,
+   "no_self": 9.867783519342481,
+   "self_ldme_kappa": 2.3149457029441534,
+   "dev_predicted": 0.7872977902581024,
+   "dev_no_self": 2.8262478928441515e-14
+  },
+  {
+   "energy": 30.0,
+   "point": 1,
+   "mode": "2",
+   "c1": 13.887452888230216,
+   "c2": 0.0,
+   "predicted": 103.59405463610643,
+   "predicted_c2": 0.0,
+   "code": 110,
+   "daughters": [
+    {
+     "label": "81",
+     "self": 318.33541548366156,
+     "ldme8": -237.4731265841637,
+     "ldme_kappa": -318.3354154836613,
+     "gmn": -486.5601732653342
+    },
+    {
+     "label": "88",
+     "self": 18.120606855576447,
+     "ldme8": -9.276294007193883,
+     "ldme_kappa": -12.434977167330503,
+     "gmn": -60.82002165816668
+    }
+   ],
+   "self_ldme8": 89.70660174788043,
+   "no_self": 13.887452888226008,
+   "self_ldme_kappa": 5.6856296882462285,
+   "dev_predicted": 0.8659435337576804,
+   "dev_no_self": 3.0302096334072605e-13
+  }
+ ]
+}

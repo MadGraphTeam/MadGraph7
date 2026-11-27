@@ -47,6 +47,10 @@ c     Vegas stuff
       common/SHevents/Hevents
       character*10 dum
 c statistics for MadLoop      
+      INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      INTEGER TIRUST_DP_USAGE,TIRUST_QP_USAGE
+      COMMON/TIRUSTSTATS/TIRUST_DP_USAGE,TIRUST_QP_USAGE
       integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1(0:9)
       common/ups_stats/ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1
 
@@ -107,6 +111,10 @@ c
       do i=0,9
         n1(i)=0
       enddo
+      NINJARS_DP_USAGE=0
+      NINJARS_QP_USAGE=0
+      TIRUST_DP_USAGE=0
+      TIRUST_QP_USAGE=0
       
       call setrun                !Sets up run parameters
       call configure_fxfx_sudakov(ickkw,nlo_ps,shower_mc,.true.)
@@ -234,6 +242,13 @@ c
               write(*,*) "#Unit ",j," = ",n1(j)
            endif
          enddo
+         write(*,*) '#ReturnCodeVersion = 2'
+         write(*,*) '#NinjaRS DP = ',NINJARS_DP_USAGE
+         write(*,*) '#NinjaRS QP = ',NINJARS_QP_USAGE
+         write(*,*) '#TIRust DP = ',TIRUST_DP_USAGE
+         write(*,*) '#TIRust precision note: DP denotes input'
+     &        //' precision; tensor routes can use higher precision.'
+         write(*,*) '#TIRust QP = ',TIRUST_QP_USAGE
       endif
 
       call cpu_time(job_finished)
@@ -296,8 +311,6 @@ c PineAPPL
       common /for_pineappl/ pineappl
       double precision       wgt_ME_born,wgt_ME_real
       common /c_wgt_ME_tree/ wgt_ME_born,wgt_ME_real
-      integer     fold,ifold_counter
-      common /cfl/fold,ifold_counter
       integer ini_fin_fks_map(0:2,0:fks_configs)
       save ini_fin_fks_map
       include 'has_ewsudakov.inc'
@@ -312,6 +325,7 @@ c Share the sampled Born within this evaluation when sectors permit it.
          pass_cuts_check=.false.
       endif
       call vs_begin_point
+      call reset_folded_virtual
       if (firsttime) then
          firsttime=.false.
          call setup_ini_fin_fks_map(ini_fin_fks_map)
@@ -324,7 +338,6 @@ c Share the sampled Born within this evaluation when sectors permit it.
          write (*,*) 'ERROR ifl not equal to zero in sigint',ifl
          stop 1
       endif
-      fold=ifl
       if (pineappl .and. sum) then
          write (*,*) 'WARNING: PineAPPL only possible '/
      &        /'with MC over FKS directories',pineappl,sum

@@ -24,7 +24,9 @@ drives the typed [Python API](python-api.md).
 | `evaluate` | Evaluate totals or resolved components | `pyamplicol evaluate artifacts/builtin_ddbar_to_zg --momenta point.json` |
 | `profile` | Calibrate and measure the optimized total path | `pyamplicol profile artifacts/builtin_ddbar_to_zg --target-runtime 1` |
 | `benchmark` | Compatibility alias for `profile` | Existing cards use `action = "benchmark"` |
+| `check` | Pole (Catani; loop-induced: finiteness) and Ward checks of a one-loop request, regenerated in memory | `pyamplicol check loop_gg_zgg_generate.toml` or `pyamplicol check artifacts/loop_gg_zgg` |
 | `inspect` | Show artifact and process metadata without running it | `pyamplicol inspect artifacts/builtin_ddbar_to_zg` |
+| `export-recurrence` | Export resolved LC programs for external runners | `pyamplicol export-recurrence artifacts/gg_ggg -o recurrence.json` |
 | `group-processes` | Find generated subprocesses with equal matrix elements | `pyamplicol group-processes artifacts/pp_jj` |
 | `model inspect` | Summarize a built-in, JSON, UFO, or compiled model | `pyamplicol model inspect models/json/sm/sm.json` |
 | `model compile` | Compile portable model IR or a prepared kernel bundle | See [Models and Processes](models-and-processes.md) |
@@ -73,6 +75,68 @@ Use an explicit action when the same card supplies shared settings:
 pyamplicol generate --card qq_z6g_recurrence_jit_o2.toml
 pyamplicol profile --card qq_z6g_recurrence_jit_o2.toml
 ```
+
+### One card, the action on the command line
+
+`pyamplicol CARD ACTION [options]` runs `ACTION` (`generate`, `check`,
+`evaluate`, `profile`, `inspect`) with `CARD` as its card: one card can carry
+the settings of every action, and the card's own `action` is what
+`pyamplicol CARD` alone runs. `--output DIR` names the artifact, relative to
+the working directory: the directory `generate` writes
+(`generation.output`) and the one `check`, `evaluate`, `profile` and
+`inspect` read (`evaluation.artifact`). Every other option is the action's
+own, for example `--process` (one or more process expressions, MG5_aMC syntax
+accepted, replacing the card's entries) and `--set PATH=VALUE`. The shipped
+master card `loop_generate.toml` is made for this
+([One-loop examples](../../examples/README.md#one-loop-examples)):
+
+```console
+pyamplicol loop_generate.toml generate --process="u u~ > d d~ QCD^2<=4 QED^2<=6 [QCD QED]" --output=./my_loop_output
+pyamplicol loop_generate.toml check    --output=./my_loop_output
+pyamplicol loop_generate.toml evaluate --output=./my_loop_output
+pyamplicol loop_generate.toml profile  --output=./my_loop_output
+```
+
+It is the same as `pyamplicol ACTION --card CARD --set
+generation.output=DIR` (or `evaluation.artifact=DIR`); the forms
+`pyamplicol CARD`, `pyamplicol check CARD` and `pyamplicol ACTION --card CARD`
+are unchanged.
+
+### MG5_aMC process syntax
+
+A process expression (`--process`, a card's `process.entries`, or a string
+given to `pyamplicol.generate` / `Generator.plan` / `Generator.generate`) may
+be written as on an MG5_aMC `generate` line. The annotations are translated
+into the run-card settings that express them, in one place for all three
+entry points; the generation log names the translation (`INFO pyamplicol.cli:
+process 'u u~ > d d~ [QCD]' (MG5_aMC syntax) -> 'u u~ > d d~' with
+process.loop_coupling_orders = ["QCD"]`), `config resolve` shows it in the
+effective configuration, and the requested configuration keeps the
+expression as written.
+
+| MG5_aMC | pyAmpliCol setting |
+| --- | --- |
+| `[QCD]`, `[virt=QCD]`, `[all=QCD]`, `[QCD QED]` | `process.loop_coupling_orders` (only the one-loop virtual is computed: `[QCD]` means the virtual) |
+| `[noborn=QCD]`, `[sqrvirt=QCD]` | `process.loop_coupling_orders` and `process.loop_induced = "only"` (loop-induced \|A_loop\|^2; processes with a Born are not served this way) |
+| `QED=2`, `QED<=2` | `process.max_coupling_orders` (Born amplitude orders) |
+| `QCD^2<=4`, `QED^2==6`, `QED^2>2` (also `<`, `>=`) | `process.squared_coupling_orders` ([sector selection](configuration.md#squared-order-sector-selection)) |
+| `/ z h` | `generation.particle_veto` |
+
+An amplitude- or squared-order constraint also sets
+`process.coupling_order_policy = "explicit"`, as MG5_aMC drops its WEIGHTED
+minimisation when coupling orders are named: every Born amplitude order within
+the limits is generated. The NLO bracket comes last; a trailing bracket is
+MG5_aMC's when it holds `=` or names coupling orders in MG5_aMC's upper-case
+spelling, otherwise it is an anonymous multiparticle (`u u~ > d [d g]`).
+Refused with the typed `madloop-syntax` error: `[real=QCD]` and
+`[LOonly=QCD]` (only the virtual is served), decay chains (`t t~, t > b w+`:
+request each decay as its own process), `$` / `$$` s-channel exclusions,
+`@N` tags and amplitude-level `==` / `>`. A translated setting that the card,
+an option or `--set` also states with another value is a typed error naming
+both (`ProcessSyntaxConflict`); several process entries must carry the same
+annotations, since the settings are run-wide. A plain `ProcessRequest` takes
+plain expressions and refuses MG5_aMC syntax with the translation it would
+have.
 
 Override one leaf without editing the card:
 
@@ -130,7 +194,54 @@ Useful generation options include:
   relations at generation time (off by default because the high-precision
   probes are costly);
 - `--post-build-validation` for an optional immediate native total-versus-
-  resolved smoke after writing the artifact.
+  resolved smoke after writing the artifact;
+- `--loop-induced-probes` to run the generation-time finiteness, Ward and
+  Goldstone probes of loop-induced processes (binary64, double-double where
+  a binary64 probe fails or is refused; off by default because the written
+  artifact does not depend on them; they validate a new or edited loop UFO,
+  see [Configuration](configuration.md)), and `--allow-failed-probes` to
+  store a process whose probe failed (it acts only with the probes on).
+
+The summary table after a generation lists the output, the processes, the
+existing-output policy, the schema version, the files, and two measurements of
+the generation:
+
+- `generation time`: the wall-clock time of the whole generate call, from
+  reading the processes to the last validation (the start-up of the command
+  before it is not included), in bold, then, in brackets, each generation phase
+  (`setup`: reading the request and loading the generation engine; then the
+  phases of the progress display) and the unattributed rest, which add up to
+  it;
+- `peak RAM`: the most memory the generation needed at once, the peak
+  resident memory of the generating process (its threads, native thread pools
+  included) and of every process it started (compilers of the `cpp` backend).
+
+On Linux the process's peak is the kernel's high-water mark `VmHWM`, reset at
+the start of the generation (`/proc/self/clear_refs`): exact. The reset is
+process-wide, so pyAmpliCol does it only in a process it owns (the
+`pyamplicol` command and its worker processes): called as a library
+(`Generator.generate`, `BenchmarkRunner`, from MadGraph7 or a script), it
+never lowers the calling program's own peak (`VmHWM`, `ru_maxrss`, what
+`time -v` reports) and reads the lifetime peak instead, as below. Where the
+reset is refused, and on macOS (`getrusage` `ru_maxrss`), only the process's
+lifetime peak is known: it is the generation's when the generation raised it,
+else an upper bound, shown `<= x`. Started processes are followed by a thread
+that sums the resident sizes of the process tree every second (Linux: the
+`/proc` children lists; macOS: `ps`) and, on Linux, by the largest peak of an
+ended one (`getrusage` `RUSAGE_CHILDREN`); with started processes the peak is
+shown `>= x` (processes running together may have needed more), followed by
+the generating process's own peak when the peak is not it and, when above it,
+the largest one of a started process (the kernel credits a started process with the resident size
+of the process that starts it, so a smaller one says nothing). The
+default `jit` backend and the one-loop engine start no process, so their peak
+is exact on Linux. `--fields-description-help` describes each row, and
+`--json` carries the same values under `statistics`: `wall_seconds`, `phases`
+(a list of `{"phase", "seconds"}`), `unattributed_seconds`, `peak_rss_bytes`,
+`peak_rss_bound` (`exact`, `upper bound`, `lower bound`, `approximate` or
+`unknown`), `peak_rss_method`, `process_peak_rss_bytes`, `child_processes` and
+`child_peak_rss_bytes`. The artifact stores them too (see
+[Artifacts and Portability](artifacts-and-portability.md#generation-statistics)),
+so `inspect` shows them later.
 
 Planning is non-writing:
 
@@ -184,9 +295,12 @@ settings are overridden by dedicated flags, then by ordered `--set` options
 as usual.
 
 `--dry-run` performs the operation exposed as `Generator.plan()`. It creates no
-artifact, output directory, or model-cache entry. A raw UFO or JSON source must
-already have a reusable compiled-model cache entry, or be compiled explicitly,
-because planning never compiles trusted model input as a side effect.
+artifact, output directory, or compiled-model cache entry. A raw UFO or JSON
+source must already have a reusable compiled-model cache entry, or be compiled
+explicitly, because planning never compiles trusted model input as a side
+effect. A one-loop dry run runs the request-model preparations and so fills the
+one-loop preparation cache (unless it is off), preparing a later generation
+ahead.
 
 See [Generation Modes and Evaluators](generation-modes-and-evaluators.md) before
 combining execution modes and prepared-model backends.
@@ -234,6 +348,12 @@ the ordering contract.
 
 Inspection does not execute evaluator state. Human output uses compact colored
 tables; machine output is available with `--json`.
+
+The `Artifact` table shows, after `created`, the `generation time` and the
+`peak RAM` of the generation that wrote the artifact, as the generate summary
+showed them; an artifact written before pyAmpliCol recorded them shows a muted
+`-`. `--json` carries them as `generation_statistics` (`null` when not
+recorded).
 
 The `Process groups` section shows the artifact's
 [process-group map](process-grouping.md): an overview row, then one table of
@@ -390,6 +510,18 @@ pyamplicol evaluate artifacts/pp_zjj \
   --resolved
 ```
 
+Split recurrence totals by squared coupling order with `--orders`; the JSON
+output carries `values` `[point][order]`, the unchanged `total`, the squared
+`orders` with their contributing amplitude-order pairs, and
+`amplitude_orders`:
+
+```console
+pyamplicol evaluate artifacts/pp_zjj \
+  --process 'd d~ > g z g' \
+  --momenta data/pp_zjj_momenta.json \
+  --orders
+```
+
 Global selectors may be repeated:
 
 ```console
@@ -404,6 +536,198 @@ pyamplicol evaluate artifacts/pp_zjj \
 by `inspect`. Flow selection is LC-only; NLC and full-color artifacts expose a
 contracted color output and accept helicity selection only. More examples are
 in [Runtime and Selectors](runtime-and-selectors.md).
+
+### Evaluate without a momenta file
+
+Without `--momenta` (`evaluation.momenta`), `evaluate` and `profile` draw flat
+phase-space points set by `[evaluation.phase_space]` (the product's flat
+generator, RAMBO on diet, S. Plätzer, arXiv:1308.2922: uniform in
+Lorentz-invariant phase space, beams along +-z; massive final states through
+the paper's mass mapping, whose weight is not applied to the drawn points;
+a continuous distribution, so no planar or otherwise special configuration
+is drawn; reproducible bit for bit in the seed; 1.0.3 and earlier drew classic
+RAMBO points, so the same seed now gives other points): `points` points (default 2), point i from seed
+`seed + i` (default seed 1), at the centre-of-mass energy `sqrt_s` of a 2 -> n
+scattering (default: the energy of the artifact's own validation point, so
+any process the artifact holds is above threshold). A 1 -> n decay is drawn in
+the rest frame of the decaying particle, a 2 -> 1 process at its single point
+(its energy is fixed by the masses). The external masses are those of the
+artifact's validation point (massless and massive legs alike; nothing is read
+from the model). A virtual evaluation then takes mu_r^2 = s per point unless
+`evaluation.mu_r2` is set:
+
+```console
+pyamplicol evaluate artifacts/loop_generate \
+  --set evaluation.phase_space.points=4 --set evaluation.phase_space.sqrt_s=2000
+```
+
+`check` draws its own points (`[check] points`, `seed`, `sqrt_s`).
+
+### Saved virtual artifacts
+
+The artifact selects the virtual execution lane; loading it does not require
+repeating its loop coupling orders. Supply the renormalization scale squared:
+
+```console
+pyamplicol evaluate artifacts/virtual --process gg --momenta points.json \
+  --mu-r2 1000000 --arithmetic double --r2-strategy model --json
+```
+
+`--arithmetic` accepts `double`, `double-double` (DoubleFloat) or `arbitrary`.
+For arbitrary precision, add `--precision 70`, for example. These choices apply
+before model parameters are bound. Without an explicit arithmetic choice, the
+existing precision convention applies: 16 digits selects double; other requested
+precisions select arbitrary precision. DoubleFloat is always selected explicitly.
+
+`--loop-reduction {auto,ninjars,tirust}` selects the reduction backend for the
+evaluation, overriding the artifact's default (`generate --loop-reduction`
+records that default): `auto` takes TIRust for a loop-induced and NinjaRS for
+a Born-interfered process, falling back to NinjaRS with the reason recorded
+where TIRust cannot serve the call; on TIRust a point it refuses or fails is
+evaluated again on NinjaRS (the per-point fallback, recorded in that point's
+lane diagnostic), and in double-double and arbitrary precision each point it
+serves is guarded by a rotation re-test in the evaluation's
+arithmetic: a point whose estimate exceeds the target (never below 1e-5)
+fails with the reason (the estimate is in the lane's `reduction` record,
+`guard_estimate`; [Python API](python-api.md), "Near-planar NinjaRS
+hazard"); a binary64 fallback point is served unguarded; `ninjars` and `tirust` request one backend
+without a fallback or guard (`tirust` serves every arithmetic; `ninjars`
+without stability checks was exposed to that hazard until NinjaRS's
+conditioning bound, 71eddb15); an explicit backend that cannot serve the call is refused.
+`--reduction-target X` sets TIRust's target accuracy (the relative accuracy
+of each point's result, default 1e-5; it sets the calibrated acceptance of
+TIRust's checked method choice and, never below 1e-5, is the fallback
+guard's threshold).
+`--kinematics-improvement VARIANT` (`z-shift`, `rescaling`, `projection` or `off`; default
+`z-shift`, MadLoop's `ImprovePSPoint = 2` with its fallback to 1, finished by
+the projection where MadLoop leaves the point inexact) and
+`--[no-]kinematics-improvement-binary64` (default off) set the improvement
+of the input points to exact conservation and on-shell externals before a
+double-double or arbitrary-precision evaluation (binary64 only with the
+switch); the JSON output's lane diagnostics carry the per-point record
+(`kinematics`; [Configuration](configuration.md#kinematics-improvement-of-the-input-points)).
+Both are `evaluate`, `profile` and `check` flags (for `check`, below) and
+the run card's `[evaluation] kinematics_improvement` /
+`kinematics_improvement_binary64`; an unknown variant is refused with the
+native policy's one refusal text when the configuration resolves.
+`--reduction-unchecked` (default off) reduces without the backends' own
+acceptance and refusal checks: TIRust's gates and method choice select the
+method without re-checking its values, plain Passarino-Veltman at gate 0
+serves what they refuse, NinjaRS runs with zero stability thresholds (its
+box mu-expansion's conditioning bound stays active); only points without a
+finite value or refused by that bound still fail, `auto` keeps its backend choice and
+its fallback acts on those only. It is a timing and benchmark mode with no
+accuracy certificate (the measured accuracy per process: [Python
+API](python-api.md), "Unchecked reductions"). The JSON output's lane diagnostics name the requested and
+effective backends, the reason, the fallback, the target and the unchecked
+setting. A
+loop-induced artifact (`contribution: "loop-induced"` in the JSON, empty
+`born_values`) takes `--poles all` or `none` only.
+
+Use `--mu-r2-file scales.json` for one positive scale squared per point, instead
+of `--mu-r2`. A scale file such as `[1000000, "900000.0000000000000000001"]`
+accepts JSON numbers or strings. Virtual momenta, parameter and scale files
+preserve decimal digits before native arithmetic conversion. Parameter pairs
+`[real, imaginary]` also preserve their exact inputs.
+
+Human output lists every Born and virtual squared coupling order and all three
+coefficients, with contributing Born–loop pairs and per-point diagnostics. JSON
+adds explicit `epsilon_powers: [0, -1, -2]`, coefficient names and shape metadata;
+high-precision values are decimal strings. Neither format silently sums orders
+or divides by the Born result. A successful lane can still report
+`accuracy_established: false`.
+
+`--orders` splits a virtual evaluation by squared coupling order: one
+evaluation (`Runtime.evaluate_orders`, a `VirtualOrderEvaluation` view), every
+sector's Laurent coefficients and every Born order apart as above, followed
+by a separately titled table of the explicit sums over the orders (JSON:
+`evaluation`, `orders`, `born_orders`, `sum_orders`, `sum_born_orders`). The
+sums are named and printed apart; nothing is summed silently.
+
+The precision-rescue options (`--stability-higher`,
+`--stability-relative-tolerance`, `--stability-absolute-tolerance`,
+`--verify-successful`, card section `[evaluation.stability]`) were removed with
+the legacy loop engine, the only one that served them; naming one is refused
+with the reason. v2 evaluations return stability estimates
+(`--stability-rotations`, `--stability-reduction-direction`,
+`--stability-rescaled`) and leave escalating `--arithmetic` to the caller.
+
+`--on-failure best-effort` is the default (since 1.0.3): a point that no
+configured alternative accepts (the reduction backend's own acceptance
+checks, `auto`'s per-point fallback, the last rescue level) is returned with
+its best available value, the unchecked reduction's, its refusal and its
+uncertainty, status `best-effort` (never a success; yellow in the status
+column of the evaluation diagnostics), and a point without any value as an
+unavailable row. Nothing is printed per point: the human tables end with one
+dim summary line (`N captured warning(s) (...); see --json /
+result.warnings`), and `--json` carries `statuses` and `warnings` (per kind:
+source, kind, first message, count, where, point indices; each lane's
+`reduction.best_effort` record holds `refusal`, `uncertainty`, `source`,
+`backend_deviation` and `gram_conditioning`). `--on-failure return` preserves successful
+points and returns an unavailable whole-point row for each numerical failure
+(no best-effort evaluation): `null` in JSON, with its failure diagnostics.
+`--on-failure raise` (the default before 1.0.3) stops at the first such
+point. `generate` and `check` return the known, benign dependency log
+events they trigger (see the release notes) in their result's `warnings`,
+shown as the same one dim line, instead of printing them. An actual zero remains a
+numerical zero. A scale at which a counterterm coupling is not finite in the
+chosen arithmetic (e.g. `1e-400` in binary64) is such a failure of its own
+points. Malformed inputs (a non-positive `--mu-r2`) and unsupported
+capabilities remain errors for the whole call. Both inclusive and `--resolved`
+evaluation use this option; resolved axes follow the artifact's retained
+layout. It requires virtual evaluation and is rejected on other commands,
+including `profile`; configuration inspection can still display it.
+
+Only strategies and observables present in the artifact may be selected.
+
+### Correlated requests
+
+Supply a JSON object of labelled numerical requests to evaluate colour and spin
+correlations together over the entire point batch:
+
+```console
+pyamplicol evaluate artifacts/virtual --momenta points.json --mu-r2 1000000 \
+  --correlated-requests requests.json --on-failure return --json
+```
+
+```json
+{
+  "physical": {"color_correlation": "born", "spin_vectors": {}},
+  "joint": {
+    "color_correlation": "born",
+    "spin_vectors": {
+      "3": ["0", ["0.8", "-0.16"], "0", ["-0.6", "0.12"]],
+      "4": ["0", "0", ["1", "0.2"], "0"]
+    }
+  }
+}
+```
+
+Request labels become output keys. `color_correlation` defaults to `born`; use
+stored colour-history IDs for other operators. The supplied vector-leg set must
+be a class declared in the artifact. Leg keys use public one-based labels, and
+each value is a four-vector or one four-vector per point. Components may be
+exact real numbers, strings, or `[real, imaginary]` pairs. Vectors are used
+literally, without normalization or projection. Unknown fields, duplicate JSON
+keys and colliding leg spellings such as `"3"` and `"03"` are errors.
+
+Missing or null `spin_vectors` inherits the runtime's default; a fresh CLI
+runtime has no replacement sources. `{}` explicitly selects physical helicities.
+One entry requests one observable; multiple entries use the existing grouped
+runtime call, preserving each label and its independent failure mask. Human
+output prints each result under its label; virtual JSON retains every coupling
+order, Laurent coefficient and diagnostic, including unavailable rows.
+
+Tree artifacts use the same request file, without virtual scales, R2, stability
+or partial-return options. Their correlated API defaults to arbitrary precision;
+`--arithmetic double-double` selects its existing DoubleFloat path. `--precision`
+and `--helicity` follow the underlying correlated API. Virtual requests inherit
+the arithmetic and stability policy selected at load time.
+
+`--resolved` and `--color-flow` cannot be combined with correlated requests:
+the grouped API returns contracted observables. Generation-time `--correlators`
+declares capabilities; evaluation-time `--correlated-requests` supplies numerical
+values and selects among those capabilities.
 
 ## Profile
 
@@ -427,6 +751,554 @@ and selector-aware profiling. If both profile selector axes are omitted, the
 stored LC layout supplies a deterministic optimized selector; explicit
 non-hot shapes are retained and produce at most one pre-loop warning per
 loaded process.
+
+A one-loop (v2 virtual) artifact is profiled on **both reduction backends
+side by side** (TIRust and NinjaRS, the process type's default first: TIRust
+for a loop-induced process, NinjaRS for a Born-interfered one);
+`--loop-reduction tirust|ninjars` profiles that backend only (`auto`: the
+default backend alone, with its per-point fallback). A backend that refuses
+the process is shown as refused with its typed reason; the command still
+succeeds. What is measured:
+
+| Flags | Measures |
+| --- | --- |
+| neither | the runtime (as `--runtime`) |
+| `--runtime` | time per point and per stage of each backend |
+| `--stability` | the stable-digit statistics of each backend |
+| `--runtime --stability` | both |
+
+```console
+pyamplicol profile artifacts/loop_gg_zgg                      # runtime, both backends
+pyamplicol profile --card loop_gg_zgg_profile.toml --stability
+pyamplicol loop_gg_zgg_profile.toml --stability               # the same (the card's action)
+pyamplicol loop_generate.toml profile --output=./my_loop_output --runtime --stability  # the master card
+pyamplicol profile artifacts/loop_uux_ttxgg --runtime --stability \
+  --stability-points 200 --seed 7 --sqrt-s 2000 --loop-reduction tirust
+```
+
+Both parts use the flat phase-space points of
+[`[evaluation.phase_space]`](#evaluate-without-a-momenta-file) (RAMBO on
+diet, the product's flat generator: beams along +-z in the centre-of-mass frame, the
+external masses of the artifact's validation point; point i from seed + i;
+`--seed` and `--sqrt-s` set `evaluation.phase_space.seed` and `sqrt_s`)
+unless `--momenta` gives the timed points; the runtime and the stability
+points are drawn separately from the same seed.
+
+**Time budgets.** Three rules set the counts of a loop profile, in this order
+(the header's `counts` row names the one that applied and what the profile
+took):
+
+- `--completion-time DURATION` (`benchmark.completion_time`; seconds, or a
+  text such as `90s`, `10m`, `1h30m`): the whole command, as you wait for
+  it (interpreter start, load, measurement, every backend's runtime timing
+  and reference pass, the stability run on its workers, the statistics and
+  the per-sample records of `--json` or `--samples-output`: their time is
+  part of the plan), aims at that wall time, within about a factor 1.5
+  either way. It overrules every count and size, on the command line and in
+  a run card alike (`--target-runtime`, `--minimum-samples`, `--batch-size`,
+  `--warmup-runs`, `--stability-points`; one notice line says which; the
+  plan sets them all): a short measurement first (its own phase: per
+  backend the cost per point of binary64 and of the reference, each from
+  one point and, when a full SIMD chunk costs at most 2 s at that price,
+  from one chunk), then the plan: the runtime timing first (a stable median,
+  at least the default 10 s when the time affords it, at most half of what
+  is left when `--stability` is asked for too), the reference pass bounded
+  within each backend's share, the stability run admitting chunks while
+  they end by the deadline. Later phases are re-planned from what is left.
+  The minimums are never undercut: one timed call of one filled chunk per
+  backend for the runtime, five stability points per backend; when they
+  alone exceed the requested time a warning says so as soon as the
+  measurement is back, with the time the whole command then takes (the
+  header's `counts` row states the same number), and the minimums run.
+- the counts given on the command line or in a run card: honoured as given.
+- neither: the default budgets, 10 s for the runtime timing of all backends
+  and one minute of work per `--n_core` worker for the stability run (about
+  a minute of wall time whatever `--n_core`: more workers, more points). On
+  an expensive process whose minimums exceed them by more than a factor 1.5
+  the same warning says so, with the time the minimums take.
+
+Loading, process start-up, warm-up calls and the reference pass's minimum
+are outside the default budgets by nature; they are visible phases with
+their own estimates. The reference pass is part of the budget of the phase
+it serves. On an expensive process the binary64 warm-up is one point (when
+a full call would cost more than 2 s; else one full call), and a stability
+task holds about 4 s of work: a point that costs more is a task of its own,
+so a few expensive points spread over the workers instead of running one
+after the other.
+
+**Monitoring.** On a terminal the profile shows three live lines: the whole
+command (elapsed, its ETA, `~` while it rests on a prior, the budget left
+with `--completion-time`, the process tree's resident memory and busy
+cores), the current phase (calls or points done of the planned ones, a bar,
+its ETA, counted down every second and never 0 while work remains) and
+what is running right now (the call and how long it has run against its
+expected cost; "no progress for ..." in the warning colour once a call runs
+three times past it) with the current best estimates: per backend its
+binary64 time per point and the running reference multiplier (`N/A`, muted,
+until a timed call is back), or the stability run's points done and flagged
+counts. Every finished phase leaves one line with what it cost, the
+statistics and per-sample records of a large stability run included; a
+large `--json` dump says on stderr that it is being written. The whole
+command's ETA is there from the first second: a profile remembers the
+artifact's measured costs and its total for the same settings (in the
+pyAmpliCol cache, beside the generation history; written only when progress
+is shown), and the next one starts from them; without a previous profile
+the `--completion-time` budget stands until the first measured call, then a
+provisional plan from the costs known so far (the other backend's binary64
+cost, the reference from a per-backend multiplier prior) until the
+measurement is over. The tables fit the terminal when it is narrower than
+100 columns (headers wrap at their spaces, numbers never break; `--json`
+and `--progress log` are unaffected).
+`--progress log` prints one line per event and a heartbeat at least every
+10 s; `--progress off` prints nothing.
+
+**Runtime.** Every backend is timed **on one core**, the cost one Monte Carlo
+worker pays: in its own spawned process whose thread pools all run one
+thread (rayon's, used by every native pool, and any BLAS/OpenMP pool;
+`--n_core` is the worker count of `--stability` only), on batched calls
+whose SIMD lanes are filled. Every time the runtime tables print is a time
+per phase-space point on that core: a call's wall time over its points
+(`cpu_per_wall` in `--json`, the process's CPU time over the timed calls'
+wall time, is at most about 1 and says how much of the core the host left
+it). With counts given, `--warmup-runs` untimed calls come first, then at
+least `--minimum-samples` timed calls, more until they add up to
+`--target-runtime` seconds, each of `--batch-size` points (up to 128: eight
+whole 16-point binary64 SIMD chunks); under a time budget, one untimed call,
+then the largest batch of whole chunks that affords a stable median within
+the backend's share, at least one timed call, every call on a
+new batch of distinct points: without `--momenta`, the flat points from the
+seed on (seed and energy as above; call k, warm-ups counted, takes the
+points from k x `--batch-size` on, so every call has the same points on
+every backend); with `--momenta`, its points in order, cycled when there are
+fewer. What is timed, which the table header names: binary64, finite part
+only, **one fully optimistic pass per point** (the same pass as the reference
+multiplier's, below): each backend's unchecked reduction alone (no `auto`
+fallback), no stability checks, no rescue, no best-effort re-evaluation of a
+refused point (a point without a value is counted `failed`). `--checked`
+(`benchmark.checked = true`) times the checked mode instead: the backends'
+own acceptance checks, a refused point returned with its best-effort value
+and timed as such (its unchecked re-evaluation and its uncertainty's checks
+included), the default backend as `auto` with its per-point fallback; the
+header then says "checked reduction". `--reduction-unchecked`
+(`evaluation.reduction_unchecked`) loads the runtime unchecked, which also
+makes the stability run's binary64 calls unchecked; it cannot be combined
+with `--checked`. The first
+table gives each backend's name (`*`: the default backend of the process
+type), its time per point (median call), the fastest and slowest call, the
+ratio to the fastest and its `peak RAM`; with `--checked` a `best-effort`
+column appears when some timed points were served best-effort and a `lanes`
+column when points were served by more than one backend; a `failed` column
+appears when points got no value. Under the
+table, after a `---` line, the failed or refused points are listed per
+backend and cause, most frequent first, in the form
+`<count> (<fraction> %) <backend> | <kind>: <cause>` (causes grouped with
+their numbers masked; also in `--json` as `failure_causes`); nothing is
+printed when nothing failed. The
+second table gives the time per point in each stage group (trees: the native
+trees and counterterm kets; dressing: seeds, factors and dressing of a
+Born-interfered process, the dressing of a loop-induced one; scatter;
+reduction; rest: every other stage and the untimed remainder), read from the
+native executor's always-on stage reports of the same timed calls, with each
+backend's share (and a bar per group) and the ratio between the two backends:
+the shares of the timed calls' total time applied to the time per point, so
+the stages add up to it (rest is what the native stages do not attribute:
+Python's part of the call and the native work outside the named stages).
+`--mu-r2` sets the scale (default: per point the squared invariant mass of
+its initial state).
+
+**More threads per call.** `--runtime-threads N` (`benchmark.runtime_threads`,
+default 1) times each backend's calls with N native threads working inside
+each call: its process's thread pools at N threads (the binary64 calls and
+the reference pass), the calls still one at a time, never several batches in
+parallel; N is at most the usable cores (a plain line says so when it is
+reduced). The time per point is then the wall time of a call with N threads
+working over its points: **it is not the cost of one core**, and a Monte
+Carlo run that gives each worker one core should use the default. The header
+says `on N threads`; next to each time a muted `(xS vs 1 thread)` gives the
+gain, from a short one-thread timing of the same calls after them in the
+same process (the runtime reloaded at one thread; a quarter of the binary64
+budget, at least one call; `one_thread_seconds_per_point` in `--json`).
+`peak RAM` is the N-thread process's, measured before that timing, and
+`cpu_per_wall` approaches N. The stability run is not affected: its
+`--n_core` workers run one thread each; with `--stability` the option only
+changes the runtime timing. The cost measurement and the plan of the time
+budgets stay at one thread (the stability workers' cost; the N-thread calls
+then fill their budgets with as many calls as they afford).
+
+`peak RAM` is the memory to expect for each Monte Carlo worker evaluating
+the matrix element on that backend: every backend is profiled in its own
+spawned process that loads the artifact and runs that backend's warm-up and
+timed calls only (so no backend's figure holds the other's prepared state),
+and the cell is that process's peak resident set size over those binary64
+calls, at the runtime setup's points per call, on one core (one thread per
+pool), before the reference timing. On Linux it is the kernel's high-water
+mark (`VmHWM`), reset when the calls start (`/proc/self/clear_refs`); on
+macOS and the BSDs only the process lifetime's peak is known (`getrusage`
+`ru_maxrss`): it is the calls' peak when they raised it, else the cell shows
+the bound, `<= 2.21 GiB` (the worker's load reached more than the calls).
+`--json` keeps the start value, the increase, the scope and the method
+(`peak_memory`).
+
+Next to the time per point, `(dd x15)` is the **reference multiplier**: N is
+the time per point of one fully optimistic pass of the same backend in the
+reference precision (`--ground-truth`, below; `dd` double-double by default,
+`arb(D)` arbitrary precision at D digits) over the displayed time per point,
+both on the same core. The optimistic pass is one evaluation per point and
+nothing else: the unchecked reduction of that backend alone (no `auto`
+per-point fallback or guard), no stability checks, no rescue, no best-effort
+re-evaluation. It runs after the binary64 calls in the same process as its
+own phase: one untimed call of one point (none with `--warmup-runs 0`; the
+first call of a carrier builds what it builds lazily, its batch size no
+longer matters), then calls of one SIMD chunk (16 points: no padded lane in
+any carrier), at least one, more while the next fits its budget (a quarter
+of the backend's runtime share, `--target-runtime` with counts given); when
+the budget affords fewer than 16 points at the cost the untimed call
+measured, its calls take as many as it affords, at least one point, and the
+header says how many reference points the multiplier comes from. Its cost
+is therefore bounded however expensive the carrier (before: one untimed and
+at least `--minimum-samples` 16-point calls, ~25 minutes of silence on a
+7-point process). Call k takes the first points of the binary64 timing's
+batch k; N is its median call's time per point over
+the binary64 median call's: the same pass in both, so N compares like with
+like (with `--checked` the denominator is the checked time). In colour the
+time is bold (green for the fastest backend) and the whole parenthesis is
+muted (bright black), in both tables; `--color never` prints the same text
+without escapes.
+
+```text
+$ pyamplicol profile artifacts/gg_zz   # g g > z z [noborn=QCD]
++-------------------------------------------------------------------------+
+|                      Runtime per reduction backend                      |
++----------+------------------+-------------------+------------+----------+
+| backend  | time / point     | min - max call    | vs fastest | peak RAM |
++----------+------------------+-------------------+------------+----------+
+| TIRust * | 2.2 ms (dd x15)  | 1.42 ms - 2.98 ms | fastest    | 317 MiB  |
+| NinjaRS  | 5.63 ms (dd x86) | 5.06 ms - 6.5 ms  | x2.56      | 363 MiB  |
++----------+------------------+-------------------+------------+----------+
+```
+
+The multiplier has one decimal below 10 and none from 10 on. A reference that
+gives no value at any timed point leaves the time alone. The reference
+timing's calls, points, fastest and slowest call, peak RAM and points
+without a value are in `--json` (`reference`, with its `arithmetic` and
+`digits`); such points are listed under the table as `... in double-double`
+(or `... in arb(D)`) causes, counted over the reference's points. A tree
+artifact's profile reports `peak RAM` as a summary row (its runtime profile
+is binary64 only, in one process, its pools at one thread).
+`--fields-description-help` explains every column, with how this run
+measured `peak RAM`.
+
+**Ground truth.** `--ground-truth` (`benchmark.ground_truth`) selects the
+reference of both tables: `double-double` (`dd`, the default) or arbitrary
+precision, `arbitrary` (`arb`) at the built-in rescue's arbitrary-precision
+digits (57, `loops.v2.stability.DEFAULT_RESCUE`) or `arbitrary:DIGITS`
+(`arb:DIGITS`). It is the stability run's truth and the precision of both
+tables' multipliers, and the labels follow it: the header's `ground truth`
+row, `(arb(57) x210)`, "Stable digits of binary64 vs arb(57)". The values
+judged are binary64's either way; a point whose reference fails is "no
+ref." as before. Arbitrary precision costs far more than double-double; its
+runtime timing is bounded as the double-double one is. `--ground-truth none`
+runs no reference at all: no reference pass (the runtime table shows the
+time alone), and the stability run evaluates binary64 with its checks only
+(much faster) and reports what the estimates say in an estimate-only form:
+the estimated digits at the percentiles and the default checks' flagged and
+best-effort counts with the binary64 time, without the truth-based columns;
+the header says `none (estimates only)` and the JSON's `ground_truth`
+`{"arithmetic": "none", "label": "none"}`.
+
+**Stability.** Over N flat points (`benchmark.stability_points` /
+`--stability-points`; by default as many as one minute per worker affords,
+at least five; with `--completion-time` what is left of it; drawn with
+`evaluation.phase_space`'s
+seed and energy), evaluated in parallel on `benchmark.n_core` / `--n_core`
+(also `--n-core`) worker processes (default 10, at most the usable cores; 1
+runs in-process; each worker loads the artifact once and runs one thread per
+pool; the tables do not depend on the worker count), with a progress display
+of the points done per backend and precision and an estimated time to
+completion; Ctrl-C stops the run and prints the tables of the points
+evaluated so far with a one-line notice (`stability_setup.requested`,
+`measured_points`, `interrupted` in `--json`; exit code 130), a second Ctrl-C aborts.
+The runtime timing runs before the pool, one process per backend. Each backend evaluates every point in pure binary64 with the default rotation
+test (one default rotation, what `evaluation.stability_checks` gives by
+default; `evaluation.stability_checks` replaces it when set; the rescue's own
+check set, a fixed Euler rotation plus the rescaled-reduction check, is
+stronger and is not what is measured here) and again in double-double on the
+same backend in the reference precision (`--ground-truth`; double-double by
+default), the reference. Following the measure of MadLoop
+(arXiv:1103.0621, sect. 3.4) and MadGraph5_aMC@NLO (arXiv:1405.0301, "Checks,
+stability, and recovery of numerically-unstable integral reductions"), the
+number of stable digits of a value v against a reference r is
+-log10(|v - r| / |r|), read on the finite part of the total (the sum over the
+squared-order sectors; the poles are not computed) and capped to binary64's
+range [0, 15.95]:
+
+- **true digits**: the binary64 value against the reference re-run (its
+  sectors summed exactly, the error formed in rational arithmetic);
+- **estimated digits**: the binary64 call's own stability estimate (its
+  absolute finite-part errors summed over the sectors, over |total|).
+
+**Refused and failed points are part of the distribution.** A point the
+backend's own checks refuse in binary64 is measured with its best-effort
+value (the unchecked reduction's, what the default `on_failure` returns,
+status best-effort; since 1.0.3) at its true digits, its estimate being the
+call's checks' estimate of that value; it is never accepted, so it always
+counts as flagged. A point with no binary64 value at all ("no value") counts
+0 true digits (the worst end of the ranking) and has no estimate. A point with a binary64 value whose
+reference failed has an unknown truth and is left out (shown as
+"no ref."). The measured points (N in what follows) are all others.
+
+The measured points are sorted by true digits from worst to best. At the
+percentiles 1 per mil, 1 %, 10 % and 50 % the table shows the true digits of
+the point of rank floor(p N) (1-based; the 50 % row is the median, the lower
+middle point for an even N), and over the class of points of rank
+floor(p' N) < rank <= floor(p N) (p' the previous percentile, 0 for the
+first) the point count (with its failed points), the min, median and max of
+|estimated - true| and the median of estimated - true (positive: the
+estimate is optimistic), both over the class's points with an estimate. At
+small N a class can be empty (`-`; the table prints the N a populated class
+needs: 1000 measured points for the 1 per mil class, 2 for the median).
+
+A second table compares the default checks with the truth, per backend: the
+measured points, those served best-effort / without a value in binary64, the points flagged unstable
+(estimate above the default target 1e-5, per sector, the metric the rescue
+reads, or a binary64 failure, which the result reports and so detects), the
+flagged points that are truly inaccurate (true relative error above the
+target, or no binary64 value) and the truly inaccurate points not flagged
+("missed"), and the wall time of its binary64 calls (with their checks,
+summed over the workers) with how many times longer its reference calls
+took in total, `128 s (dd x1.8)` (on a second line when the table
+would pass the line width; each precision's points, total and
+time per point are in `--json`, `precision_timing`). Every worker loads the
+artifact and makes one untimed call per backend and precision before any
+timed one, so start-up costs stay out of both totals, and the points go in
+tasks of whole binary64 SIMD chunks. The binary64 calls
+include their stability checks (the default rotation test evaluates each
+point twice) while the reference evaluates each point once, so this
+multiplier is not the cost ratio of one evaluation: that is the runtime
+table's `(dd xN)`. No rescue runs: the statistics are those of pure binary64; the
+reference re-run is the reference only. When a backend served points
+best-effort, a third table shows how accurate those values and their
+uncertainties are: per backend the number of best-effort points, their true
+digits (min / median / max), the median digits of their uncertainty, the
+median |uncertainty - true| digits and how many uncertainties cover the
+true error (true relative error within the uncertainty). The uncertainty is
+the best-effort record's (`VirtualBestEffort.uncertainty`: the card's checks
+together with the recommended checks, a rotation and the rescaled
+reduction-direction check), not the card's own estimate shown in the first
+table. Digits are coloured red below the
+target's digits (5 for 1e-5), yellow in the lower half of the margin between
+the target's digits and binary64's 15.95 (a display convention) and green
+above. The footnotes under the tables state these definitions; every table
+fits a 100-column terminal (a cell's annotation, such as "(+4 no ref.)" or
+the multiplier, goes under its value when one line would not fit) and the
+footnotes wrap to the terminal width.
+
+Colours follow `--color auto|always|never`; `--json` carries every number
+uncoloured (`loop_profile.LoopProfileReport`: `runtime` per backend with its
+`benchmarking.VirtualProfileResult` profile (`seconds_per_point`, `low`,
+`high`, `stages`, `reduction`, `unchecked` (whether the timed calls reduced
+unchecked: true for the optimistic pass, false with `--checked`, whose
+best-effort points do not change it), `batch`, `samples`, `failed_points`,
+`failure_reasons`, `best_effort_points` (with `--checked`; 0 in the
+optimistic pass), `peak_memory` with `peak_rss_bytes`,
+`start_rss_bytes`, `increase_rss_bytes`, `scope` and `method`, `threads`
+(the native threads of the timed calls: 1, N with `--runtime-threads N`),
+`cpu_per_wall` (about 1 on one core, approaching N on N threads), with
+`--runtime-threads N > 1` `one_thread_seconds_per_point` and
+`one_thread_calls` (the one-thread timing of the same calls), and
+`reference`: its `arithmetic`, `digits`, `seconds_per_point`, `low`, `high`,
+`batch`, `points`, `samples`, `warmup`, `failed_points` and
+`peak_memory`), `ratio`, `requested` and `refusal`; `ground_truth`
+(`arithmetic`, `digits`, `label`);
+`stability` per backend with the per-point `true_digits` and
+`estimated_digits` of the measured points, `precision_timing` (per
+precision, `binary64` and the reference's arithmetic, `double-double` or
+`arbitrary` with its `digits`: `points`, `seconds` and `seconds_per_point`),
+`per_point` (every flat point's
+`index`, `status` measured / binary64-failed / reference-failed, digits and
+failure `reason`), the `percentiles` rows, the flag counts and the failures;
+`stability_setup`), the `plan` (its `rule`, the counts chosen per backend,
+`stability_points`, `expected_seconds`, `budget_seconds`, `feasible`,
+`minimum_seconds`, `overruled`, and the counts the runtime achieved) and the
+profile's wall `seconds`.
+
+**Every sample in `--json`.** With `--stability --json` the report carries
+everything the run collected, point by point, as compact columnar tables
+(about 0.9 kB per point with two backends: 87 MB for 100 000 points; write it
+to a file with `--json > profile.json`). Each table is `{"fields": [...],
+"rows": [[...], ...]}`, one row per point (in Python:
+`[dict(zip(t["fields"], row)) for row in t["rows"]]`, or
+`pandas.DataFrame(t["rows"], columns=t["fields"])`).
+`stability_setup.samples` holds every point's inputs: `index` (point i is
+drawn from `stability_setup.seed` + i by the flat generator at `sqrt_s`),
+`momenta` (the binary64 four-momenta E, px, py, pz of every leg in the
+process's order) and `mu_r2`. `stability[i].samples` holds, per backend,
+every point's record: `index`; `status` (of the binary64 call: success,
+best-effort, failed ...); `value` (the binary64 total finite part) and
+`sectors` (each squared-order sector's); the estimate (null without one):
+`estimate_relative` (the flag's metric), `estimate_finite_relative` (the
+total's estimated relative error), `estimate_digits`, `estimate_scale`,
+`estimate_checks` (each check that ran, by name, e.g. `rotation-1`,
+`reduction-rescaled`, with its own relative budget) and `estimate_not_run`;
+`flagged` (the default checks flag it: estimate above the target, a
+best-effort value, or none); `best_effort` and its `uncertainty` (relative);
+`reason` (a refusal or failure); `reference_value` (the exact decimal text
+of the reference's total finite part at its precision; null when it failed
+or with `--ground-truth none`) and `reference_reason`; `true_relative_error`
+and `true_digits` (null without both values); `binary64_task` and
+`reference_task`, indices into the table's `tasks` list of `[seconds,
+points]` of the task that evaluated the point (inside a batched call there
+is no per-sample time). Values, sectors, momenta and the reference are
+exact; the relative errors and scales carry 4 significant digits, the
+digits 3 decimals, the task seconds microseconds. Non-finite numbers are the
+texts `"inf"` / `"nan"`. `per_point` (the statuses the tables use) is a
+table of the same form. The aggregate tables are reproducible from these
+records (the percentiles of `true_digits`, the flagged and missed counts
+against `stability_setup.target`).
+
+`--samples-output PATH` (`benchmark.samples_output`) writes the same records
+to their own file instead, as its own phase: one JSON document with
+`schema` `"pyamplicol.profile-samples/1"`, `process`, `seed`, `sqrt_s`,
+`inputs` (the setup's table) and `backends` (each backend's table). The
+report's `samples` then name it (`{"output": PATH, "points": N}`); this also
+works with the human tables. Without `--json` or `--samples-output` no
+per-sample record is built.
+
+Changed since 1.0.3: `pyamplicol profile --json` of a loop artifact is a
+`LoopProfileReport` (one entry per backend under `runtime`), also with
+`--loop-reduction`; 1.0.3 printed one `VirtualProfileResult`, which is now
+`runtime[i].profile`. From Python, `pyamplicol.loop_profile.profile_loop(
+artifact, config)` returns the same report; `BenchmarkRunner` /
+`benchmark()` keep profiling one backend (`VirtualProfileResult`).
+
+Changed in the final 1.0.x round: the runtime timing runs on one core (its
+process's pools at one thread; before, as they came: `RAYON_NUM_THREADS` or
+the usable cores) and its timed calls follow `--target-runtime` (at least
+`--minimum-samples`; before, exactly `--minimum-samples`); the stages add up
+to the time per point; the reference multiplier is always timed, as one
+optimistic pass in 16-point calls, and `--ground-truth` selects its
+precision. `profile --arithmetic` is removed (it timed the same batches in
+double-double, checked, only on request) and `profile` no longer reads
+`evaluation.arithmetic`; `--json`'s `double_double` is now `reference`. The
+main time is the optimistic pass by default (before: the checked reduction
+with best-effort serving, now `--checked`); `--no-reduction-unchecked` is gone
+from `profile` (`evaluation.reduction_unchecked = false` is its default and
+no longer selects the checked timing: set `benchmark.checked = true`).
+From Python, `benchmarking.profile_virtual(..., reference={"arithmetic":
+"double-double"})` times a reference; `BenchmarkRunner` times none and runs
+on the loaded runtime's own pools.
+
+## Check
+
+`pyamplicol check` runs the pole and Ward checks of a one-loop request:
+
+```console
+pyamplicol check loop_gg_zgg_generate.toml              # a run card's request
+pyamplicol check artifacts/loop_gg_zgg --points 4 --json  # an artifact's request
+pyamplicol loop_gg_zgg_check.toml                      # action = "check"
+```
+
+The target is a run card (its process entries as its generation would make
+them) or an artifact directory: every process its manifest stores (`id` and
+expression, `artifact.json`), regenerated with the configuration its
+`config/effective.toml` records, from the model the artifact stores. The
+prepared model must be the stored one (its manifest record: name, source
+kind, content hash and restriction) and the regenerated processes exactly the
+stored ones, else `check` refuses the artifact before generating anything
+(exit 2). An artifact generated from a UFO directory records only the
+directory's name; name the model with `--model SOURCE` (`check.model`, a
+source as `model.source` takes it; it must still be the stored model).
+Every process is **regenerated in memory** through the generation
+service (nothing is written; one model preparation shared by the process
+and its probe slices, the persistent preparation cache serving it as at
+generation): the request on the model's full tree kernels,
+with every width zeroed outside the complex-mass scheme (a fixed width in a
+tree propagator breaks the identities; the complex-mass scheme is gauge
+invariant and keeps its widths), as the generation-time probes do. Checks run
+at `--points N` (default 3, `check.points`) seeded phase-space points
+(`--seed S`, default `generation.validation.seed`) of the generation's
+validation convention (decays at rest; scatterings in the centre-of-mass
+frame at sqrt(s) = max(1000, final threshold + 100) for massless beams,
+twice the larger threshold for massive ones; `--sqrt-s E`, `check.sqrt_s`,
+sets a scattering's energy in the model's mass unit, above its threshold),
+lifted to exact momentum conservation, at mu_R^2 = the squared invariant mass
+of the initial state, on NinjaRS at every carrier:
+
+| Check | Born-interfered | Loop-induced | Criterion |
+| --- | --- | --- | --- |
+| poles | every squared-order sector's 1/eps and 1/eps^2 against Catani's operator of the requested corrections (QCD; QED where requested), formed natively | the finiteness probe: the amplitude's poles against the row term floor S_k(h) (the pre-cancellation scale) | binary64 with the recommended checks: \|pole - Catani\| <= 10 E + 1e-12 \|Catani\|; double-double: 1e-12 relative; finiteness: within 10 x its own estimate |
+| ward | epsilon_j -> c p_j / p_j^0 on every external gluon and photon, c = 1 and i, Born and virtual parts (`ward.ward_row`) | epsilon_j -> p_j / E_j on one leg of every gluon and photon species, amplitude level | binary64: \|V\| <= max(1e-12 S, E) and \|V\| <= 10 E with E <= 1e-9 S (scope); double-double: 1e-25 S; Born 1e-12 / 1e-24; probes: 10 x their estimate |
+| goldstone | not applicable (the probe is amplitude-level) | k.A(V) = eta M_V A(G) on one leg of every massive-vector species with a Goldstone partner, in 't Hooft-Feynman gauge | within 10 x its estimate |
+
+`--precision auto` (default) runs binary64 first and double-double only for a
+row whose binary64 run fails, is refused or is out of its criterion's scope
+(a pole row whose relative estimate exceeds the default target accuracy
+1e-5 or that carries no estimate; a Ward row with E above 1e-9 of the
+physical scale or without an estimate); `double` or `double-double` runs one
+carrier alone, and there a row out of its carrier's scope reads "not run"
+(exit 3), never a failure or a pass. When binary64 evaluated a point and
+the double-double run is refused, the rows binary64 left undecided keep its
+verdict and say that double-double was refused. In `auto`, a row
+double-double fails while its residual is within 10 x double-double's own
+estimate (asked for only then: the recommended checks for poles, the
+reduction-direction check for Ward) has run out of digits: only such rows,
+at their points, are re-run in **arbitrary precision** at the digit count
+derived from the shortfall, d = ceil(32.0 + log10(10 E / B)) for an
+estimate E and a bound B (32.0: double-double's decimal digits, 1 +
+log10(0.5 / 2^-104); the largest over the point's rows; `--arbitrary-digits N`,
+`check.arbitrary_digits`, sets it), the point lifted again at those digits,
+and judged by their double-double criterion (no new bound; the row shows
+carrier `arbitrary`, its digits and the double-double numbers); a
+double-double residual far above its own estimate stays a failure. A row
+still undecided there, or undecided at an explicit carrier, reads
+"undecided" with both carriers' numbers and counts as a failure (exit 1).
+The loop-induced probes' criterion is their own estimate, so they never
+take this rung. Each double-double and arbitrary-precision rung (and the
+binary64 one under `--kinematics-improvement-binary64`) first improves its
+lifted point per `--kinematics-improvement` (`evaluation.
+kinematics_improvement`, default `z-shift`) in its own carrier, exactly as
+`evaluate` does; `check` lifts its points onto exact conservation along the
+beam axis at twice the rung's digits already, so this moves them by about
+the rung's rounding, and
+each row records it (`CheckRow.kinematics`: the producing variant, `exact` or
+`not-improved`). The Ward rows of a request whose loop corrections include an
+electroweak one (any correction other than the model's strong one) and with
+an on-shell zero-width external massive quark (a top or a massive b, quark or
+antiquark) read "not applicable" and are not evaluated: the Ward identity of
+the asymmetric check is not guaranteed with electroweak corrections there;
+Ward rows are not split by squared-order sector, so that request's QCD-loop
+sectors are not Ward-checked either. A sector Catani's operators
+do not predict (a QCD correction of a process with photon-exchange Borns,
+...) is listed as "no prediction" with its reason; a sector they predict
+that got no pole row at a point reads "not run" (exit 3: an applicable
+check did not run); a check that does not apply (no
+external gluon or photon, no massive vector, a unitary-gauge request) reads
+"not applicable" with the reason; a Goldstone side the engine refuses reads
+"not run". None of these is a pass.
+
+Every row names the check, its subject (sector and pole, leg and factor),
+the point, the carrier that decided, `ratio` (the measured value over its
+bound: <= 1 passes), the deviation and E over the row's scale where formed
+(`dev / scale`, `E / scale`: a binary64 pole row's pre-cancellation scale S;
+a double-double pole row's |Catani|, its criterion being relative; a
+Born-interfered Ward row's physical scale; a probe's row term floor
+S_k(h)), the fallback's reason and the verdict. The exit code is 0 iff
+every applicable check passed, 1 on any failure, and 3 when a process had
+nothing to check (or an applicable check did not run); an "undecided" row
+counts as a failure (1). `--json` returns the
+`CheckReport` (`source`, `source_kind`, `points`, `seed`, `precision`,
+`carriers`, `regeneration`, `seconds`, `exit_code`, and per process `process`,
+`expression`, `contribution`, `widths`, `zeroed_widths`, `reduction`,
+`status`, `seconds` and `rows` with the fields above and `digits`, the
+arbitrary-precision carrier's digit count); `carriers` ends with `arbitrary`
+under `auto`; `source` names the run card or artifact checked. Python:
+`pyamplicol.api.check(target, points=..., seed=..., precision=..., model=...,
+sqrt_s=..., arbitrary_digits=...)`.
+
+Cost: one probe-slice generation per process (about the generation's own
+cost: the request-model preparation included) plus a few evaluations per
+point; the generation-time probes (`generation.loop_induced_probes`, off by
+default) are the same loop-induced checks at one point during generation.
 
 ## Models
 
@@ -459,6 +1331,13 @@ pyamplicol model processes "p p > all all" \
 
 The distinction between portable model IR and prepared kernel bundles is
 explained in [Models and Processes](models-and-processes.md).
+
+The model caches are controlled by `--model-cache` / `--no-model-cache`,
+`--model-cache-dir DIR` and, for one-loop generation, `--loop-preparation-cache`
+/ `--no-loop-preparation-cache` (the persistent cache of the lowered model
+programs, on by default, `[model] loop_preparation_cache`; also off with
+`--no-model-cache` or `PYAMPLICOL_LOOP_PREPARATION_CACHE=0`). See
+[Model caches and the one-loop preparation cache](configuration.md#model-caches-and-the-one-loop-preparation-cache).
 
 ## Examples and installed workspaces
 
@@ -496,7 +1375,41 @@ The common presentation options are:
 | `--json` | flag | Emit stable machine-readable stdout instead of the human-facing table |
 | `--color` | `auto`, `always`, `never` | Detect a terminal, force ANSI color, or disable it |
 | `--progress` | `auto`, `tty`, `log`, `off` | Select live bars, rate-limited log progress, or silence |
-| `--log-level` | `debug`, `info`, `warning`, `error` | Control diagnostic verbosity |
+| `--log-level` | `debug`, `info`, `warning`, `error` | Logger records shown (default `warning`; `info`/`debug` for developers) |
+| `--fields-description-help` | flag | After the tables, describe every table and column in plain words |
+
+By default every command prints its tables and short status lines only: no
+legends, footnotes or logger-format lines. A few short notice lines
+(`process`, `model`, `output`, `widths`, `check`) say what is being done;
+they are printed above the progress display, which they never tear.
+`--fields-description-help` adds, after the tables, a short heading per table
+and one line per column (the command runs as usual). What changes the meaning
+of the numbers stays in the table titles: for example `Born-loop
+interference, leading colour`, `..., finite only`, `..., UV poles of the bare
+loop amplitude` or `..., IR poles of the renormalised virtual`. Every command shows its
+progress (a live display on a terminal, plain lines with `--progress log`)
+and handles Ctrl-C: no traceback, worker processes stopped, exit code 130.
+After a Ctrl-C:
+
+- `profile` prints the tables of what was measured so far, with a one-line
+  notice of how many of the requested points were measured. When the
+  backends measured different numbers of points, the stability tables
+  compare the points that every backend measured.
+- `evaluate` prints the tables of the points evaluated so far, with the same
+  kind of notice, when it runs with the live progress display on a terminal.
+  There it evaluates its points in successive calls, at a few per cent of
+  extra time. Without a live display, for example with `--progress log`,
+  `--progress off` or redirected output, it makes one call, as the Python
+  API does, and a Ctrl-C ends it without a result.
+- In `--json` mode, a one-loop `evaluate` records the interruption as the
+  fields `interrupted`, `requested_points` and `measured_points`. A
+  tree-level `evaluate` keeps its JSON list and prints the notice on stderr.
+  `profile` sets `interrupted`, and its `stability_setup` gives
+  `requested`, `measured_points` and `evaluated_per_backend`.
+- `check` reports the tests completed and marks the others "not run", and
+  `self-test` reports the checks run so far.
+- An interrupted `generate` writes nothing: an artifact is published only
+  when it is complete.
 
 JSON mode keeps stdout machine-readable; progress and diagnostics use stderr.
 This makes pipelines predictable:
@@ -535,3 +1448,33 @@ For common failures and the information to include in a bug report, see
 - [Generation Modes and Evaluators](generation-modes-and-evaluators.md)
 - [Runtime and Selectors](runtime-and-selectors.md)
 - [Native APIs](native-apis.md)
+
+## Export recurrence programs
+
+Export an LC recurrence artifact without evaluating momenta:
+
+```console
+pyamplicol export-recurrence artifacts/gg_ggg -o recurrence.json
+pyamplicol export-recurrence artifacts/gg_ggg -o recurrence.json \
+  --model-parameters parameters.json --process g_g_to_g_g_g --color-flow flow:1,2,3,4,5
+```
+
+By default the export includes every stored process, alias and process-group
+member, and every provider colour flow. Repeat `--process` or `--color-flow`
+to select several. Colour-flow IDs are per process and `--color-flow` applies
+to every selected process, so combine it with `--process` on a multi-process
+artifact; an ID a selected process lacks is refused with that process's flow
+IDs. The destination is checked before the export runs, and the file is
+written beside it and renamed into place, so a failed export leaves an
+existing file unchanged. `--model-parameters` reads the same JSON parameter mapping
+as `evaluate` and applies it before resolving the programs. The output contains
+versioned JSON and embedded symjit applications, so external runners do not
+need a Rust toolchain or the original artifact. The programs describe the
+batched f64 execution path. See the [export format](../reference/recurrence-export.md)
+for arithmetic and ordering requirements.
+
+Exports use compact JSON, shared kernel bindings and union bodies, and
+representative references for aliases and group members. `--indent 2` enables
+readable JSON. Add `--reference-points momenta.json` to include batched f64
+reference values; this is the only export option that evaluates momenta.
+Kernel applications are embedded as base64.

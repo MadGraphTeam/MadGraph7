@@ -16,11 +16,11 @@ ifdef lhapdf
   else ifneq (,$(filter 0 1,$(lhapdfsubversion))) # 6.0.X, 6.1.X
     $(error LHAPDF 6.2 or later is required)
   else # lhapdf v6.2 or later
-    CXXFLAGS+=-std=c++11
+    CXXFLAGS+=-std=c++20
     PDF         = pdfwrap_lhapdf.o pdf_lhapdf62.o pdg2pdf_lhapdf6.o opendata.o
   endif
 else ifdef epdf
-      CXXFLAGS+=-std=c++11    
+      CXXFLAGS+=-std=c++20    
       PDF         = pdfwrap_emela.o pdg2pdf_epdf_mela.o opendata.o
 else
   PDF         = Ctq4Fn.o Ctq5Par.o Ctq5Pdf.o CT14Pdf.o Partonx5.o Ctq6Pdf.o cteq3.o \

@@ -65,7 +65,21 @@ c     Variables for combination of color indices (including multipart. vert)
       integer icolup(2,nexternal,maxflow,maxsproc)
       include 'leshouche.inc'
       include 'coloramps.inc'
-      
+
+c     Canonical colour-flow code: the event's colour tags are
+c     rebuilt from it instead of being read out of the ICOLUP
+c     table (which leshouche.inc then does not even write).
+c     NCOLSLOT(numproc) is the number of colour slots of that
+c     subprocess, or 0 when the flows have no usable code (no
+c     colour, a sextet, or an epsilon structure) -- then ICOLUP
+c     is there and is used.
+      integer ncolslot(maxsproc)
+      integer icolcsl(nexternal,maxsproc)
+      integer icolasl(nexternal,maxsproc)
+      integer icolcode(maxflow,maxsproc)
+      integer nslot,ccode,idig,icleg,ialeg,itag
+      include 'colorflow.inc'
+
       logical             OnBW(-nexternal:0)     !Set if event is on B.W.
       common/to_BWEvents/ OnBW
       CHARACTER temp*600,temp0*7,integ*1,float*18
@@ -131,6 +145,35 @@ c
          is_LC = .false.
          icol = abs(icol)
       endif
+      if (ncolslot(numproc).gt.0) then
+c     Rebuild the tags from the canonical colour-flow code. Slot
+c     k of the code connects colour slot ICOLCSL(k) to
+c     anticolour slot ICOLASL(digit+1); give each connection its
+c     own tag. icolalt is already zeroed above, so only the
+c     connected slots need writing. The two roles are swapped
+c     back on the initial-state legs: color_flow_decomposition
+c     reverses that pair to follow the les houches convention,
+c     and the code is built on the unreversed form.
+         nslot = ncolslot(numproc)
+         ccode = icolcode(icol,numproc)
+         do k=1,nslot
+            idig = mod(ccode/nslot**(k-1), nslot)
+            icleg = icolcsl(k,numproc)
+            ialeg = icolasl(idig+1,numproc)
+            itag = 500+k
+            if (icleg.le.nincoming) then
+               icolalt(2,isym(icleg,jsym))=itag
+            else
+               icolalt(1,isym(icleg,jsym))=itag
+            endif
+            if (ialeg.le.nincoming) then
+               icolalt(1,isym(ialeg,jsym))=itag
+            else
+               icolalt(2,isym(ialeg,jsym))=itag
+            endif
+         enddo
+         maxcolor=500+nslot
+      else
       do i=1,nexternal
          icolalt(1,isym(i,jsym))=icolup(1,i,icol,numproc)
          icolalt(2,isym(i,jsym))=icolup(2,i,icol,numproc)
@@ -138,6 +181,7 @@ c     write(*,*) i, icolalt(1,isym(i,jsym)), icolalt(2,isym(i,jsym))
          if (abs(icolup(1,i,icol, numproc)).gt.maxcolor) maxcolor=icolup(1,i,icol, numproc)
          if (abs(icolup(2,i,icol, numproc)).gt.maxcolor) maxcolor=icolup(2,i,icol, numproc)
       enddo
+      endif
       endif
 
 

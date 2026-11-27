@@ -16,7 +16,7 @@ def production_fixture():
     """Compile the actual FKS choice/subtraction blocks with small input stubs."""
     source = (TEMPLATE / 'fks_singular.f').read_text()
     choice = source.split('c The scalar fit is valid only for one virtual Born order normalized by', 1)[1]
-    choice = choice[:choice.index('      if (fold.eq.0) then\n         vs_vcomp=.false.')]
+    choice = choice[:choice.index('      if (first_virtual_evaluation) then\n         vs_vcomp=.false.')]
     choice = 'c The scalar fit is valid only for one virtual Born order normalized by'+choice
     ratio = re.search(r'^            virtual_over_born=0d0\n.*?(?=^            virt_wgt = 0d0)', source, re.M | re.S).group()
     capture = re.search(r'^            if \(use_surrogate\) then\n.*?^            endif\n(?=            virtual_over_born)', source, re.M | re.S).group()
@@ -27,6 +27,7 @@ def production_fixture():
       use point_fixture
       implicit none
       use_surrogate=VirtTrickSurrogate.ge.1
+      first_virtual_evaluation=fold.eq.0
 ''' + choice + '''      end
       subroutine evaluate_virtual
       use point_fixture
@@ -57,7 +58,7 @@ use mint_module
 implicit none
 integer,parameter :: amp_split_size=2
 integer :: fold=0
-logical :: use_surrogate=.true.
+logical :: use_surrogate=.true.,first_virtual_evaluation
 character(len=4) :: abrv='all '
 real(8) :: p_born(0:3,4),QES2=100d0,born_wgt=2d0,virt_wgt,virtual_over_born,avv_wgt
 real(8) :: amp_split_born_for_virt(2),amp_split_finite_ML(2)=[5d0,3d0]

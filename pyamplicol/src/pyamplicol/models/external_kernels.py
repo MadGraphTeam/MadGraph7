@@ -12,7 +12,7 @@ from .contracts import (
 )
 
 if TYPE_CHECKING:
-    pass
+    from ..generation.born_orders import RuntimeNormalizationRequest
 
 from . import compiler_symbolica as _sym
 from .external_helpers import (
@@ -25,15 +25,21 @@ from .external_helpers import (
 
 
 class ExternalModelKernelMixin:
+    # Set by ``CompiledUFOModel`` (``_parameter_value``'s caches).
+    _runtime_derived_value_cache: dict[str, Any]
+    _runtime_parameter_substitutions: dict[Any, Any] | None
+
     def runtime_parameter_type(self, name: str) -> str:
         try:
             return self._parameter_records[str(name)].parameter_type
         except KeyError as exc:
             raise KeyError(f"unknown runtime model parameter {name!r}") from exc
 
-    def runtime_normalization_payload(self, dag: Any) -> dict[str, object]:
-        initial_pdgs = tuple(int(pdg) for pdg in dag.process.initial_pdgs)
-        final_pdgs = tuple(int(pdg) for pdg in dag.process.final_pdgs)
+    def runtime_normalization_payload(
+        self, request: RuntimeNormalizationRequest
+    ) -> dict[str, object]:
+        initial_pdgs = tuple(int(pdg) for pdg in request.process.initial_pdgs)
+        final_pdgs = tuple(int(pdg) for pdg in request.process.final_pdgs)
         average_factor = 1
         for pdg in initial_pdgs:
             average_factor *= len(self.source_spin_states(pdg))
@@ -45,7 +51,7 @@ class ExternalModelKernelMixin:
             (*initial_pdgs, *final_pdgs)
         )
         return {
-            "color_accuracy": dag.process.color_accuracy,
+            "color_accuracy": request.process.color_accuracy,
             "color_factor": float(color_factor),
             "average_factor": float(average_factor),
             "identical_factor": float(identical_factor),
@@ -424,14 +430,23 @@ class ExternalModelKernelMixin:
             return self._runtime_parameters[name]
         definition = self._runtime_derived_definitions.get(name)
         if definition is not None:
-            return _replace_symbols(
-                _sym.E(definition),
-                {
-                    self._model_symbols.symbol(parameter_name): value
-                    for parameter_name, value in self._runtime_parameters.items()
-                    if not parameter_name.startswith("derived_coupling_")
-                },
-            )
+            # A pure function of the definition and the runtime parameters
+            # (``with_runtime_parameters`` resets both caches), asked once per
+            # kernel parameter by every Weyl-support probe. The definition is
+            # parsed before the parameter symbols are made, as before.
+            value = self._runtime_derived_value_cache.get(name)
+            if value is None:
+                expression = _sym.E(definition)
+                substitutions = self._runtime_parameter_substitutions
+                if substitutions is None:
+                    substitutions = self._runtime_parameter_substitutions = {
+                        self._model_symbols.symbol(parameter_name): number
+                        for parameter_name, number in self._runtime_parameters.items()
+                        if not parameter_name.startswith("derived_coupling_")
+                    }
+                value = _replace_symbols(expression, substitutions)
+                self._runtime_derived_value_cache[name] = value
+            return value
         return self._parameter_default(name)
 
     def _real_parameter_value(self, name: str, *, field: str) -> Any:

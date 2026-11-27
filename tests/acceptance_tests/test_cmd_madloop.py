@@ -52,7 +52,6 @@ path = os.path
 class TestCmdLoop(unittest.TestCase):
     """this treats all the command not related to MG_ME"""
     logger_saved_info = {}
-    debugging = True
     def setUp(self):
         """ Initialize the test """
         self.interface = MGCmd.MasterCmd()
@@ -61,6 +60,10 @@ class TestCmdLoop(unittest.TestCase):
         # first the handlers and second the level.
         self.logger_saved_info = {}
 
+        # Only test_manager --debug keeps the output, in the shared
+        # <MG5DIR>/TEST_AMC; otherwise each test gets its own directory so
+        # that concurrent test runs in one checkout do not wipe each other.
+        self.debugging = getattr(unittest, "debug", False)
         if not self.debugging:
             self.tmpdir = tempfile.mkdtemp(prefix='amc')
         else:
@@ -70,7 +73,11 @@ class TestCmdLoop(unittest.TestCase):
             self.tmpdir = pjoin(MG5DIR, 'TEST_AMC')
             
         self.out_dir = pjoin(self.tmpdir,'MGProcess')
-    
+
+    def tearDown(self):
+        if not self.debugging:
+            shutil.rmtree(self.tmpdir, ignore_errors=True)
+
     def generate(self, process, model):
         """Create a process"""
         try:
@@ -1446,6 +1453,7 @@ class TestCmdMatchBox(IOTests.IOTestManager):
         cmd = """
         set apply_flavor_grouping False
         import model sm
+        set gauge unitary
         generate w+ w- > w+ w- @0
         output matchbox %(path)s/TEST --postpone_model
         generate u u~ > u u~ [virt=QCD] @1
@@ -1489,6 +1497,51 @@ class IOTestMadLoopOutputFromInterface(IOTests.IOTestManager):
         IOTests.IOTest.remove_f77_function_from_file(
                     pjoin(self.IOpath,'ggttx_IOTest', 'SubProcesses','MadLoopCommons.f'),
                     'PRINT_MADLOOP_BANNER')
+
+    @IOTests.createIOTest(groupName='MadLoop_output_from_the_interface')
+    def testIO_onia_standalone_output(self):
+        r""" target: aaetac_IOTest/SubProcesses/P0_aa_etac11S01/[onia_loop\.f]
+            target: aaetac_IOTest/SubProcesses/P0_aa_etac11S01/[onia_loop_(data|links)\.inc]
+        """
+        # The bound-state layer of MadLoop (madgraph/loop/loop_onia.py,
+        # loop_optimized/onia_loop.inc): the projection data, the colour links
+        # of the pole prediction and the public routines on physical momenta.
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd('import model loop_sm_onia-c_mass', errorhandling=False,
+                           printcmd=False, precmd=True, postcmd=True)
+        interface.exec_cmd('generate a a > etac(1|1S01) [virt=QCD]', errorhandling=False,
+                           printcmd=False, precmd=True, postcmd=True)
+        interface.onecmd('output standalone %s -f' %
+                                    str(pjoin(self.IOpath, 'aaetac_IOTest')))
+
+    @IOTests.createIOTest(groupName='MadLoop_output_from_the_interface')
+    def testIO_two_pwave_standalone_output(self):
+        r""" target: eechic0hc_IOTest/SubProcesses/P0_epem_chic013P01hc11P11/[onia_loop\.f]
+            target: eechic0hc_IOTest/SubProcesses/P0_epem_chic013P01hc11P11/[onia_loop_(data|links|pwsoft)\.inc]
+            target: eechic0hc_IOTest/SubProcesses/P0_epem_chic013P01hc11P11/[(helas_calls_ampb_1|mp_compute_loop_coefs)\.f]
+            target: eechic0hc_IOTest/Source/DHELAS/[dual_opts\.inc]
+        """
+        # Two P-wave bound states: the two-state projection, weights and
+        # raised-power families of onia_loop.f, the dipole-dipole pole data,
+        # the per-state dual momenta of the loop amplitudes, the four-component
+        # QP coefficient construction and the two-direction dual options.
+        # A P-wave output needs a TIRust installation with raised propagator
+        # powers, which the generated code does not otherwise depend on: the
+        # capability is granted here so that the test runs on any install.
+        from unittest import mock
+        import madgraph.various.tirust_install as tirust_install
+        interface = MGCmd.MasterCmd()
+        interface.no_notification()
+        interface.exec_cmd('import model loop_sm_onia-c_mass', errorhandling=False,
+                           printcmd=False, precmd=True, postcmd=True)
+        interface.exec_cmd('generate e+ e- > chic0(1|3P01) hc(1|1P11) [virt=QCD]',
+                           errorhandling=False, printcmd=False, precmd=True,
+                           postcmd=True)
+        with mock.patch.object(tirust_install, 'supports_raised_powers',
+                               return_value=True):
+            interface.onecmd('output standalone %s -f' %
+                             str(pjoin(self.IOpath, 'eechic0hc_IOTest')))
 
     @IOTests.createIOTest(groupName='MadLoop_output_from_the_interface')
     def testIO_loop_induced_standalone_output(self):

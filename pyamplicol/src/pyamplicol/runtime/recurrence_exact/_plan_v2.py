@@ -251,6 +251,9 @@ class _RecurrenceExactSectionsV1:
     exact_factors: tuple[_ExactFactor, ...]
     public_flow_ids: tuple[int, ...]
     executors: tuple[_Executor, ...]
+    # Amplitude coupling-order component per closure row; needed only by
+    # squared-order partials, which validate its length.
+    closure_amplitude_orders: tuple[int, ...] = ()
 
 
 def _load_recurrence_exact_sections_v1(
@@ -331,6 +334,15 @@ def _parse_exact_sections(
         contributions=_rows(root, "contributions", 8, _Contribution),
         finalizations=_rows(root, "finalizations", 6, _Finalization),
         closures=_rows(root, "closures", 10, _Closure),
+        closure_amplitude_orders=tuple(
+            _integer(value, f"closure amplitude order {index}")
+            for index, value in enumerate(
+                _sequence(
+                    root.get("closure_amplitude_orders", ()),
+                    "closure amplitude orders",
+                )
+            )
+        ),
         row_groups=_rows(root, "row_groups", 6, _RowGroup),
         momentum_forms=_rows(root, "momentum_forms", 2, _MomentumForm),
         momentum_terms=_rows(

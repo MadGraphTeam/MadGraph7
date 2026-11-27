@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import math
 import os
 import re
 from dataclasses import dataclass, field
 from typing import Literal, NamedTuple, TYPE_CHECKING
 
 from madgraph.mg7 import lepton_density as lepton_density_module
-from madgraph.mg7.common import logger, me_parameters, ms
+from madgraph.mg7.common import logger, me_parameters, mlm_clustering_history, ms
 from madgraph.iolibs.template_files.mg7.custom_function_loader import load_surrogate
-from madgraph.mg7.observables import build_observable, clean_pids, decay_products, observable_pids, pid_is_qcd
+from madgraph.mg7.observables import _flavor_options, build_observable, clean_pids, decay_products, observable_pids, pid_is_qcd
 
 if TYPE_CHECKING:
     from madgraph.mg7.madgraph_process import MadgraphProcess
@@ -25,6 +26,9 @@ class Channel:
     name: str
     active_flavors: list[int]
     event_generator: ms.ChannelEventGenerator | None = None
+    # (flavor, pdg, outgoing legs) of every resonance the channel maps,
+    # protected by the MadNIS channel dropping (see resonance_keys)
+    resonances: tuple = ()
 
 
 @dataclass
@@ -54,6 +58,70 @@ class MultiChannelData(NamedTuple):
     diagram_propagator_pdgs: list[list[list[int]]]
     active_flavors: list[list[list[int]]]
     qcd_s_channel_count: list[int]
+
+
+class TopologyStructure(NamedTuple):
+    """What the EW channel reduction compares channels by, from one topology:
+    its resonances as (|pdg|, outgoing legs) pairs, its number of non-resonant
+    s-channel propagators, a key of its tree that ignores which boson an
+    off-shell propagator is, and one that only ignores that in the t-channel."""
+    resonances: frozenset
+    nonres_s_count: int
+    key: tuple
+    t_channel_key: tuple
+
+
+def topology_structure(
+    topo: ms.Topology, permutation: list[int] | None = None, n_in: int = 2
+) -> TopologyStructure:
+    """The TopologyStructure of topo, with its outgoing legs renamed by the
+    permutation of one of its diagrams (None: as in the topology)."""
+    decays = topo.decays
+    legs = [set() for _ in decays]
+    for leg, decay_index in enumerate(topo.outgoing_indices):
+        out_leg = leg if permutation is None else permutation[leg + n_in] - n_in
+        index = decay_index
+        while True:
+            legs[index].add(out_leg)
+            if index == 0:
+                break
+            index = decays[index].parent_index
+    resonances, nonres_s_count, s_splits, s_typed = set(), 0, set(), set()
+    for decay in decays:
+        if not decay.child_indices:
+            continue
+        if decay.index == 0 and topo.t_propagator_count > 0:
+            continue  # the root of the t-channel chain is no propagator
+        decay_legs = frozenset(legs[decay.index])
+        if decay.on_shell and decay.pdg_id != 0:
+            resonances.add((abs(decay.pdg_id), decay_legs))
+        else:
+            nonres_s_count += 1
+            s_splits.add(decay_legs)
+            s_typed.add((decay_legs, abs(decay.pdg_id)))
+    t_chain = ()
+    if topo.t_propagator_count > 0:
+        t_chain = tuple(frozenset(legs[child]) for child in decays[0].child_indices)
+    key = (t_chain, frozenset(s_splits), frozenset(resonances))
+    t_channel_key = (t_chain, frozenset(s_typed), frozenset(resonances))
+    return TopologyStructure(frozenset(resonances), nonres_s_count, key, t_channel_key)
+
+
+def resonance_keys(
+    topos: list[ms.Topology],
+    permutations: list[list[int]],
+    active_flavors: list[list[int]],
+    n_in: int = 2,
+) -> set:
+    """(flavor, |pdg|, outgoing legs) of every resonance of the given on-shell
+    configurations of a channel, for each of its permutations and the flavors
+    active for it."""
+    keys = set()
+    for topo in topos:
+        for permutation, flavors in zip(permutations, active_flavors):
+            for pdg, legs in topology_structure(topo, permutation, n_in).resonances:
+                keys.update((flavor, pdg, legs) for flavor in flavors)
+    return keys
 
 
 def build_topologies(
@@ -229,7 +297,8 @@ class MadgraphSubprocess:
         process: MadgraphProcess,
         meta: dict,
         subproc_id: int,
-        unmerged_meta: dict | None = None
+        unmerged_meta: dict | None = None,
+        me_index: int | None = None,
     ):
         self.process = process
         self.meta = meta
@@ -281,6 +350,7 @@ class MadgraphSubprocess:
         custom_cut = self.process.custom_function(
             "cut", self.particle_count, representative_pids
         )
+        merging_cut = self.build_merging_cut()
         if len(self.process.cut_data) > 0:
             self.cuts = ms.Cuts([
                 ms.CutItem(
@@ -293,9 +363,9 @@ class MadgraphSubprocess:
                     mode=cut_item.mode,
                 )
                 for cut_item in self.process.cut_data
-            ], custom_cut)
-        elif custom_cut is not None:
-            self.cuts = ms.Cuts(self.particle_count, custom_cut)
+            ], custom_cut, merging_cut)
+        elif custom_cut is not None or merging_cut is not None:
+            self.cuts = ms.Cuts(self.particle_count, custom_cut, merging_cut)
         else:
             self.cuts = None
         # A flavor standing for both beam orientations draws the orientation
@@ -352,47 +422,63 @@ class MadgraphSubprocess:
             )
 
         # the libraries were all built up front by MadgraphProcess.compile_matrix_elements
+        self.me_index = me_index
         self.load_matrix_elements(api_path_formats, member_metas)
 
     def build_mlm_scale(self, min_scale: float, max_scale: float):
-        """The scales of the MLM clustering history of each event."""
-        mc_data = self.build_multi_channel_data()
+        """The scales of the MLM clustering history of each event. "ckkwl" is
+        madevent's dynamical_scale_choice -1 central scale: no merging cut and
+        no alpha_s / pdf ladder, which Pythia8 applies itself."""
+        ckkwl = getattr(self.process, "ckkwl_scale", False)
         beam = self.process.run_card["beam"]
+        options = dict(
+            cm_energy=self.process.e_cm,
+            jet_scale_scheme=getattr(
+                ms.MLMClustering.JetScaleScheme, beam["jet_scale_scheme"]),
+            scale_scheme=getattr(
+                ms.MLMClustering.ScaleScheme,
+                "madevent" if ckkwl else beam["scale_scheme"]),
+            xqcut=0.0 if ckkwl else self.process.run_card["phasespace"]["xqcut"],
+            bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
+            jet_radius=beam["jet_radius"],
+            hadronic=not self.process.leptonic,
+            max_jet_flavor=beam["max_jet_flavor"],
+            parton_line_scheme=getattr(
+                ms.MLMClustering.PartonLineScheme, beam["parton_line_scheme"]),
+            alphas_scheme=getattr(
+                ms.MLMClustering.AlphasScheme,
+                "none" if ckkwl else beam["alphas_reweighting"]),
+            pdf_reweighting=False if ckkwl else beam["pdf_reweighting"],
+            clustering_measure=getattr(
+                ms.MLMClustering.ClusteringMeasure, beam["clustering_measure"]),
+            clustering_mean_pdf_ladder=beam["clustering_mean_pdf_ladder"],
+        )
+        clustering = self.build_mlm_clustering(options)
+        # one copy of the state machine per context, not one per channel function
+        clustering.global_name = f"subproc{self.subproc_id}.mlm_state_machine"
+        for context in self.process.contexts:
+            clustering.initialize_globals(context)
+        return ms.EnergyScale(clustering, min_scale=min_scale, max_scale=max_scale)
+
+    def build_mlm_clustering(self, options: dict):
+        """The ms.MLMClustering of the subprocess with the given run card
+        options, along its Feynman diagrams."""
+        mc_data = self.build_multi_channel_data()
         all_pids = (clean_pids(self.meta["incoming"])
                     + clean_pids(self.meta["outgoing"]))
-        return ms.EnergyScale(
-            ms.MLMClustering(
-                topologies=[topo[0] for topo in mc_data.topologies],
-                permutations=mc_data.permutations,
-                diagram_indices=mc_data.diagram_indices,
-                cm_energy=self.process.e_cm,
-                jet_scale_scheme=getattr(
-                    ms.MLMClustering.JetScaleScheme, beam["jet_scale_scheme"]),
-                scale_scheme=getattr(
-                    ms.MLMClustering.ScaleScheme, beam["scale_scheme"]),
-                pdg_color_types={
-                    int(key): value
-                    for key, value in self.meta["pdg_color_types"].items()
-                },
-                xqcut=self.process.run_card["phasespace"]["xqcut"],
-                bw_cutoff=self.process.run_card["phasespace"]["bw_cutoff"],
-                jet_radius=beam["jet_radius"],
-                hadronic=not self.process.leptonic,
-                external_pdg_ids=all_pids,
-                max_jet_flavor=beam["max_jet_flavor"],
-                parton_line_scheme=getattr(
-                    ms.MLMClustering.PartonLineScheme, beam["parton_line_scheme"]),
-                alphas_scheme=getattr(
-                    ms.MLMClustering.AlphasScheme, beam["alphas_reweighting"]),
-                pdf_reweighting=beam["pdf_reweighting"],
-                clustering_measure=getattr(
-                    ms.MLMClustering.ClusteringMeasure, beam["clustering_measure"]),
-                clustering_history=getattr(
-                    ms.MLMClustering.ClusteringHistory, beam["clustering_history"]),
-                clustering_mean_pdf_ladder=beam["clustering_mean_pdf_ladder"],
-            ),
-            min_scale=min_scale,
-            max_scale=max_scale,
+        return ms.MLMClustering(
+            topologies=[topo[0] for topo in mc_data.topologies],
+            permutations=mc_data.permutations,
+            diagram_indices=mc_data.diagram_indices,
+            pdg_color_types={
+                int(key): value
+                for key, value in self.meta["pdg_color_types"].items()
+            },
+            external_pdg_ids=all_pids,
+            clustering_history=getattr(
+                ms.MLMClustering.ClusteringHistory,
+                mlm_clustering_history(self.process.run_card)),
+            **options,
         )
 
     def load_matrix_elements(self, api_path_formats, member_metas):
@@ -400,12 +486,15 @@ class MadgraphSubprocess:
         if self.process.run_card["run"]["dummy_matrix_element"]:
             self.matrix_elements = [None] * len(api_path_formats)
         else:
+            parameters = me_parameters(self.process.run_card)
             self.matrix_elements = [
                 self.process.load_matrix_element(
-                    path_format, self.process.param_card_path,
-                    me_parameters(self.process.run_card)
+                    path_format, self.process.param_card_path, parameters,
+                    self.process.helicity_choice(
+                        path_format, self.process.param_card_path, parameters),
+                    None if self.me_index is None else self.me_index + position,
                 )
-                for path_format in api_path_formats
+                for position, path_format in enumerate(api_path_formats)
             ]
         self.surrogates = []
         if self.process.surrogate is not None:
@@ -464,6 +553,48 @@ class MadgraphSubprocess:
             return None
         return self.process.surrogate
 
+    def build_merging_cut(self):
+        """ms.MergingCut of the CKKW-L cut for this subprocess, or None.
+
+        As madevent, the merging legs never include decay-chain products, and
+        the flavours are those of the first flavour of the subprocess."""
+        merging_cut = getattr(self.process, "merging_cut", None)
+        if merging_cut is None or len(self.meta["incoming"]) != 2:
+            return None
+        measure, value, _ = merging_cut
+        pids = self.flavor_pids()[0]
+        mask = self.merging_leg_mask(pids)
+        if any(self.merging_leg_mask(option) != mask
+               for option in _flavor_options(self.meta, self.unmerged_meta)):
+            raise ValueError(
+                f"subprocess {self.meta['incoming']} > {self.meta['outgoing']} "
+                "groups flavours that merging_pdgs treats differently; regenerate "
+                "the process after 'set apply_flavor_grouping False'"
+            )
+        # mg7 has no mixed lepton-hadron beams: both are protons or neither
+        hadronic = not self.process.leptonic
+        scale = ms.MergingScale(
+            measure,
+            list(pids),
+            mask,
+            d_parameter=float(self.process.run_card["phasespace"]["dparameter"]),
+            hadronic1=hadronic,
+            hadronic2=hadronic,
+            max_jet_flavor=int(self.process.run_card["beam"]["max_jet_flavor"]),
+        )
+        return ms.MergingCut(scale, value) if scale.active() else None
+
+    def merging_leg_mask(self, pids) -> list[bool]:
+        """The legs of ``pids`` the CKKW-L cut applies to: final-state merging
+        pdgs that are not decay-chain products, as in madevent."""
+        merging_pdgs = self.process.merging_cut[2]
+        n_in = len(self.meta["incoming"])
+        decay = decay_products(self.meta, self.unmerged_meta)
+        return [
+            i >= n_in and i - n_in not in decay and abs(pid) in merging_pdgs
+            for i, pid in enumerate(pids)
+        ]
+
     def flavor_pids(self) -> list[list[int]]:
         """PDG ids of the external particles for every flavor of the
         integrand, in the order of its flavor index."""
@@ -490,19 +621,31 @@ class MadgraphSubprocess:
         if drop_threshold >= 0 and channel_count > drop_threshold:
             mcdata = self.drop_qcd_s_channels(mcdata)
         mcdata = self.drop_empty_channels(mcdata)
+        # last: its merges only live in amp2_remaps (see keep_channel_groups)
+        ew_threshold = self.process.run_card["phasespace"]["ew_channel_reduction"]
+        channel_count = sum(len(topos) for topos in mcdata.topologies)
+        if ew_threshold >= 0 and channel_count > ew_threshold and (
+            self.process.run_card["phasespace"]["channel_reduction_with_vegas"]
+            or not self.vegas_guaranteed()
+        ):
+            mcdata = self.reduce_ew_channels(mcdata)
 
         channels = []
         t_channel_mode = self.t_channel_mode(
             self.process.run_card["phasespace"]["t_channel"]
         )
+        n_in = len(self.meta["incoming"])
         for channel_id, (chan_topologies, chan_permutations, chan_indices, active_flavors) in enumerate(zip(
             mcdata.topologies, mcdata.permutations, mcdata.channel_weight_indices,
             mcdata.active_flavors
         )):
             topo_count = len(chan_topologies)
             for topo_index, (topo, indices) in enumerate(zip(chan_topologies, chan_indices)):
+                resonances = resonance_keys(
+                    [topo], chan_permutations, active_flavors, n_in
+                )
                 mapping = ms.PhaseSpaceMapping(
-                    chan_topologies[0],
+                    topo,
                     self.process.e_cm,
                     t_channel_mode=t_channel_mode,
                     cuts=self.cuts,
@@ -527,6 +670,7 @@ class MadgraphSubprocess:
                     channel_weight_indices = indices,
                     name = f"{channel_id}",
                     active_flavors = active_flavors,
+                    resonances = tuple(sorted(resonances, key=repr)),
                 ))
 
         remapped_chan_count = sum(
@@ -677,6 +821,7 @@ class MadgraphSubprocess:
                 name = channel.name,
                 active_flavors = channel.active_flavors,
                 event_generator = channel.event_generator,
+                resonances = channel.resonances,
             ))
 
         flat_phasespace = self.build_flat_phasespace()
@@ -758,6 +903,109 @@ class MadgraphSubprocess:
 
         return self.keep_channel_groups(mcdata, sorted(kept_groups))
 
+    def vegas_guaranteed(self) -> bool:
+        """Whether this subprocess is integrated with VEGAS whatever the survey
+        finds: MadNIS switched off, or left to "auto" for a 2 -> 2 process
+        (see set_madnis_auto_settings)."""
+        enable = self.process.run_card["madnis"]["enable"]
+        if enable == "auto":
+            return len(self.meta["outgoing"]) <= 2
+        return not enable
+
+    def reduce_ew_channels(self, mcdata: MultiChannelData) -> MultiChannelData:
+        """Reduce the channel count of processes with many electroweak diagrams,
+        the counterpart of drop_qcd_s_channels.
+
+        With ew_channel_reduction_mode = "full", channels with the same tree and
+        the same resonances, differing only in the bosons of their off-shell
+        propagators (a t-channel photon, Z or W), are merged into one
+        representative, which takes over their channel weights. Of the merged
+        groups, those with the fewest non-resonant s-channel propagators are
+        kept, and any other group only if it maps a (flavor, resonance) pair or
+        a flavor that none of the kept ones does. Channel weights of dropped
+        groups are left unmapped.
+
+        "t_channel" only merges channels that differ in the bosons of their
+        t-channel propagators; every s-channel structure keeps its channel and
+        nothing is dropped. "partial" (the default) merges as "t_channel" does,
+        and keeps the groups with at most one non-resonant s-channel more than
+        the fewest, plus those that map an otherwise unmapped flavor or
+        resonance."""
+        n_in = len(self.meta["incoming"])
+        mode = self.process.run_card["phasespace"]["ew_channel_reduction_mode"]
+        t_channel_only = mode == "t_channel"
+        extra_s_channels = 1 if mode == "partial" else 0
+        # every on-shell configuration (subchannel) enters the key and the pairs
+        groups, counts = {}, {}
+        for index, topos in enumerate(mcdata.topologies):
+            structures = [topology_structure(topo, None, n_in) for topo in topos]
+            key = tuple(
+                st.key if mode == "full" else st.t_channel_key for st in structures
+            )
+            groups.setdefault(key, []).append(index)
+            # equal within a group, the key fixes the non-resonant s-channels
+            counts[key] = min(st.nonres_s_count for st in structures)
+        pairs = [
+            resonance_keys(topos, perms, flavors, n_in)
+            for topos, perms, flavors in zip(
+                mcdata.topologies, mcdata.permutations, mcdata.active_flavors
+            )
+        ]
+        flavors = [
+            {f for flavs in chan_flavors for f in flavs}
+            for chan_flavors in mcdata.active_flavors
+        ]
+
+        def representative(members):
+            # most flavors, then the lightest t-channel (the most peaked mapping)
+            return min(members, key=lambda index: (
+                -len(flavors[index]),
+                sum(mcdata.topologies[index][0].t_propagator_masses),
+                index,
+            ))
+
+        merged = [
+            (
+                counts[key],
+                representative(indices),
+                indices,
+                set().union(*(pairs[i] for i in indices)),
+                set().union(*(flavors[i] for i in indices)),
+            )
+            for key, indices in groups.items()
+        ]
+        # t_channel mode: every group is kept, as if all had the fewest
+        min_count = None if t_channel_only else min(entry[0] for entry in merged)
+        covered_pairs, covered_flavors = set(), set()
+        kept, merge_into = set(), {}
+        for count, rep, indices, group_pairs, group_flavors in sorted(
+            merged, key=lambda entry: (entry[0], -len(entry[3]), -len(entry[4]), entry[1])
+        ):
+            if t_channel_only or count <= min_count + extra_s_channels \
+                    or not group_pairs <= covered_pairs \
+                    or not group_flavors <= covered_flavors:
+                kept.add(rep)
+                covered_pairs |= group_pairs
+                covered_flavors |= group_flavors
+                merge_into.update({i: rep for i in indices if i != rep})
+        # a representative need not map every pair or flavor of its group:
+        # keep the members that would otherwise lose one
+        kept_pairs = set().union(*(pairs[i] for i in kept))
+        kept_flavors = set().union(*(flavors[i] for i in kept))
+        for index in range(len(mcdata.topologies)):
+            if index in kept:
+                continue
+            if not pairs[index] <= kept_pairs or not flavors[index] <= kept_flavors:
+                kept.add(index)
+                merge_into.pop(index, None)
+                kept_pairs |= pairs[index]
+                kept_flavors |= flavors[index]
+        logger.info(
+            "subprocess %d: electroweak channel reduction from %d to %d channels",
+            self.subproc_id, len(mcdata.topologies), len(kept)
+        )
+        return self.keep_channel_groups(mcdata, sorted(kept), merge_into)
+
     def drop_empty_channels(self, mcdata: MultiChannelData) -> MultiChannelData:
         """Drop the channels whose phase space the cuts exclude entirely: a pair
         mass cut whose floor lies at or above the top of an on-shell window of
@@ -819,13 +1067,31 @@ class MadgraphSubprocess:
         return self.keep_channel_groups(mcdata, kept_groups)
 
     def keep_channel_groups(
-        self, mcdata: MultiChannelData, kept_groups: list[int]
+        self,
+        mcdata: MultiChannelData,
+        kept_groups: list[int],
+        merge_into: dict[int, int] | None = None,
     ) -> MultiChannelData:
         """Rebuild the multi-channel data with only the channel groups (indices
         into mcdata.topologies) in kept_groups. Channel weights belonging to a
-        dropped channel are left unmapped."""
+        dropped channel are left unmapped, unless merge_into maps the dropped
+        group to a kept one: then each of its diagrams adds to the channel
+        weight of the kept group's diagram with the same permutation, provided
+        that one samples all of its flavors. The merge is only recorded in
+        amp2_remaps, so a later call without merge_into undoes it."""
         if len(kept_groups) == len(mcdata.topologies):
             return mcdata
+        merged_members = {}
+        for member, target in (merge_into or {}).items():
+            merged_members.setdefault(target, []).append(member)
+
+        def map_diagram(diag, channel_index):
+            if self.unmerged_meta is None:
+                amp2_remaps[0][diag] = channel_index
+            else:
+                for amp2_remap, d in zip(amp2_remaps, diag):
+                    if d != -1:
+                        amp2_remap[d] = channel_index
 
         amp2_remaps = [[-1] * len(remap) for remap in mcdata.amp2_remaps]
         symfact = []
@@ -849,17 +1115,25 @@ class MadgraphSubprocess:
             channel_index_first = channel_index
             symfact_index_first = len(symfact)
             for i, diag in enumerate(chan_diagram_indices):
-                if self.unmerged_meta is None:
-                    amp2_remaps[0][diag] = channel_index
-                else:
-                    for amp2_remap, d in zip(amp2_remaps, diag):
-                        if d != -1:
-                            amp2_remap[d] = channel_index
+                map_diagram(diag, channel_index)
                 if i == 0:
                     symfact.extend([None] * topo_count)
                 else:
                     symfact.extend(range(symfact_index_first, symfact_index_first + topo_count))
                 channel_index += 1
+
+            for member in merged_members.get(group, []):
+                for diag, perm, flavors in zip(
+                    mcdata.diagram_indices[member],
+                    mcdata.permutations[member],
+                    mcdata.active_flavors[member],
+                ):
+                    for i, (kept_perm, kept_flavors) in enumerate(
+                        zip(chan_permutations, mcdata.active_flavors[group])
+                    ):
+                        if kept_perm == perm and set(flavors) <= set(kept_flavors):
+                            map_diagram(diag, channel_index_first + i)
+                            break
 
             topologies.append(chan_topologies)
             permutations.append(chan_permutations)
@@ -1011,6 +1285,7 @@ class MadgraphSubprocess:
                 channel_weight_indices = channel.channel_weight_indices,
                 name = channel.name,
                 active_flavors = channel.active_flavors,
+                resonances = channel.resonances,
             ))
 
         return PhaseSpace(
@@ -1096,7 +1371,27 @@ class MadgraphSubprocess:
         hadronic PDF -- but its beams do *not* keep their full energy, so the
         mapping still has to sample x. The two senses of the word part here.
         """
-        return self.process.leptonic and self.process.lepton_density is None
+        return (self.process.leptonic and self.process.lepton_density is None
+                and not self.process.upc_flux)
+
+    def upc_tau_min(self) -> float:
+        """A lower bound on s_hat / s of this subprocess, which the table of a
+        gamma-UPC luminosity has to reach: from the outgoing masses and the pt
+        and sqrt(s) cuts (each particle carries at least its transverse mass)."""
+        pt_min = list(self.cuts.pt_min()) if self.cuts is not None else []
+        pt_min += [0.] * (len(self.outgoing_masses) - len(pt_min))
+        sqrt_s = sum(math.hypot(mass, pt)
+                     for mass, pt in zip(self.outgoing_masses, pt_min))
+        if self.cuts is not None:
+            sqrt_s = max(sqrt_s, self.cuts.sqrt_s_min())
+        return sqrt_s ** 2 / self.process.e_cm ** 2
+
+    def non_photon_incoming(self) -> list[int]:
+        """The incoming partons of this subprocess, over all its flavours, that
+        are not photons (which a gamma-UPC luminosity gives no flux)."""
+        n_in = len(clean_pids(self.meta["incoming"]))
+        return sorted({pid for option in _flavor_options(self.meta, self.unmerged_meta)
+                       for pid in option[:n_in] if pid != 22})
 
     @property
     def lepton_sampling_power(self) -> float:
@@ -1145,6 +1440,8 @@ class MadgraphSubprocess:
         the step_matrix_elements of the second pass of a [surrogate]."""
         matrix_elements = []
         self.step_matrix_elements = []
+        per_diagram_mlm = (self.process.mlm_clustering and
+                           self.process.run_card["beam"]["clustering_history"] != "all_diagrams")
         for me_index, matrix_element in enumerate(self.matrix_elements):
             if self.surrogates:
                 # the surrogate in the integrand, the full matrix element in
@@ -1165,7 +1462,9 @@ class MadgraphSubprocess:
                     [ms.MatrixElement.momenta_in, ms.MatrixElement.alpha_s_in,
                      ms.MatrixElement.flavor_in, ms.MatrixElement.random_color_in,
                      ms.MatrixElement.random_helicity_in,
-                     ms.MatrixElement.random_diagram_in],
+                     ms.MatrixElement.random_diagram_in]
+                    + ([ms.MatrixElement.diagram_in]
+                       if per_diagram_mlm else []),
                     [ms.MatrixElement.matrix_element_out,
                      ms.MatrixElement.color_index_out,
                      ms.MatrixElement.helicity_index_out,
@@ -1177,7 +1476,9 @@ class MadgraphSubprocess:
             elif matrix_element:
                 mat = ms.MatrixElement(
                     matrix_element,
-                    ms.Integrand.matrix_element_inputs,
+                    list(ms.Integrand.matrix_element_inputs)
+                    + ([ms.MatrixElement.diagram_in]
+                       if per_diagram_mlm else []),
                     ms.Integrand.matrix_element_outputs,
                     True,
                     self.process.me_frame,
@@ -1228,11 +1529,12 @@ class MadgraphSubprocess:
 
         cross_sections = []
         dressed = self.process.lepton_density
+        upc = self.process.upc_luminosity()
         for mat in self.integrand_matrix_elements():
             pdf_grid = None if self.process.leptonic else self.process.pdf_grid
             pdf_arg = None if self.process.leptonic else ms.CachedPdf()
             pdf_arg2 = pdf_arg
-            if dressed is not None:
+            if dressed is not None or upc is not None:
                 # one luminosity for both beams, on beam 1; see
                 # lepton_density.pdf_factor for why beam 2 stays empty
                 pdf_arg = ms.CachedPdf()
@@ -1301,6 +1603,7 @@ class MadgraphSubprocess:
                 phasespace.mapping_chan_weights,
                 mlm_history_qcd_power,
                 None if dressed is None else dressed.luminosity,
+                None if upc is None else upc.luminosity,
             ))
         #print(integrands[1].function())
         #for i in integrands: print(i.function())

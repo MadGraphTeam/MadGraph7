@@ -39,11 +39,16 @@ class RecurrenceFermionPairingError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class FermionPairingLimitsV1:
-    """Explicit guards against factorial closure-rule materialization."""
+    """Optional caller-chosen bounds on the materialized closure rules.
 
-    max_endpoints: int = 16
-    max_pairings_per_species: int = 720
-    max_total_rules: int = 4096
+    None (the default for each) leaves the catalog complete: every
+    species-compatible Wick pairing is enumerated, whatever the number of
+    coloured fermion endpoints.
+    """
+
+    max_endpoints: int | None = None
+    max_pairings_per_species: int | None = None
+    max_total_rules: int | None = None
 
     def __post_init__(self) -> None:
         for name, value in (
@@ -51,8 +56,10 @@ class FermionPairingLimitsV1:
             ("max_pairings_per_species", self.max_pairings_per_species),
             ("max_total_rules", self.max_total_rules),
         ):
-            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-                raise ValueError(f"{name} must be a positive integer")
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or value < 1
+            ):
+                raise ValueError(f"{name} must be None or a positive integer")
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,7 +309,10 @@ def build_recurrence_fermion_pairing_catalog_v1(
         for source_slot, leg in enumerate(process.legs)
         if (contract := _derive_endpoint(source_slot, leg, states)) is not None
     )
-    if len(contracts) > active_limits.max_endpoints:
+    if (
+        active_limits.max_endpoints is not None
+        and len(contracts) > active_limits.max_endpoints
+    ):
         raise RecurrenceFermionPairingError(
             "colored fermion endpoint count exceeds the configured pairing bound: "
             f"{len(contracts)} > {active_limits.max_endpoints}"
@@ -375,13 +385,19 @@ def build_recurrence_fermion_pairing_catalog_v1(
                 f"and {len(antifundamental)} antifundamental endpoints"
             )
         pairing_count = math.factorial(len(fundamental))
-        if pairing_count > active_limits.max_pairings_per_species:
+        if (
+            active_limits.max_pairings_per_species is not None
+            and pairing_count > active_limits.max_pairings_per_species
+        ):
             raise RecurrenceFermionPairingError(
                 "model-compatible fermion pairings exceed the configured bound: "
                 f"{pairing_count} > {active_limits.max_pairings_per_species}"
             )
         total_rule_count *= pairing_count
-        if total_rule_count > active_limits.max_total_rules:
+        if (
+            active_limits.max_total_rules is not None
+            and total_rule_count > active_limits.max_total_rules
+        ):
             raise RecurrenceFermionPairingError(
                 "combined fermion pairing rules exceed the configured bound: "
                 f"{total_rule_count} > {active_limits.max_total_rules}"

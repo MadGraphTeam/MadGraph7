@@ -321,3 +321,79 @@ def test_other_colored_contact_topologies_fail_closed(term: CompiledVertexTerm) 
     auxiliaries, kernels = _compile(term)
     assert auxiliaries == ()
     assert kernels == ()
+
+
+# The two-identity colour of a five-point counterterm contact (four adjoint
+# legs and a colour singlet; MF-HC05, ``loops.v2.ct_colour_projection``).
+_IDENTITY_PAIRS = "Identity(1,2)*Identity(3,4)"
+_PAIR_METRIC = "Metric(1,2)*Metric(3,4) + 2*Metric(1,3)*Metric(2,4)"
+
+
+def test_identity_pairs_close_their_pairs_and_pass_the_partner_colour() -> None:
+    """A singlet result joins the two closed pairs (colour 1); an adjoint
+    result joins the closed pair without it and its partner's identity node
+    with the singlet leg, the final identity passing that colour on."""
+
+    term = _term(600, color=_IDENTITY_PAIRS, lorentz=_PAIR_METRIC, valence=5)
+    auxiliaries, kernels = _compile(term)
+
+    colours = {particle.name: particle.color for particle in auxiliaries}
+    assert sorted(colours.values()) == [1, 1, 1, 8]
+    assert {kernel.color_source for kernel in kernels} <= {
+        "1",
+        "UFO::Identity(1,2)",
+        "UFO::Identity(1,3)",
+        "UFO::Identity(2,3)",
+    }
+    partials = [kernel for kernel in kernels if kernel.vertex.endswith("partial")]
+    finals = [kernel for kernel in kernels if kernel.vertex.endswith("final")]
+    assert all(not kernel.runtime_parameters for kernel in partials)
+    assert all(
+        expression.count("derived_coupling_600") == 1
+        for kernel in finals
+        for expression in kernel.component_expressions
+    )
+    singlet_final = [kernel for kernel in finals if kernel.source_particle_legs[2] == 4]
+    # Both input orders of the two (distinct) closed-pair nodes.
+    assert len(singlet_final) == 2
+    assert all(kernel.color_source == "1" for kernel in singlet_final)
+    assert {
+        tuple(sorted(kernel.source_particle_legs[:2]))
+        for kernel in partials
+        if colours[kernel.particles[2]] == 1 and "_r4_" in kernel.particles[2]
+    } == {(0, 1), (2, 3)}
+    gluon_final = [kernel for kernel in finals if kernel.source_particle_legs[2] == 0]
+    assert gluon_final
+    for kernel in gluon_final:
+        inputs = {colours[name] for name in kernel.particles[:2]}
+        assert inputs == {1, 8}
+        assert kernel.color_source in {"UFO::Identity(2,3)", "UFO::Identity(1,3)"}
+    # The adjoint result's closed pair is the one without it, its identity
+    # node joins its partner (leg 1) with the singlet (leg 4).
+    assert {
+        tuple(sorted(kernel.source_particle_legs[:2]))
+        for kernel in partials
+        if "_r0_" in kernel.particles[2]
+    } == {(2, 3), (1, 4)}
+
+
+def test_identity_pairs_carry_a_rational_prefactor_and_fail_closed_otherwise() -> None:
+    plain = _term(601, color=_IDENTITY_PAIRS, lorentz=_PAIR_METRIC, valence=5)
+    scaled = _term(601, color=f"-3/4*{_IDENTITY_PAIRS}", lorentz=_PAIR_METRIC, valence=5)
+    _auxiliaries, plain_kernels = _compile(plain)
+    _auxiliaries, scaled_kernels = _compile(scaled)
+    assert len(plain_kernels) == len(scaled_kernels)
+    for left, right in zip(plain_kernels, scaled_kernels, strict=True):
+        factor = _sym.E("-3/4") if left.vertex.endswith("final") else _sym.E("1")
+        assert all(
+            (_sym.E(b) - factor * _sym.E(a)).expand().to_canonical_string() == "0"
+            for a, b in zip(
+                left.component_expressions, right.component_expressions, strict=True
+            )
+        )
+    for color in (
+        "Identity(1,2)*Identity(1,3)",
+        "Identity(1,2)",
+    ):
+        term = _term(602, color=color, lorentz=_PAIR_METRIC, valence=5)
+        assert _compile(term) == ((), ())

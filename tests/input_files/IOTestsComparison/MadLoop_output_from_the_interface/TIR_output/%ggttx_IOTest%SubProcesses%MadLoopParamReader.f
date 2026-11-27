@@ -3,7 +3,7 @@
       implicit none
 
       CHARACTER(512) fileName, buff, buff2, mode
-      CHARACTER*20 MLReductionLib_str,MLReductionLib_str_save
+      CHARACTER*512 MLReductionLib_str,MLReductionLib_str_save
       CHARACTER*2  MLReductionLib_char
       INTEGER MLRed,i,j,k
 
@@ -32,6 +32,30 @@
      &           CTModeRun .gt. 6 ) then
                stop 'CTModeRun must be >= -1 and <=6.'
              endif 
+
+           else if (buff .eq. '#LoopPoleMode') then
+             read(666,*,end=999) LoopPoleMode
+             if (LoopPoleMode.lt.-1.or.LoopPoleMode.gt.3) then
+               write(*,*) 'LoopPoleMode must be -1, 0, 1, 2 or 3.'
+               stop 1
+             endif
+
+           else if (buff .eq. '#TIRustComputeFinite') then
+             read(666,*,end=999) TIRustComputeFinite
+           else if (buff .eq. '#UseQPIntegrandForTIRust') then
+             read(666,*,end=999) UseQPIntegrandForTIRust
+           else if (buff .eq. '#PWaveExtendedPrecision') then
+             read(666,*,end=999) PWaveExtendedPrecision
+           else if (buff .eq. '#TIRustGlobalCache') then
+             read(666,*,end=999) TIRustGlobalCache
+             if (TIRustGlobalCache.lt.-1) then
+               stop 'TIRustGlobalCache must be >= -1'
+             endif
+           else if (buff .eq. '#TIRustCacheMaxBytes') then
+             read(666,*,end=999) TIRustCacheMaxBytes
+             if (TIRustCacheMaxBytes.lt.0) then
+               stop 'TIRustCacheMaxBytes must be nonnegative'
+             endif
 
            else if (buff .eq. '#COLLIERGlobalCache') then
              read(666,*,end=999) COLLIERGlobalCache
@@ -136,6 +160,9 @@
           else if (buff .eq. '#UseQPIntegrandForNinja') then
              read(666,*,end=999) UseQPIntegrandForNinja
 
+          else if (buff .eq. '#UseQPIntegrandForNinjaRS') then
+             read(666,*,end=999) UseQPIntegrandForNinjaRS
+
           else if (buff .eq. '#UseQPIntegrandForCutTools') then
              read(666,*,end=999) UseQPIntegrandForCutTools
 
@@ -155,7 +182,7 @@
 
           else if (buff .eq. '#MLReductionLib') then
              read(666,*,end=999) MLReductionLib_str
-             MLReductionLib(1:7)=0
+             MLReductionLib(1:10)=0
              MLReductionLib_str_save=MLReductionLib_str
              j=0
              DO
@@ -168,7 +195,9 @@
                 IF(MLReductionLib_char.EQ.'1 ')THEN
                    MLRed=1
                 ELSEIF(MLReductionLib_char.EQ.'2 ')THEN
-                   MLRed=2
+                   WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+                   WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another supported backend.'
+                   STOP 1
                 ELSEIF(MLReductionLib_char.EQ.'3 ')THEN
                    MLRed=3
                 ELSEIF(MLReductionLib_char.EQ.'4 ')THEN
@@ -179,6 +208,10 @@
                    MLRed=6
                 ELSEIF(MLReductionLib_char.EQ.'7 ')THEN
                    MLRed=7
+                ELSEIF(MLReductionLib_char.EQ.'8 ')THEN
+                   MLRed=8
+                ELSEIF(MLReductionLib_char.EQ.'9 ')THEN
+                   MLRed=9
                 ELSE
                    PRINT *, 'MLReductionLib is wrong: '//
      $                  TRIM(MLReductionLib_str_save)
@@ -242,6 +275,19 @@ C     a non existing or malformed parameter file
   998 continue
 
       if(printParam.and..not.paramPrinted) then
+C     A partial card may omit MLReductionLib. Print the effective list rather
+C     than the uninitialized local string used only while parsing that entry.
+      MLReductionLib_str_save=''
+      DO i=1,10
+        IF(MLReductionLib(i).EQ.0) EXIT
+        WRITE(MLReductionLib_char,'(I1)') MLReductionLib(i)
+        IF(i.EQ.1) THEN
+          MLReductionLib_str_save=TRIM(MLReductionLib_char)
+        ELSE
+          MLReductionLib_str_save=TRIM(MLReductionLib_str_save)//
+     &      '|'//TRIM(MLReductionLib_char)
+        ENDIF
+      ENDDO
       write(*,*)
      & '==============================================================='
       if (couldRead) then      
@@ -255,6 +301,14 @@ C     a non existing or malformed parameter file
       write(*,*) ' > MLReductionLib            = '
      $     //TRIM(MLReductionLib_str_save)
       write(*,*) ' > CTModeRun                 = ',CTModeRun
+      write(*,*) ' > LoopPoleMode              = ',LoopPoleMode
+      write(*,*) ' > TIRustComputeFinite       = ',TIRustComputeFinite
+      write(*,*) ' > UseQPIntegrandForTIRust    = ',
+     &UseQPIntegrandForTIRust
+      write(*,*) ' > TIRustGlobalCache         = ',TIRustGlobalCache
+      write(*,*) ' > TIRustCacheMaxBytes       = ',TIRustCacheMaxBytes
+      write(*,*) ' > PWaveExtendedPrecision    = ',
+     &PWaveExtendedPrecision
       write(*,*) ' > MLStabThres               = ',MLStabThres
       write(*,*) ' > NRotations_DP             = ',NRotations_DP
       write(*,*) ' > NRotations_QP             = ',NRotations_QP
@@ -275,6 +329,8 @@ C     a non existing or malformed parameter file
       write(*,*) ' > WriteOutFilters           = ',WriteOutFilters
       write(*,*) ' > UseQPIntegrandForNinja    = ',
      &UseQPIntegrandForNinja
+      write(*,*) ' > UseQPIntegrandForNinjaRS  = ',
+     &UseQPIntegrandForNinjaRS
       write(*,*) ' > UseQPIntegrandForCutTools = ',
      &UseQPIntegrandForCutTools
       write(*,*) ' > IREGIMODE                 = ',IREGIMODE
@@ -308,7 +364,13 @@ C     a non existing or malformed parameter file
       MLReductionLib(1)=6
       MLReductionLib(2)=7
       MLReductionLib(3)=1
-      MLReductionLib(4:7)=0
+      MLReductionLib(4:10)=0
+      LoopPoleMode=-1
+      TIRustComputeFinite=.True.
+      UseQPIntegrandForTIRust=.True.
+      TIRustGlobalCache=-1
+      TIRustCacheMaxBytes=268435456_8
+      PWaveExtendedPrecision=.FALSE.
       IREGIMODE=2
       IREGIRECY=.TRUE.
       COLLIERComputeIRpoles = .TRUE.
@@ -339,5 +401,108 @@ C     a non existing or malformed parameter file
       ImprovePSPoint=2
       UseQPIntegrandForCutTools=.True.
       UseQPIntegrandForNinja=.True.
+      UseQPIntegrandForNinjaRS=.True.
 
       end
+
+      SUBROUTINE ML_SET_LOOP_POLE_MODE(MODE)
+C     Pending requests have the same global scope as /MADLOOP/ and ML_INIT.
+C     A setter from any subprocess overrides the card for all subprocesses.
+      IMPLICIT NONE
+      INTEGER MODE,REQUESTED_LOOP_POLE_MODE
+      INCLUDE 'MadLoopParams.inc'
+      COMMON/ML_LOOP_POLE_REQUEST/REQUESTED_LOOP_POLE_MODE
+      IF(MODE.LT.-1.OR.MODE.GT.3) THEN
+        WRITE(*,*) 'LoopPoleMode must be -1, 0, 1, 2 or 3.'
+        STOP 1
+      ENDIF
+      REQUESTED_LOOP_POLE_MODE=MODE
+      LoopPoleMode=MODE
+      END
+
+      SUBROUTINE ML_APPLY_LOOP_POLE_MODE()
+C     Restore the most recent request after the first global card read.
+      IMPLICIT NONE
+      INTEGER REQUESTED_LOOP_POLE_MODE
+      INCLUDE 'MadLoopParams.inc'
+      COMMON/ML_LOOP_POLE_REQUEST/REQUESTED_LOOP_POLE_MODE
+      IF(REQUESTED_LOOP_POLE_MODE.NE.-2) THEN
+        LoopPoleMode=REQUESTED_LOOP_POLE_MODE
+      ENDIF
+      END
+
+      BLOCK DATA ML_LOOP_POLE_REQUEST_INIT
+C     The shared reader is linked once, even in a multi-subprocess library.
+      IMPLICIT NONE
+      INTEGER REQUESTED_LOOP_POLE_MODE
+      COMMON/ML_LOOP_POLE_REQUEST/REQUESTED_LOOP_POLE_MODE
+      DATA REQUESTED_LOOP_POLE_MODE/-2/
+      END
+
+      SUBROUTINE ML_LOOP_POLE_FLAGS(COMPUTE_UV,COMPUTE_IR)
+C     The generic selector affects bare loop integrals only.  The legacy
+C     COLLIER switches remain effective when LoopPoleMode is -1.
+      IMPLICIT NONE
+      LOGICAL COMPUTE_UV,COMPUTE_IR
+      INCLUDE 'MadLoopParams.inc'
+      COMPUTE_UV=COLLIERComputeUVpoles
+      COMPUTE_IR=COLLIERComputeIRpoles
+      IF(LoopPoleMode.GE.0) THEN
+        COMPUTE_UV=LoopPoleMode.EQ.0.OR.LoopPoleMode.EQ.1
+        COMPUTE_IR=LoopPoleMode.EQ.0.OR.LoopPoleMode.EQ.2
+      ENDIF
+      END
+
+      SUBROUTINE ML_CHECK_LOOP_POLE_MODE()
+C     Reject unsupported rescue chains rather than silently returning
+C     combined poles after a UV-only or IR-only reduction fails.
+      IMPLICIT NONE
+      INTEGER I
+      INCLUDE 'MadLoopParams.inc'
+      IF(LoopPoleMode.LT.-1.OR.LoopPoleMode.GT.3) THEN
+        WRITE(*,*) 'LoopPoleMode must be -1, 0, 1, 2 or 3.'
+        STOP 1
+      ENDIF
+      IF(.NOT.TIRustComputeFinite) THEN
+        IF(LoopPoleMode.EQ.3) THEN
+          WRITE(*,*) 'TIRust poles-only mode requires at least one pole.'
+          STOP 1
+        ENDIF
+        IF(MLReductionLib(1).NE.9.OR.MLReductionLib(2).NE.0) THEN
+          WRITE(*,*) 'TIRust poles-only diagnostics require MLReductionLib=9.'
+          STOP 1
+        ENDIF
+      ENDIF
+C     Also validate direct runtime changes to the reduction list, before
+C     initialization can discard an unavailable backend or reuse a cache.
+      DO I=1,9
+        IF(MLReductionLib(I).EQ.0) EXIT
+        IF(MLReductionLib(I).EQ.2) THEN
+          WRITE(*,*) 'PJFry (MLReductionLib=2) has been retired.'
+          WRITE(*,*) 'Select NinjaRS with MLReductionLib=8 or another supported backend.'
+          STOP 1
+        ENDIF
+      ENDDO
+      IF(LoopPoleMode.LE.0) RETURN
+      DO I=1,10
+        IF(MLReductionLib(I).EQ.0) EXIT
+        IF(MLReductionLib(I).NE.7.AND.MLReductionLib(I).NE.8
+     &     .AND.MLReductionLib(I).NE.9) THEN
+          WRITE(*,*) 'LoopPoleMode=1, 2 or 3 requires TIRust/NinjaRS/COLLIER.'
+          WRITE(*,*) 'Select only IDs 7, 8, 9, including',
+     &               ' only supported rescue backends.'
+          STOP 1
+        ENDIF
+      ENDDO
+      END
+
+      BLOCK DATA ML_TIRUST_DEFAULTS
+C     Old cards predate these controls. Do not interpret absent new options
+C     as a request for partial tensors or replace caller-selected old values.
+      IMPLICIT NONE
+      INCLUDE 'MadLoopParams.inc'
+      DATA TIRustComputeFinite,UseQPIntegrandForTIRust/.TRUE.,.TRUE./
+      DATA TIRustGlobalCache/-1/
+      DATA TIRustCacheMaxBytes/268435456_8/
+      DATA PWaveExtendedPrecision/.FALSE./
+      END

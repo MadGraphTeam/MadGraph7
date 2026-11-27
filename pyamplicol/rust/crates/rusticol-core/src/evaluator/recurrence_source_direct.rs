@@ -311,7 +311,7 @@ impl LoadedDirectSourceExecutor {
         let mut rows = Vec::with_capacity(view.selections.len());
         let mut embeddings = Vec::new();
         for (source_slot, selection) in view.selections.iter().copied().enumerate() {
-            if selection.source_slot != source_slot as u32 {
+            if !crate::narrow::is_index(selection.source_slot, source_slot) {
                 return Err(source_binding_integrity(
                     "source selections are not in canonical source-slot order",
                 ));
@@ -402,7 +402,7 @@ impl LoadedDirectSourceExecutor {
             let bound_embedding_start = u32::try_from(embeddings.len())
                 .map_err(|_| source_binding_integrity("bound embedding start exceeds u32"))?;
             for (full_component, embedding) in selected_embeddings.iter().copied().enumerate() {
-                if embedding.full_component != full_component as u32 {
+                if !crate::narrow::is_index(embedding.full_component, full_component) {
                     return Err(source_binding_integrity(
                         "embedding components are not in canonical order",
                     ));
@@ -869,7 +869,7 @@ unsafe extern "C" fn execute_direct_union_source_rows(
     let selections = unsafe { std::slice::from_raw_parts(selections, selection_count as usize) };
 
     for (source_slot, selection) in selections.iter().enumerate() {
-        if selection.source_slot != source_slot as u32 {
+        if !crate::narrow::is_index(selection.source_slot, source_slot) {
             return STATUS_INVALID_ARGUMENT;
         }
         let Some(variant) = variants.get(selection.dispatch_variant_id as usize) else {
@@ -1129,7 +1129,7 @@ fn write_embedded_wavefunction<const N: usize>(
     factors: DirectFactorView,
 ) -> c_int {
     for (full_component, embedding) in embeddings.iter().enumerate() {
-        if embedding.full_component != full_component as u32
+        if !crate::narrow::is_index(embedding.full_component, full_component)
             || embedding.exact_factor_id >= factors.value_count
         {
             return STATUS_BOUNDS;

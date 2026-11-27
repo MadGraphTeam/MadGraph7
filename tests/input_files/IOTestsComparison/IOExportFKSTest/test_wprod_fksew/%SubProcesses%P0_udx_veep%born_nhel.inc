@@ -1,3 +1,1 @@
-      INTEGER    MAX_BHEL, MAX_BCOL
-      PARAMETER (MAX_BHEL=16)
-      PARAMETER(MAX_BCOL=1)
+../../_shared/IOExportFKSTest%test_tdecay_fksreal%%SubProcesses%P0_t_budx%born_nhel.inc

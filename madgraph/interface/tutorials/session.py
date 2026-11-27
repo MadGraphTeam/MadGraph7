@@ -92,7 +92,7 @@ class Step(object):
               step_for scans forward from the current position and would
               otherwise jump the user to that one.  When the invited commands
               cannot be told apart from the lesson's own by their first two
-              words -- `generate ... $ a` against `generate ... / a` -- give it
+              words -- `generate ... $$ a` against `generate ... / a` -- give it
               a callable key; step_for tries sticky callables first, so it
               still shields the steps behind it.
     gate      callable(interface, line) -> a string saying why the step may
@@ -910,7 +910,7 @@ class TutorialSession(object):
         # without ending it, which only works if it wins over the later step
         # that would otherwise swallow that command.  A plain-keyed one wins by
         # sitting at a lower index; a callable-keyed one -- the only way to
-        # separate `generate ... $ a` from `generate ... / a`, which share both
+        # separate `generate ... $$ a` from `generate ... / a`, which share both
         # their keys -- needs the priority stated, since the callable pass runs
         # after the plain one.
         for i in allowed:

@@ -1,0 +1,285 @@
+{
+  "scope": "Independent Recola identity/Casimir Born and full model-R2 virtual coefficients; not ordered two-emission or timing validation",
+  "source_plan": "/shared/external/pyLoopAmpliCol/workspace/fixtures/source-portable-directed/uudd-source.pacbin",
+  "native_module": "/shared/external/pyLoopAmpliCol/workspace/builds/loop-python-module-directed/_loop_reduction.so",
+  "native_revision": "345e33c3",
+  "provider": "Recola 2.3.0, installed workspace reference build, scalar cache disabled",
+  "order_convention": "Born gs^2, loop gs^4; squared fundamental coupling powers4 and6. Recola scalar getter powers2 and3 denote alpha_s powers.",
+  "normalization": "Initial spin/color average1/36, physical alpha_s0.118, five renormalization flavours and six loop quarks, mt173, mb0. Recola same-leg colour API returns inclusive (unit Casimir); multiply4/3 for our emitted-gluon Casimir.",
+  "pole_extraction": "DeltaUV0 held fixed. Independently sample (DeltaIR1,DeltaIR2)=(0,0),(1,0),(0,1); verify(2,3) linearity. Identity coefficients match public NLO-IR1/NLO-IR2 getters.",
+  "finite_conversion": "F_Cepsilon=F_Recola+pi^2/6 D; S,D unchanged, applied exactly once.",
+  "conjugation": "Identity and Casimir Hermitian, so both integrated cross terms sum to a real result. Public Recola single-dipole outputs cannot certify non-Hermitian two-emission imaginary values.",
+  "additional_reference_only": "Off-diagonal dipoles1j are retained normalized byC_F; their sum equals negative inclusive at Born and all three virtual coefficients. No saved pyAmpliCol dipole was generated in this slice.",
+  "rows": [
+    {
+      "point": [
+        [
+          "500",
+          "0",
+          "0",
+          "500"
+        ],
+        [
+          "500",
+          "0",
+          "0",
+          "-500"
+        ],
+        [
+          "500",
+          "300",
+          "0",
+          "400"
+        ],
+        [
+          "500",
+          "-300",
+          "0",
+          "-400"
+        ]
+      ],
+      "mu_r2": "1000000",
+      "dipoles": {
+        "1": {
+          "raw": [
+            0.8013367806451899,
+            -0.05892238426582919,
+            -0.2842198401691944,
+            -0.08026310265110037
+          ],
+          "cepsilon": [
+            0.8013367806451899,
+            -0.1909498961275604,
+            -0.2842198401691944,
+            -0.08026310265110037
+          ]
+        },
+        "2": {
+          "raw": [
+            0.10016709758064873,
+            -0.007365298033228655,
+            -0.035527480021149284,
+            -0.010032887831387543
+          ],
+          "cepsilon": [
+            0.10016709758064873,
+            -0.02386873701594505,
+            -0.035527480021149284,
+            -0.010032887831387543
+          ]
+        },
+        "3": {
+          "raw": [
+            -0.7011696830645412,
+            0.07717147778202338,
+            0.2707368678728271,
+            0.07023021481971267
+          ],
+          "cepsilon": [
+            -0.7011696830645412,
+            0.19269555066103794,
+            0.2707368678728271,
+            0.07023021481971267
+          ]
+        },
+        "4": {
+          "raw": [
+            -0.20033419516129752,
+            -0.010883795482965511,
+            0.04901045231751651,
+            0.0200657756627752
+          ],
+          "cepsilon": [
+            -0.20033419516129752,
+            0.022123082482467464,
+            0.04901045231751651,
+            0.0200657756627752
+          ]
+        }
+      },
+      "raw_inclusive": [
+        0.8013367806451899,
+        -0.05892238426582919,
+        -0.2842198401691941,
+        -0.08026310265110018
+      ],
+      "native": {
+        "identity": {
+          "actual": [
+            0.80133678064519,
+            -0.19094989612755967,
+            -0.2842198401691943,
+            -0.08026310265110027
+          ],
+          "expected": [
+            0.8013367806451899,
+            -0.1909498961275604,
+            -0.2842198401691944,
+            -0.08026310265110037
+          ],
+          "scaled_absolute_errors": [
+            1.1102230246251565e-16,
+            7.216449660063518e-16,
+            5.551115123125783e-17,
+            9.71445146547012e-17
+          ]
+        },
+        "casimir": {
+          "actual": [
+            1.0684490408602534,
+            -0.2545998615034131,
+            -0.37895978689225907,
+            -0.10701747020146697
+          ],
+          "expected": [
+            1.0684490408602532,
+            -0.25459986150341385,
+            -0.3789597868922592,
+            -0.10701747020146715
+          ],
+          "scaled_absolute_errors": [
+            2.0781955566758138e-16,
+            7.216449660063518e-16,
+            1.1102230246251565e-16,
+            1.8041124150158794e-16
+          ]
+        }
+      }
+    },
+    {
+      "point": [
+        [
+          "650",
+          "0",
+          "0",
+          "650"
+        ],
+        [
+          "650",
+          "0",
+          "0",
+          "-650"
+        ],
+        [
+          "650",
+          "600",
+          "0",
+          "250"
+        ],
+        [
+          "650",
+          "-600",
+          "0",
+          "-250"
+        ]
+      ],
+      "mu_r2": "900000",
+      "dipoles": {
+        "1": {
+          "raw": [
+            0.5609010515412286,
+            0.07216106814305887,
+            -0.11197741375437831,
+            -0.05618069676112529
+          ],
+          "cepsilon": [
+            0.5609010515412286,
+            -0.020252473858585945,
+            -0.11197741375437831,
+            -0.05618069676112529
+          ]
+        },
+        "2": {
+          "raw": [
+            0.07011263144265358,
+            0.009020133517882356,
+            -0.013997176719297288,
+            -0.0070225870951406595
+          ],
+          "cepsilon": [
+            0.07011263144265358,
+            -0.0025315592323232414,
+            -0.013997176719297288,
+            -0.0070225870951406595
+          ]
+        },
+        "3": {
+          "raw": [
+            -0.490788420098575,
+            -0.060635983503933004,
+            0.10367506510654137,
+            0.04915810966598457
+          ],
+          "cepsilon": [
+            -0.490788420098575,
+            0.0202258657475061,
+            0.10367506510654137,
+            0.04915810966598457
+          ]
+        },
+        "4": {
+          "raw": [
+            -0.14022526288530715,
+            -0.02054521815700818,
+            0.022299525367134185,
+            0.014045174190281343
+          ],
+          "cepsilon": [
+            -0.14022526288530715,
+            0.0025581673434030526,
+            0.022299525367134185,
+            0.014045174190281343
+          ]
+        }
+      },
+      "raw_inclusive": [
+        0.5609010515412286,
+        0.07216106814305887,
+        -0.11197741375437814,
+        -0.05618069676112508
+      ],
+      "native": {
+        "identity": {
+          "actual": [
+            0.5609010515412279,
+            -0.02025247385858557,
+            -0.11197741375437811,
+            -0.05618069676112508
+          ],
+          "expected": [
+            0.5609010515412286,
+            -0.020252473858585945,
+            -0.11197741375437831,
+            -0.05618069676112529
+          ],
+          "scaled_absolute_errors": [
+            6.661338147750939e-16,
+            3.7470027081099033e-16,
+            1.942890293094024e-16,
+            2.0816681711721685e-16
+          ]
+        },
+        "casimir": {
+          "actual": [
+            0.7478680687216372,
+            -0.02700329847811417,
+            -0.14930321833917082,
+            -0.0749075956815001
+          ],
+          "expected": [
+            0.7478680687216381,
+            -0.02700329847811459,
+            -0.14930321833917107,
+            -0.07490759568150038
+          ],
+          "scaled_absolute_errors": [
+            8.881784197001252e-16,
+            4.2327252813834093e-16,
+            2.498001805406602e-16,
+            2.7755575615628914e-16
+          ]
+        }
+      }
+    }
+  ]
+}

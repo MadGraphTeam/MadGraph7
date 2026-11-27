@@ -1,0 +1,93 @@
+name: TIRust install and backend 9
+
+# Builds the TIRust bridge with `install tirust` on Linux and macOS (the
+# installer's DP, QP and poles-only smoke test included), then exports, builds
+# and runs u u~ > z [virt=QCD] with MLReductionLib=9, compares it with CutTools,
+# and checks the f2py recipe of its matrix2py module (tools/tirust_ci_check.py). The Linux runners of the other workflows
+# never build the macOS branches of vendor/tirust/Makefile or tirust_install.py.
+
+on:
+  pull_request:
+    paths:
+      - vendor/tirust/**
+      - madgraph/various/tirust_install.py
+      - madgraph/various/rust_dependency_notices.py
+      - madgraph/iolibs/template_files/loop_optimized/TIRUST_interface.inc
+      - Template/loop_material/StandAlone/SubProcesses/makefile
+      - tools/tirust_ci_check.py
+      - .github/workflows/tirust.yml
+  workflow_dispatch:
+
+concurrency:
+  group: tirust-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  install-and-check:
+    name: install tirust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      # The Linux results were qualified with Rust 1.97.1; the bridge requires >= 1.96.
+      - uses: dtolnay/rust-toolchain@1.97.1
+
+      - name: GNU Fortran (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get -o Acquire::Retries=5 update
+          sudo apt-get -o Acquire::Retries=5 install --no-install-recommends -y gfortran make patch
+      - name: GNU Fortran (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # The image ships versioned Homebrew compilers; expose the newest as gfortran.
+          fc=$(ls "$(brew --prefix)"/bin/gfortran-[0-9]* 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$fc" ]; then
+            brew install gcc
+            fc=$(ls "$(brew --prefix)"/bin/gfortran-[0-9]* | sort -V | tail -n 1)
+          fi
+          mkdir -p "$RUNNER_TEMP/bin"
+          ln -sf "$fc" "$RUNNER_TEMP/bin/gfortran"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - name: Toolchain
+        run: |
+          gfortran --version | head -n 1
+          gfortran -dumpmachine
+          cargo --version
+          make --version | head -n 1
+          python -m pip install --quiet numpy
+
+      - name: MadGraph configuration
+        run: |
+          cp input/.mg7_configuration_default.txt input/mg7_configuration.txt
+          cp Template/LO/Source/.make_opts Template/LO/Source/make_opts
+      - name: Install TIRust and run backend 9
+        run: >
+          python tools/tirust_ci_check.py --work "$RUNNER_TEMP/tirust-ci"
+          --prefix "$RUNNER_TEMP/HEPTools" --jobs 4
+      - name: Backend 9 with the libraries copied into the output
+        run: >
+          python tools/tirust_ci_check.py --work "$RUNNER_TEMP/tirust-ci/internal"
+          --tirust "$RUNNER_TEMP/HEPTools/tirust/lib" --dependencies internal
+
+      - name: Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tirust-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/tirust-ci/*.log
+            ${{ runner.temp }}/tirust-ci/internal/*.log
+            ${{ runner.temp }}/HEPTools/**/install.log
+            ${{ runner.temp }}/HEPTools/tirust/lib/tirust-config.json
+          if-no-files-found: ignore

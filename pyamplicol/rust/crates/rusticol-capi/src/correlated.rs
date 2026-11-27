@@ -193,8 +193,9 @@ pub unsafe extern "C" fn rusticol_runtime_evaluate_correlated_many_f64(
         let requests = unsafe { read_requests(requests, request_count) }?;
         let helicities =
             unsafe { read_selector_ids(helicity_ids, helicity_count, "helicity IDs") }?;
+        let momenta = handle.improved(momenta, point_count)?;
         let values = handle.runtime.evaluate_correlated_many_f64(
-            momenta,
+            &momenta,
             point_count,
             &requests,
             helicities.as_deref(),

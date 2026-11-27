@@ -68,6 +68,8 @@ class PacbinMemberKind(IntEnum):
     COLOR_CONTRACTION = 10
     # a payload declared by the artifact manifest, stored in its payload container
     DECLARED_PAYLOAD = 11
+    # upstream pyAmpliCol numbers it 11; 11 is DECLARED_PAYLOAD here
+    LOOP_RUNTIME_PLAN = 12
 
 
 @dataclass(frozen=True, slots=True)

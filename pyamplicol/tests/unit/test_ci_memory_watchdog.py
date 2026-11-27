@@ -1,12 +1,14 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+import contextlib
 import ctypes
 import errno
 import hashlib
 import io
 import json
 import os
+import signal
 import struct
 import subprocess
 import sys
@@ -840,6 +842,54 @@ def test_exit_code_is_propagated() -> None:
     assert "command finished exit=23" in completed.stderr
 
 
+def test_guarded_environment_announces_the_tighter_limit() -> None:
+    variable = watchdog.LIMIT_ENVIRONMENT_VARIABLE
+    base = {"PATH": "/bin"}
+
+    assert watchdog.guarded_environment(5 * watchdog.GIB, base) == {
+        "PATH": "/bin",
+        variable: str(5 * watchdog.GIB),
+    }
+    assert base == {"PATH": "/bin"}
+    # A nested watchdog announces the tighter of its own and the enclosing one.
+    for enclosing, announced in ((3, 3), (9, 5)):
+        child = watchdog.guarded_environment(
+            5 * watchdog.GIB, {variable: str(enclosing * watchdog.GIB)}
+        )
+        assert child[variable] == str(announced * watchdog.GIB)
+    for unusable in ("", "0", "-1", "lots"):
+        child = watchdog.guarded_environment(5 * watchdog.GIB, {variable: unusable})
+        assert child[variable] == str(5 * watchdog.GIB)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process groups require POSIX")
+def test_guarded_command_sees_the_limit() -> None:
+    environment = dict(os.environ)
+    environment.pop(watchdog.LIMIT_ENVIRONMENT_VARIABLE, None)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(WATCHDOG),
+            "--limit-mib",
+            "256",
+            "--poll-interval",
+            "0.02",
+            "--",
+            sys.executable,
+            "-c",
+            f"import os; print(os.environ[{watchdog.LIMIT_ENVIRONMENT_VARIABLE!r}])",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=environment,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == str(256 * watchdog.MIB)
+
+
 def _pid_exists(pid: int) -> bool:
     try:
         os.kill(pid, 0)
@@ -852,27 +902,47 @@ def _pid_exists(pid: int) -> bool:
 
 @pytest.mark.skipif(os.name != "posix", reason="process groups require POSIX")
 def test_low_limit_terminates_child_process_tree(tmp_path: Path) -> None:
+    """A grandchild over the limit: the watchdog signals the whole tree, the
+    grandchild's SIGTERM handler runs (its marker) and the tree is gone."""
+
     marker = tmp_path / "child-terminated"
     pid_path = tmp_path / "child.pid"
     child = tmp_path / "child.py"
+    # The SIGTERM can arrive at any bytecode of the child, an import or a
+    # codec lookup included (a handler that opened its marker with
+    # Path.write_text inside the import of encodings.ascii truncated it and
+    # then failed the lookup: an empty marker). So the handler makes system
+    # calls only, on a descriptor opened before the payload; the child
+    # writes its own pid before it, when nothing can signal it yet. No fixed
+    # sleep stands for "until killed" (a starved core took over 30 s to get
+    # there): the child lasts the run's timeout, the parent waits on it.
+    # Meanwhile the child writes a byte of every page of its payload: an idle
+    # payload of zeros went to (z)swap under host memory pressure, below the
+    # RSS limit, and the watchdog never fired.
     child.write_text(
         """
 import os
 import signal
 import sys
 import time
-from pathlib import Path
 
-marker = Path(sys.argv[1])
+marker = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+pid = os.open(sys.argv[2], os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+os.write(pid, str(os.getpid()).encode("ascii"))
+os.close(pid)
 
 def terminate(_signum, _frame):
-    marker.write_text("terminated", encoding="ascii")
-    raise SystemExit(0)
+    os.write(marker, b"terminated")
+    os._exit(0)
 
 signal.signal(signal.SIGTERM, terminate)
 payload = bytearray(96 * 1024 * 1024)
-marker.with_suffix(".ready").write_text(str(len(payload)), encoding="ascii")
-time.sleep(30)
+page = os.sysconf("SC_PAGE_SIZE")
+ones = b"\x01" * len(range(0, len(payload), page))
+end = time.monotonic() + float(sys.argv[3])
+while time.monotonic() < end:
+    payload[::page] = ones
+    time.sleep(0.01)
 """.lstrip(),
         encoding="utf-8",
     )
@@ -881,50 +951,61 @@ time.sleep(30)
         """
 import subprocess
 import sys
-import time
-from pathlib import Path
 
-child = subprocess.Popen([sys.executable, sys.argv[1], sys.argv[2]])
-Path(sys.argv[3]).write_text(str(child.pid), encoding="ascii")
-time.sleep(30)
+subprocess.Popen([sys.executable, *sys.argv[1:]]).wait()
 """.lstrip(),
         encoding="utf-8",
     )
 
-    completed = subprocess.run(
-        [
-            sys.executable,
-            str(WATCHDOG),
-            "--limit-mib",
-            "64",
-            "--poll-interval",
-            "0.02",
-            "--terminate-grace",
-            "1",
-            "--",
-            sys.executable,
-            str(parent),
-            str(child),
-            str(marker),
-            str(pid_path),
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
+    # Only a failure waits this long: the watchdog returns as soon as the
+    # tree is gone.
+    timeout = 600.0
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(WATCHDOG),
+                "--limit-mib",
+                "64",
+                "--poll-interval",
+                "0.02",
+                # Generous: a loaded runner may not schedule the child's
+                # SIGTERM handler before a short grace's SIGKILL.
+                "--terminate-grace",
+                "10",
+                "--",
+                sys.executable,
+                str(parent),
+                str(child),
+                str(marker),
+                str(pid_path),
+                str(timeout),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    finally:
+        # A failed run leaves no sleeping tree behind (the parent's group).
+        if pid_path.exists():
+            orphan = int(pid_path.read_text(encoding="ascii"))
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.killpg(os.getpgid(orphan), signal.SIGKILL)
 
-    assert completed.returncode == watchdog.MEMORY_LIMIT_EXIT_CODE
+    assert completed.returncode == watchdog.MEMORY_LIMIT_EXIT_CODE, completed.stderr
     assert "memory limit exceeded" in completed.stderr
     assert f"reason={watchdog.RSS_LIMIT_REASON}" in completed.stderr or (
         f"reason={watchdog.DARWIN_PHYSICAL_FOOTPRINT_LIMIT_REASON}" in completed.stderr
     )
-    assert marker.read_text(encoding="ascii") == "terminated"
+    # The watchdog waited for the tree (its zombies included); its last
+    # member's reaping by init may still lag on a loaded host.
     child_pid = int(pid_path.read_text(encoding="ascii"))
-    deadline = time.monotonic() + 3
+    deadline = time.monotonic() + 30
     while _pid_exists(child_pid) and time.monotonic() < deadline:
         time.sleep(0.02)
     assert not _pid_exists(child_pid)
+    assert marker.read_text(encoding="ascii") == "terminated"
 
 
 def test_ci_helper_is_sdist_only_for_packaged_profiling_runtime() -> None:
@@ -969,7 +1050,11 @@ def test_tests_workflow_guards_every_heavy_validation_phase() -> None:
     guarded = "tools/ci/memory_watchdog.py --limit-gib 30 --"
     # The installer stages the native runtime within its guarded invocation.
     # Restricted-mode and ordinary integration checks use separate invocations.
-    assert workflow.count(guarded) == 8
+    # The light one-loop tests are the ninth guarded invocation; they run
+    # without the licence secret (the package's own Symbolica library key).
+    assert workflow.count(guarded) == 9
+    assert "secrets.SYMBOLICA_LICENSE" not in text
+    assert f"env -u SYMBOLICA_LICENSE .venv/bin/python {guarded}" in workflow
     for heavy_command in (
         "dependencies/install_dependencies.py",
         "tests/unit/test_generation_execution_schema.py",

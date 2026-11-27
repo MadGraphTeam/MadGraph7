@@ -41,7 +41,10 @@ from ..evaluators.symbolica_compile import (
     _compile_symbolica_outputs,
     _symbolica_evaluator_kwargs,
 )
-from ..evaluators.symbolica_helpers import _symbolica_evaluator_artifact_manifest
+from ..evaluators.symbolica_helpers import (
+    _symbolica_evaluator_artifact_manifest,
+    saved_evaluator,
+)
 from ..evaluators.symbolica_settings import SymbolicaEvaluatorSettings
 from .base import Model
 from .loading import CompiledModel
@@ -100,6 +103,9 @@ _PATH_FIELDS = frozenset(
 )
 _PATH_LIST_FIELDS = frozenset(("payload_paths",))
 _RECURRENCE_PREFLIGHT_PACK_DIGEST = "0" * 63 + "1"
+# DirectFinalizationRow / DirectClosureRow ``component_count`` (std::uint16_t,
+# the Rust Direct-Arena row ABI): checked once per emitted kernel.
+_DIRECT_ROW_COMPONENT_COUNT_MAX = (1 << 16) - 1
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
@@ -875,7 +881,7 @@ def _compile_native_split_real_kernel(
         raise PreparedModelBundleError(
             f"prepared native kernel {kernel.kernel_id} cannot retain exact state"
         )
-    evaluator_state_bytes = save()
+    evaluator_state_bytes = saved_evaluator(exact_evaluator)
     if not isinstance(evaluator_state_bytes, bytes) or not evaluator_state_bytes:
         raise PreparedModelBundleError(
             f"prepared native kernel {kernel.kernel_id} returned invalid exact state"
@@ -1248,6 +1254,7 @@ def _native_split_real_custom_header(
         "#include <cstdint>",
     ]
     if direct_spec is not None:
+        lines.extend(("#include <memory>", "#include <new>"))
         lines.extend(
             (
                 "",
@@ -1361,6 +1368,8 @@ static_assert(offsetof(DirectClosureRow, selector_domain_id) == 32u);
 
 static constexpr std::uint32_t PAC_DIRECT_NONE = 0xffffffffu;
 static constexpr std::uint32_t PAC_DIRECT_INITIALIZE = 1u;
+// A tuning default, not a capability bound: Symbolica scratch up to this
+// many doubles is taken on the stack, a larger one on the heap.
 static constexpr unsigned long PAC_DIRECT_MAX_SCRATCH_DOUBLES = 65536ul;
 
 static inline bool pac_direct_plane_index(
@@ -1500,6 +1509,13 @@ def _native_direct_export(
             f"native direct kernel {kernel.kernel_id} output exceeds destination "
             "component count"
         )
+    widest = max(spec.destination_component_counts)
+    if widest > _DIRECT_ROW_COMPONENT_COUNT_MAX:
+        raise PreparedModelBundleError(
+            f"native direct kernel {kernel.kernel_id} destination current has "
+            f"{widest} components, more than the {_DIRECT_ROW_COMPONENT_COUNT_MAX} "
+            "the Direct-Arena row ABI's uint16 component_count field holds"
+        )
     if spec.role == "closure" and spec.output_arity != 1:
         raise PreparedModelBundleError(
             "native Direct-Arena closure callables must produce one amplitude"
@@ -1548,13 +1564,20 @@ def _native_direct_export(
             "  const unsigned long raw_buffer_len = "
             f"{raw_function_name}_realf64_get_buffer_len();"
         ),
-        ("  if (raw_buffer_len > PAC_DIRECT_MAX_SCRATCH_DOUBLES) return 3;"),
         (
-            "  double* storage = static_cast<double*>("
-            "__builtin_alloca(sizeof(double) * "
-            f"({2 * kernel.input_arity}u + {2 * kernel.output_dimension}u + "
-            "raw_buffer_len)));"
+            "  const unsigned long scratch_len = "
+            f"{2 * kernel.input_arity}u + {2 * kernel.output_dimension}u + "
+            "raw_buffer_len;"
         ),
+        "  std::unique_ptr<double[]> heap_storage;",
+        "  double* storage = nullptr;",
+        "  if (raw_buffer_len <= PAC_DIRECT_MAX_SCRATCH_DOUBLES) {",
+        "    storage = static_cast<double*>("
+        "__builtin_alloca(sizeof(double) * scratch_len));",
+        "  } else {",
+        "    heap_storage.reset(new (std::nothrow) double[scratch_len]);",
+        "    storage = heap_storage.get();",
+        "  }",
         "  if (storage == nullptr) return 3;",
         "  double* split_params = storage;",
         f"  double* split_out = split_params + {2 * kernel.input_arity}u;",

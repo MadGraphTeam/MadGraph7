@@ -15,6 +15,9 @@ import pytest
 
 import madspace as ms
 
+# event streams run on a CPU context
+pytestmark = pytest.mark.cpu_only
+
 CM_ENERGY = 1000.0
 PIDS = [11, -11, 1, -1, 21]
 SEED = 1234

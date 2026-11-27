@@ -30,6 +30,9 @@ def _ensure_symbolica() -> None:
     with _SYMBOLICA_LOCK:
         if _SYMBOLICA_READY:
             return
+        from pyamplicol.licensing import ensure_spenso_thread_policy
+
+        ensure_spenso_thread_policy()
         from symbolica import E as expression_parser
         from symbolica import Expression as expression_type
         from symbolica import Replacement as replacement_type

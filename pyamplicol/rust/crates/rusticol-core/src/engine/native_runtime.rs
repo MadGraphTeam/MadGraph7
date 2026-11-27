@@ -115,6 +115,22 @@ impl LazyProcessPhysicsV1 {
     }
 }
 
+/// Scale resolved values by an exact process-group factor: multiply by the
+/// numerator, then divide by the denominator. A precomputed ratio would round
+/// differently, and the recurrence export documents this order.
+pub(super) fn apply_rational_factor(values: &mut [f64], factor: NativeRationalFactor) {
+    let NativeRationalFactor {
+        numerator,
+        denominator,
+    } = factor;
+    if numerator != denominator {
+        let (numerator, denominator) = (numerator as f64, denominator as f64);
+        for value in values {
+            *value = *value * numerator / denominator;
+        }
+    }
+}
+
 /// Public metadata of `selection`: the representative physics remapped to the
 /// requested order and, for a process-group member, relabelled as the member.
 fn public_process_physics(
@@ -1677,7 +1693,7 @@ impl NativeRuntime {
         }
     }
 
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     #[allow(clippy::too_many_arguments)]
     fn finish_dense_load(
@@ -1826,7 +1842,7 @@ impl NativeRuntime {
     // in one Apple section; evaluation code remains in the ordinary text
     // section and non-Apple builds retain their normal placement.
     #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     fn load_recurrence_bootstrap(
         bootstrap: crate::artifact::RecurrenceBootstrapArtifact,
@@ -1877,7 +1893,7 @@ impl NativeRuntime {
         )
     }
 
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     pub fn load(
         artifact_path: impl AsRef<Path>,
@@ -2297,16 +2313,7 @@ impl NativeRuntime {
         let Some(group) = self.process_group.as_deref() else {
             return;
         };
-        let NativeRationalFactor {
-            numerator,
-            denominator,
-        } = group.factor;
-        if numerator != denominator {
-            let (numerator, denominator) = (numerator as f64, denominator as f64);
-            for value in values {
-                *value = *value * numerator / denominator;
-            }
-        }
+        apply_rational_factor(values, group.factor);
     }
 
     /// Translate caller color IDs to the IDs the execution lanes use.
@@ -2964,6 +2971,110 @@ impl NativeRuntime {
         )?;
         self.apply_process_group_factor(output);
         Ok(())
+    }
+
+    /// Amplitude and squared coupling-order axes of a recurrence artifact.
+    pub fn amplitude_order_catalog(&self) -> RusticolResult<&AmplitudeOrderCatalog> {
+        match &self.execution_lane {
+            #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+            NativeExecutionLane::Recurrence(runtime) => Ok(runtime.amplitude_order_catalog()),
+            _ => Err(RusticolError::compatibility(
+                "squared coupling-order partials require a recurrence artifact",
+            )),
+        }
+    }
+
+    /// Amplitude and squared coupling-order axes as compact JSON.
+    ///
+    /// The `rusticol-amplitude-orders-v1` object lists the coupling-order
+    /// `names`, the amplitude `components` (powers per name) and the
+    /// `squared` orders with their ordered component `pairs`; partial output
+    /// columns follow `squared`.
+    pub fn amplitude_orders_json(&self) -> RusticolResult<String> {
+        let catalog = self.amplitude_order_catalog()?;
+        let squared = catalog
+            .squared_orders()
+            .iter()
+            .map(|order| serde_json::json!({"powers": order.powers(), "pairs": order.pairs()}))
+            .collect::<Vec<_>>();
+        Ok(serde_json::json!({
+            "kind": "rusticol-amplitude-orders-v1",
+            "names": catalog.names(),
+            "components": catalog.components(),
+            "squared": squared,
+        })
+        .to_string())
+    }
+
+    /// Evaluate totals and squared coupling-order partials in one pass.
+    ///
+    /// `partials` is point-major with one column per squared order of
+    /// [`Self::amplitude_order_catalog`]. Totals are bitwise those of
+    /// [`Self::evaluate_f64_into_with_selectors`] with the same global
+    /// selectors; partials sum to them up to rounding.
+    pub fn evaluate_orders_f64_into_with_selectors(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        helicity_ids: Option<&[String]>,
+        color_ids: Option<&[String]>,
+        totals: &mut [f64],
+        partials: &mut [f64],
+    ) -> RusticolResult<()> {
+        validate_flat_momentum_shape(momenta.len(), point_count, self.runtime.external_count)?;
+        if totals.len() != point_count {
+            return Err(RusticolError::invalid_argument(format!(
+                "evaluation output has length {}, expected {point_count}",
+                totals.len()
+            )));
+        }
+        self.validate_selector_capabilities(helicity_ids.is_some(), color_ids.is_some())?;
+        let color_ids = self.execution_color_ids(color_ids);
+        #[cfg(any(feature = "f64-compiled", feature = "f64-symjit"))]
+        {
+            let NativeExecutionLane::Recurrence(runtime) = &mut self.execution_lane else {
+                return Err(RusticolError::compatibility(
+                    "squared coupling-order partials require a recurrence artifact",
+                ));
+            };
+            let crossing_lookup = std::mem::take(&mut self.input_crossing_map);
+            let mut selector_scratch = std::mem::take(&mut self.point_selector_scratch);
+            let result = (|| {
+                let selected_helicities = selector_scratch
+                    .helicity_selector_sets
+                    .resolve(helicity_ids, "helicity")?;
+                let selected_colors = selector_scratch
+                    .color_selector_sets
+                    .resolve(color_ids.as_deref(), "color component")?;
+                let batch = F64MomentumBatchView::from_contiguous_prevalidated(
+                    momenta,
+                    point_count,
+                    self.runtime.external_count,
+                    crossing_lookup.as_deref(),
+                )?;
+                runtime.run_order_partials_f64_view_into(
+                    &mut self.runtime,
+                    batch,
+                    selected_helicities,
+                    selected_colors,
+                    totals,
+                    partials,
+                )
+            })();
+            self.input_crossing_map = crossing_lookup;
+            self.point_selector_scratch = selector_scratch;
+            result?;
+            self.apply_process_group_factor(totals);
+            self.apply_process_group_factor(partials);
+            Ok(())
+        }
+        #[cfg(not(any(feature = "f64-compiled", feature = "f64-symjit")))]
+        {
+            let _ = (color_ids, partials);
+            Err(RusticolError::compatibility(
+                "squared coupling-order partials require a recurrence artifact",
+            ))
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -4523,10 +4634,11 @@ impl NativeRuntime {
         if self.execution_lane.is_recurrence() {
             return Err(recurrence_parity_pending("higher-precision evaluation"));
         }
+        self.ensure_exact_model_parameters()?;
         if decimal_digits == 32 {
             let batch = self.prepare_double_batch(momenta, point_count)?;
             let (mut values, _profile) = self.runtime.run_double(&batch)?;
-            self.apply_process_group_factor_high_precision(&mut values);
+            self.apply_process_group_factor_high_precision(&mut values, None);
             return Ok(NativeDecimalEvaluation {
                 values: format_decimal_values(values, decimal_digits),
                 decimal_digits,
@@ -4535,16 +4647,103 @@ impl NativeRuntime {
         let binary_precision = decimal_digits_to_bits(decimal_digits);
         let batch = self.prepare_float_batch(momenta, point_count, binary_precision)?;
         let (mut values, _profile) = self.runtime.run_float(&batch, binary_precision)?;
-        self.apply_process_group_factor_high_precision(&mut values);
+        self.apply_process_group_factor_high_precision(&mut values, Some(binary_precision));
         Ok(NativeDecimalEvaluation {
             values: format_decimal_values(values, decimal_digits),
             decimal_digits,
         })
     }
 
+    /// One logical model parameter at `decimal_digits` significant digits:
+    /// the value [`Self::evaluate_with_precision`] uses at that precision.
+    /// 16 digits give the binary64 value. Otherwise an external parameter is
+    /// its binary64 value promoted exactly, and a derived one (couplings, and
+    /// masses such as M_W in the G_mu scheme) comes from the compiled model's
+    /// exact definitions at the working precision: double-double for 32
+    /// digits, else ceil(digits * log2(10)) bits. Momenta built on these
+    /// masses put external particles on the amplitude's mass shell at every
+    /// precision. Returns the real and imaginary parts as decimal strings.
     #[cfg(feature = "symbolica-runtime")]
-    fn apply_process_group_factor_high_precision<T>(&self, values: &mut [T])
-    where
+    pub fn model_parameter_value_with_precision(
+        &mut self,
+        name: &str,
+        decimal_digits: u32,
+    ) -> Result<(String, String), RusticolError> {
+        if decimal_digits == 0 {
+            return Err(RusticolError::unsupported_precision(
+                "precision must be a positive number of decimal digits",
+            ));
+        }
+        let (real, imaginary) = self.model_parameter_value(name)?;
+        let parts = if decimal_digits == 16 {
+            format_decimal_values(vec![real, imaginary], decimal_digits)
+        } else {
+            self.ensure_exact_model_parameters()?;
+            if decimal_digits == 32 {
+                let (real, imaginary) = self
+                    .runtime
+                    .generic_model_parameter_value::<DoubleFloat>(name, None)?;
+                format_decimal_values(vec![real, imaginary], decimal_digits)
+            } else {
+                let binary_precision = decimal_digits_to_bits(decimal_digits);
+                let (real, imaginary) = self
+                    .runtime
+                    .generic_model_parameter_value::<Float>(name, Some(binary_precision))?;
+                format_decimal_values(vec![real, imaginary], decimal_digits)
+            }
+        };
+        let [real, imaginary]: [String; 2] = parts
+            .try_into()
+            .map_err(|_| RusticolError::integrity("a parameter value has two components"))?;
+        Ok((real, imaginary))
+    }
+
+    /// The mass of particle `pdg` (PDG code) that [`Self::evaluate_with_precision`]
+    /// gives its external wavefunctions at `decimal_digits` digits, as a
+    /// decimal string: the binary64 mass for 16 digits, otherwise the mass at
+    /// the working precision (a mass that follows a derived parameter is
+    /// derived at that precision, as the couplings are). Momenta built on it
+    /// put the particle on the amplitude's mass shell.
+    #[cfg(feature = "symbolica-runtime")]
+    pub fn particle_mass_with_precision(
+        &mut self,
+        pdg: i32,
+        decimal_digits: u32,
+    ) -> Result<String, RusticolError> {
+        if decimal_digits == 0 {
+            return Err(RusticolError::unsupported_precision(
+                "precision must be a positive number of decimal digits",
+            ));
+        }
+        let binary64 = self.runtime.current_particle_mass(pdg)?;
+        let mut parts = if decimal_digits == 16 {
+            format_decimal_values(vec![binary64], decimal_digits)
+        } else {
+            self.ensure_exact_model_parameters()?;
+            if decimal_digits == 32 {
+                let mass = self
+                    .runtime
+                    .generic_particle_mass::<DoubleFloat>(pdg, None)?;
+                format_decimal_values(vec![mass], decimal_digits)
+            } else {
+                let binary_precision = decimal_digits_to_bits(decimal_digits);
+                let mass = self
+                    .runtime
+                    .generic_particle_mass::<Float>(pdg, Some(binary_precision))?;
+                format_decimal_values(vec![mass], decimal_digits)
+            }
+        };
+        parts
+            .pop()
+            .ok_or_else(|| RusticolError::integrity("a particle mass has one value"))
+    }
+
+    #[cfg(feature = "symbolica-runtime")]
+    pub(super) fn apply_process_group_factor_high_precision<T>(
+        &self,
+        values: &mut [T],
+        binary_precision: Option<u32>,
+    ) where
         T: RusticolHighPrecisionNumber,
         Complex<T>: Real + EvaluationDomain,
     {
@@ -4553,8 +4752,8 @@ impl NativeRuntime {
             denominator,
         } = self.process_group_factor();
         if numerator != denominator {
-            let numerator = T::from(numerator as f64);
-            let denominator = T::from(denominator as f64);
+            let numerator = T::from_f64_constant(numerator as f64, binary_precision);
+            let denominator = T::from_f64_constant(denominator as f64, binary_precision);
             for value in values {
                 *value = value.clone() * numerator.clone() / denominator.clone();
             }
@@ -4622,6 +4821,7 @@ impl NativeRuntime {
             self.runtime.physics.clone().ok_or_else(|| {
                 RusticolError::artifact("resolved physics metadata is unavailable")
             })?;
+        self.ensure_exact_model_parameters()?;
         let mut evaluation = if decimal_digits == 32 {
             let batch = self.prepare_double_batch(momenta, point_count)?;
             let (mut resolved, _profile) = self.runtime.run_resolved_generic(
@@ -4630,7 +4830,7 @@ impl NativeRuntime {
                 selected_helicities.as_ref(),
                 selected_colors.as_ref(),
             )?;
-            self.apply_process_group_factor_high_precision(&mut resolved.values);
+            self.apply_process_group_factor_high_precision(&mut resolved.values, None);
             decimal_resolved_evaluation(resolved, &physics.manifest, decimal_digits)?
         } else {
             let binary_precision = decimal_digits_to_bits(decimal_digits);
@@ -4641,11 +4841,215 @@ impl NativeRuntime {
                 selected_helicities.as_ref(),
                 selected_colors.as_ref(),
             )?;
-            self.apply_process_group_factor_high_precision(&mut resolved.values);
+            self.apply_process_group_factor_high_precision(
+                &mut resolved.values,
+                Some(binary_precision),
+            );
             decimal_resolved_evaluation(resolved, &physics.manifest, decimal_digits)?
         };
         self.publish_color_ids(&mut evaluation.color_ids);
         Ok(evaluation)
+    }
+
+    /// The formal-N_c expansion of a graded artifact (pyAmpliCol
+    /// `color.accuracy = "strict-lc"`/`"strict-nlc"`, or `color.graded` full
+    /// colour): its kept N_c degrees and their contracted colour components.
+    /// `None` for an artifact without N_c degrees (inherited LC/NLC, full).
+    pub fn nc_expansion(&self) -> RusticolResult<Option<NativeNcExpansion>> {
+        let physics = self.physics_v1.get()?;
+        let Some(degrees) = physics.nc_degrees() else {
+            return Ok(None);
+        };
+        let record = physics.extensions.get("nc_expansion").ok_or_else(|| {
+            RusticolError::artifact("graded runtime physics has no nc_expansion record")
+        })?;
+        let accuracy = record
+            .get("accuracy")
+            .and_then(Value::as_str)
+            .ok_or_else(|| RusticolError::artifact("nc_expansion record has no accuracy"))?
+            .to_string();
+        let reference_degree = record
+            .get("reference_degree")
+            .and_then(Value::as_i64)
+            .and_then(|value| i32::try_from(value).ok())
+            .ok_or_else(|| {
+                RusticolError::artifact("nc_expansion record has no reference degree")
+            })?;
+        let recorded = record
+            .get("degrees")
+            .and_then(Value::as_array)
+            .and_then(|values| {
+                values
+                    .iter()
+                    .map(|value| value.as_i64().and_then(|value| i32::try_from(value).ok()))
+                    .collect::<Option<Vec<_>>>()
+            });
+        if recorded.as_ref() != Some(&degrees) {
+            return Err(RusticolError::artifact(
+                "nc_expansion degrees do not match the graded colour components",
+            ));
+        }
+        let mut color_ids = physics
+            .color_components
+            .iter()
+            .map(|component| component.id().to_string())
+            .collect::<Vec<_>>();
+        self.publish_color_ids(&mut color_ids);
+        Ok(Some(NativeNcExpansion {
+            accuracy,
+            reference_degree,
+            degrees,
+            color_ids,
+        }))
+    }
+
+    fn require_nc_degrees(&self) -> RusticolResult<Vec<i32>> {
+        self.physics_v1.get()?.nc_degrees().ok_or_else(|| {
+            RusticolError::compatibility(
+                "graded evaluation needs an artifact generated with color.accuracy='strict-lc' \
+                 or 'strict-nlc', or with color.graded (full colour)",
+            )
+        })
+    }
+
+    /// Evaluate a graded artifact split by power of N_c, summed over the
+    /// selected helicities (all by default): `values[point * degrees + d]` is
+    /// the contribution of N_c degree `degrees[d]` at N_c = 3. The degrees of
+    /// a point sum to [`Self::evaluate_f64`] up to rounding; per helicity,
+    /// [`Self::evaluate_resolved_f64`] reports the degrees as its colour axis.
+    pub fn evaluate_graded_f64(
+        &mut self,
+        momenta: &[f64],
+        point_count: usize,
+        helicity_ids: Option<&[String]>,
+    ) -> RusticolResult<NativeGradedEvaluation> {
+        let degrees = self.require_nc_degrees()?;
+        let resolved = self.evaluate_resolved_f64(momenta, point_count, helicity_ids, None)?;
+        let values = sum_resolved_helicities(
+            resolved.values,
+            resolved.point_count,
+            resolved.helicity_ids.len(),
+            resolved.color_ids.len(),
+            degrees.len(),
+        )?;
+        Ok(NativeGradedEvaluation {
+            values,
+            point_count: resolved.point_count,
+            degrees,
+            helicity_ids: resolved.helicity_ids,
+        })
+    }
+
+    /// [`Self::evaluate_graded_f64`] at `decimal_digits` (32: double-double;
+    /// otherwise arbitrary precision of at least that many digits), compiled
+    /// artifacts only, as [`Self::evaluate_resolved_with_precision`].
+    #[cfg(feature = "symbolica-runtime")]
+    pub fn evaluate_graded_with_precision(
+        &mut self,
+        momenta: &[String],
+        point_count: usize,
+        decimal_digits: u32,
+        helicity_ids: Option<&[String]>,
+    ) -> RusticolResult<NativeDecimalGradedEvaluation> {
+        let degrees = self.require_nc_degrees()?;
+        if decimal_digits == 0 {
+            return Err(RusticolError::unsupported_precision(
+                "precision must be a positive number of decimal digits",
+            ));
+        }
+        if decimal_digits == 16 {
+            let values = momenta
+                .iter()
+                .map(|value| {
+                    value.parse::<f64>().map_err(|error| {
+                        RusticolError::invalid_argument(format!(
+                            "could not parse f64 momentum component {value:?}: {error}"
+                        ))
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let graded = self.evaluate_graded_f64(&values, point_count, helicity_ids)?;
+            let totals = graded.totals();
+            return Ok(NativeDecimalGradedEvaluation {
+                values: format_decimal_values(graded.values, decimal_digits),
+                totals: format_decimal_values(totals, decimal_digits),
+                point_count: graded.point_count,
+                degrees,
+                helicity_ids: graded.helicity_ids,
+                decimal_digits,
+            });
+        }
+        if self.execution_lane.is_eager() {
+            return Err(eager_parity_pending("graded higher-precision evaluation"));
+        }
+        if self.execution_lane.is_recurrence() {
+            return Err(recurrence_parity_pending(
+                "graded higher-precision evaluation",
+            ));
+        }
+        self.validate_selector_capabilities(helicity_ids.is_some(), false)?;
+        let selected_helicities = selector_set(helicity_ids, "helicity")?;
+        let physics =
+            self.runtime.physics.clone().ok_or_else(|| {
+                RusticolError::artifact("resolved physics metadata is unavailable")
+            })?;
+        self.ensure_exact_model_parameters()?;
+        let helicity_ids_of = |indices: &[usize]| {
+            indices
+                .iter()
+                .map(|index| physics.manifest.helicities[*index].id.clone())
+                .collect::<Vec<_>>()
+        };
+        if decimal_digits == 32 {
+            let batch = self.prepare_double_batch(momenta, point_count)?;
+            let (mut resolved, _profile) = self.runtime.run_resolved_generic(
+                &batch,
+                None,
+                selected_helicities.as_ref(),
+                None,
+            )?;
+            self.apply_process_group_factor_high_precision(&mut resolved.values, None);
+            let values = sum_resolved_helicities(
+                resolved.values,
+                resolved.point_count,
+                resolved.helicity_indices.len(),
+                resolved.color_indices.len(),
+                degrees.len(),
+            )?;
+            return Ok(decimal_graded_evaluation(
+                values,
+                resolved.point_count,
+                degrees,
+                helicity_ids_of(&resolved.helicity_indices),
+                decimal_digits,
+            ));
+        }
+        let binary_precision = decimal_digits_to_bits(decimal_digits);
+        let batch = self.prepare_float_batch(momenta, point_count, binary_precision)?;
+        let (mut resolved, _profile) = self.runtime.run_resolved_generic(
+            &batch,
+            Some(binary_precision),
+            selected_helicities.as_ref(),
+            None,
+        )?;
+        self.apply_process_group_factor_high_precision(
+            &mut resolved.values,
+            Some(binary_precision),
+        );
+        let values = sum_resolved_helicities(
+            resolved.values,
+            resolved.point_count,
+            resolved.helicity_indices.len(),
+            resolved.color_indices.len(),
+            degrees.len(),
+        )?;
+        Ok(decimal_graded_evaluation(
+            values,
+            resolved.point_count,
+            degrees,
+            helicity_ids_of(&resolved.helicity_indices),
+            decimal_digits,
+        ))
     }
 
     pub fn set_model_parameters(
@@ -4723,6 +5127,83 @@ impl NativeRuntime {
         let overrides = parse_complex_parameter_overrides(&text, path)
             .map_err(|error| RusticolError::model_parameter(error.to_string()))?;
         self.set_model_parameters(&overrides)
+    }
+
+    /// The binary64 masses the external wavefunctions take, per external
+    /// leg in the caller's (public) leg order (a particle absent from the
+    /// runtime's mass table is massless, as `sources::particle_mass_from_map`),
+    /// and the number of initial states, which come first: the targets of the
+    /// binary64 kinematics improvement (m-lit lit-psimprove (G6)).
+    pub fn external_masses_f64(&self) -> Result<(Vec<f64>, usize), RusticolError> {
+        let particles = self.external_particles()?;
+        let initial = particles
+            .iter()
+            .take_while(|particle| particle.role == "initial")
+            .count();
+        if initial == 0
+            || initial == particles.len()
+            || particles[initial..]
+                .iter()
+                .any(|particle| particle.role == "initial")
+        {
+            return Err(RusticolError::invalid_argument(
+                "the kinematics improvement needs the initial states first, then the final states",
+            ));
+        }
+        let masses = particles
+            .iter()
+            .map(|particle| {
+                self.runtime
+                    .current_particle_mass(particle.pdg)
+                    .or_else(|_| self.runtime.current_particle_mass(-particle.pdg))
+                    .unwrap_or(0.0)
+            })
+            .collect();
+        Ok((masses, initial))
+    }
+
+    /// The binary64 kinematics improvement of flat binary64 points
+    /// (`[point][leg][E, px, py, pz]`, the caller's leg order, physical
+    /// momenta) with `variant` and MadLoop's chain, toward
+    /// [`Self::external_masses_f64`] (m-lit lit-psimprove: the binary64
+    /// switch of the tree C ABI and of the Python tree runtime): the points
+    /// to evaluate and one record per point.
+    pub fn improve_f64_points(
+        &self,
+        momenta: &[f64],
+        point_count: usize,
+        variant: crate::kinematics_improvement::Variant,
+    ) -> Result<(Vec<f64>, Vec<crate::kinematics_improvement::Record>), RusticolError> {
+        use crate::kinematics_improvement::{Tolerances, binary64};
+
+        let external_count = self.external_count();
+        validate_flat_momentum_shape(momenta.len(), point_count, external_count)?;
+        let (masses, initial) = self.external_masses_f64()?;
+        let tolerances = Tolerances::default();
+        let mut improved = Vec::with_capacity(momenta.len());
+        let mut records = Vec::with_capacity(point_count);
+        for point in momenta.chunks_exact(4 * external_count) {
+            let legs: Vec<[f64; 4]> = point
+                .chunks_exact(4)
+                .map(|leg| [leg[0], leg[1], leg[2], leg[3]])
+                .collect();
+            let outcome =
+                binary64::improve_point(&legs, initial, &masses, variant, true, &tolerances);
+            improved.extend(outcome.legs.iter().flatten());
+            records.push(outcome.record);
+        }
+        Ok((improved, records))
+    }
+
+    /// The pending warnings, not consumed (the tree C ABI adds its
+    /// kinematics record to them, m-lit lit-psimprove (G4)).
+    pub fn pending_warnings(&self) -> &[String] {
+        &self.pending_warnings
+    }
+
+    /// Whether warnings are muted.
+    pub fn warnings_muted(&self) -> bool {
+        self.warnings_muted
     }
 
     pub fn mute_warnings(&mut self) {
@@ -4814,7 +5295,7 @@ impl NativeRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    fn prepare_double_batch(
+    pub(super) fn prepare_double_batch(
         &self,
         momenta: &[String],
         point_count: usize,
@@ -4839,7 +5320,7 @@ impl NativeRuntime {
     }
 
     #[cfg(feature = "symbolica-runtime")]
-    fn prepare_float_batch(
+    pub(super) fn prepare_float_batch(
         &self,
         momenta: &[String],
         point_count: usize,
@@ -5002,7 +5483,7 @@ fn validate_flat_momentum_shape(
 }
 
 #[cfg(feature = "symbolica-runtime")]
-fn format_decimal_values<T: std::fmt::LowerExp>(
+pub(super) fn format_decimal_values<T: std::fmt::LowerExp>(
     values: Vec<T>,
     decimal_digits: u32,
 ) -> Vec<String> {
@@ -5055,6 +5536,75 @@ where
         color_ids,
         decimal_digits,
     })
+}
+
+/// Sum `[point][helicity][color]` resolved values over helicities into
+/// `[point][color]` (the N_c degrees of a graded artifact).
+///
+/// The sums start from the first helicity's values (no separate zero), so an
+/// arbitrary-precision sum keeps the working precision of its terms.
+fn sum_resolved_helicities<T>(
+    values: Vec<T>,
+    point_count: usize,
+    helicity_count: usize,
+    color_count: usize,
+    expected_color_count: usize,
+) -> RusticolResult<Vec<T>>
+where
+    T: Clone + std::ops::AddAssign,
+{
+    if color_count != expected_color_count
+        || helicity_count == 0
+        || values.len() != point_count * helicity_count * color_count
+    {
+        return Err(RusticolError::internal(
+            "graded evaluation returned an inconsistent resolved shape",
+        ));
+    }
+    let mut out = Vec::with_capacity(point_count * color_count);
+    for point in 0..point_count {
+        let row = point * helicity_count * color_count;
+        out.extend(values[row..row + color_count].iter().cloned());
+        for helicity in 1..helicity_count {
+            for color in 0..color_count {
+                out[point * color_count + color] +=
+                    values[row + helicity * color_count + color].clone();
+            }
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(feature = "symbolica-runtime")]
+fn decimal_graded_evaluation<T>(
+    values: Vec<T>,
+    point_count: usize,
+    degrees: Vec<i32>,
+    helicity_ids: Vec<String>,
+    decimal_digits: u32,
+) -> NativeDecimalGradedEvaluation
+where
+    T: Clone + std::ops::AddAssign + std::fmt::LowerExp,
+{
+    let totals = values
+        .chunks(degrees.len().max(1))
+        .map(|point| {
+            let mut iter = point.iter().cloned();
+            let mut total = iter.next().expect("graded evaluation has a degree");
+            for value in iter {
+                total += value;
+            }
+            total
+        })
+        .collect::<Vec<_>>();
+    NativeDecimalGradedEvaluation {
+        values: format_decimal_values(values, decimal_digits),
+        totals: format_decimal_values(totals, decimal_digits),
+        point_count,
+        degrees,
+        helicity_ids,
+        decimal_digits,
+    }
 }
 
 pub(super) fn parse_public_kinematics_point(

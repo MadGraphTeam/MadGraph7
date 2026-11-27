@@ -1,0 +1,2128 @@
+{
+ "point": {
+  "sqrt_s": 20.0,
+  "index": 0,
+  "seed": 1,
+  "momenta_hex": [
+   [
+    "0x1.4000000000000p+3",
+    "0x0.0p+0",
+    "0x0.0p+0",
+    "0x1.4000000000000p+3"
+   ],
+   [
+    "0x1.4000000000000p+3",
+    "0x0.0p+0",
+    "0x0.0p+0",
+    "-0x1.4000000000000p+3"
+   ],
+   [
+    "0x1.3ffffffffffffp+3",
+    "0x1.e2fb56247673bp+2",
+    "-0x1.2541aee163b5ap+2",
+    "-0x1.c384084d604c8p+1"
+   ],
+   [
+    "0x1.3ffffffffffffp+3",
+    "-0x1.e2fb56247673bp+2",
+    "0x1.2541aee163b5ap+2",
+    "0x1.c384084d604c8p+1"
+   ]
+  ]
+ },
+ "build": "TIRust 632ed10 + bridge v7 (f453cd7a), poles-only 0001 b560e08e, oneloop cdbc912",
+ "dumps": {
+  "cache_on": "/tmp/claude-1134/-shared-external-madloop-onia/6136fd6c-8e41-47c7-a479-0995fb3044a9/scratchpad/twop8/fx/fx_gg_632ed10.json.gz",
+  "cache_off": "/tmp/claude-1134/-shared-external-madloop-onia/6136fd6c-8e41-47c7-a479-0995fb3044a9/scratchpad/twop8/fx/fx_gg_632ed10_nocache.json.gz"
+ },
+ "cache_on_vs_off": [
+  {
+   "pass": 1,
+   "call": 1722,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "ggQQg",
+   "rel": 0.18098423284784623
+  },
+  {
+   "pass": 1,
+   "call": 1839,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "ggQQgQ",
+   "rel": 0.2012638282499703
+  },
+  {
+   "pass": 1,
+   "call": 1852,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "ggQQg",
+   "rel": 0.48208668544308425
+  },
+  {
+   "pass": 1,
+   "call": 1904,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "ggQQgQ",
+   "rel": 0.2012638282499703
+  },
+  {
+   "pass": 1,
+   "call": 1919,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2,
+    1
+   ],
+   "lines": "ggQQgQ",
+   "rel": 1.0077737654789014
+  },
+  {
+   "pass": 1,
+   "call": 1920,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "ggQQgQ",
+   "rel": 1.0001794598839522
+  },
+  {
+   "pass": 1,
+   "call": 1927,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "ggQQgQ",
+   "rel": 0.2012638282499703
+  },
+  {
+   "pass": 1,
+   "call": 2666,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2,
+    1
+   ],
+   "lines": "QQggQg",
+   "rel": 0.3649210986577629
+  },
+  {
+   "pass": 1,
+   "call": 2675,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2,
+    1
+   ],
+   "lines": "QQggQg",
+   "rel": 0.6032815943386753
+  },
+  {
+   "pass": 1,
+   "call": 3033,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.9523230453363605
+  },
+  {
+   "pass": 1,
+   "call": 3040,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.7199130183219533
+  }
+ ],
+ "pass1_vs_pass2_same_lines_cache_off": [
+  {
+   "pass1_call": 2546,
+   "pass2_call": 2546,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "QQggQ",
+   "rel": 1.55698558273595
+  },
+  {
+   "pass1_call": 2631,
+   "pass2_call": 2546,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "QQggQ",
+   "rel": 1.55698558273595
+  },
+  {
+   "pass1_call": 2896,
+   "pass2_call": 2896,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQQgQg",
+   "rel": 1.5038963116567619
+  },
+  {
+   "pass1_call": 2902,
+   "pass2_call": 2896,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQQgQg",
+   "rel": 1.5038963116567619
+  },
+  {
+   "pass1_call": 2905,
+   "pass2_call": 2905,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQQgQg",
+   "rel": 1.4980335921761043
+  },
+  {
+   "pass1_call": 2908,
+   "pass2_call": 2905,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQQgQg",
+   "rel": 1.4980335921761043
+  },
+  {
+   "pass1_call": 1789,
+   "pass2_call": 1789,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "ggQgQQ",
+   "rel": 1.108476116579114
+  },
+  {
+   "pass1_call": 2601,
+   "pass2_call": 2601,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQgQgg",
+   "rel": 1.0667971695904783
+  },
+  {
+   "pass1_call": 2695,
+   "pass2_call": 2601,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQgQgg",
+   "rel": 1.0667971695904783
+  },
+  {
+   "pass1_call": 2598,
+   "pass2_call": 2598,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQgQgg",
+   "rel": 1.0473802669073156
+  },
+  {
+   "pass1_call": 2692,
+   "pass2_call": 2598,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQgQgg",
+   "rel": 1.0473802669073156
+  },
+  {
+   "pass1_call": 1806,
+   "pass2_call": 1806,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "ggQQgQ",
+   "rel": 1.0418428282825782
+  },
+  {
+   "pass1_call": 1917,
+   "pass2_call": 1806,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "ggQQgQ",
+   "rel": 1.0418428282825782
+  },
+  {
+   "pass1_call": 1946,
+   "pass2_call": 1946,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    1
+   ],
+   "lines": "ggQQgQ",
+   "rel": 1.025388200105643
+  },
+  {
+   "pass1_call": 1742,
+   "pass2_call": 1742,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "ggQQg",
+   "rel": 1.0240095470414587
+  },
+  {
+   "pass1_call": 1888,
+   "pass2_call": 1742,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "ggQQg",
+   "rel": 1.0240095470414587
+  },
+  {
+   "pass1_call": 2936,
+   "pass2_call": 2936,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQgQQg",
+   "rel": 1.0237710371845374
+  },
+  {
+   "pass1_call": 1808,
+   "pass2_call": 1808,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2,
+    1
+   ],
+   "lines": "ggQQgQ",
+   "rel": 1.0077737654789014
+  },
+  {
+   "pass1_call": 3040,
+   "pass2_call": 2925,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQgQQg",
+   "rel": 1.0074283995741324
+  },
+  {
+   "pass1_call": 1957,
+   "pass2_call": 1957,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    2
+   ],
+   "lines": "ggQgQQ",
+   "rel": 1.003240882656202
+  },
+  {
+   "pass1_call": 2927,
+   "pass2_call": 2927,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    1
+   ],
+   "lines": "QQgQQg",
+   "rel": 1.0028018125188956
+  },
+  {
+   "pass1_call": 2953,
+   "pass2_call": 2927,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    1
+   ],
+   "lines": "QQgQQg",
+   "rel": 1.0028018125188956
+  },
+  {
+   "pass1_call": 1768,
+   "pass2_call": 1768,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "ggQQQ",
+   "rel": 1.0024769811020953
+  },
+  {
+   "pass1_call": 1867,
+   "pass2_call": 1768,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "ggQQQ",
+   "rel": 1.0024769811020953
+  },
+  {
+   "pass1_call": 2523,
+   "pass2_call": 2523,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQggg",
+   "rel": 1.0022683840303133
+  },
+  {
+   "pass1_call": 2613,
+   "pass2_call": 2523,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQggg",
+   "rel": 1.0022683840303133
+  },
+  {
+   "pass1_call": 2933,
+   "pass2_call": 2933,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQgQQg",
+   "rel": 1.0010859621905215
+  },
+  {
+   "pass1_call": 2959,
+   "pass2_call": 2933,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQgQQg",
+   "rel": 1.0010859621905215
+  },
+  {
+   "pass1_call": 1809,
+   "pass2_call": 1809,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "ggQQgQ",
+   "rel": 1.0001794598839522
+  },
+  {
+   "pass1_call": 1961,
+   "pass2_call": 1961,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "ggQgQQ",
+   "rel": 1.0000089482430632
+  },
+  {
+   "pass1_call": 2932,
+   "pass2_call": 2932,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.999984515117711
+  },
+  {
+   "pass1_call": 2958,
+   "pass2_call": 2932,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.999984515117711
+  },
+  {
+   "pass1_call": 2920,
+   "pass2_call": 2920,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.9997997739161526
+  },
+  {
+   "pass1_call": 3035,
+   "pass2_call": 2920,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.9997997739161526
+  },
+  {
+   "pass1_call": 2974,
+   "pass2_call": 2974,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.999687334014116
+  },
+  {
+   "pass1_call": 3056,
+   "pass2_call": 2974,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.999687334014116
+  },
+  {
+   "pass1_call": 2524,
+   "pass2_call": 2524,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "QQggg",
+   "rel": 0.9996727979223607
+  },
+  {
+   "pass1_call": 2614,
+   "pass2_call": 2524,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "QQggg",
+   "rel": 0.9996727979223607
+  },
+  {
+   "pass1_call": 2962,
+   "pass2_call": 2936,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.9983428297618513
+  },
+  {
+   "pass1_call": 2552,
+   "pass2_call": 2552,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQggQg",
+   "rel": 0.9974404955855244
+  },
+  {
+   "pass1_call": 2583,
+   "pass2_call": 2552,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQggQg",
+   "rel": 0.9974404955855244
+  },
+  {
+   "pass1_call": 2551,
+   "pass2_call": 2551,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQggQg",
+   "rel": 0.9946778455418093
+  },
+  {
+   "pass1_call": 2582,
+   "pass2_call": 2551,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQggQg",
+   "rel": 0.9946778455418093
+  },
+  {
+   "pass1_call": 2915,
+   "pass2_call": 2915,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    1
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.9922196994269769
+  },
+  {
+   "pass1_call": 3030,
+   "pass2_call": 2915,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    1
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.9922196994269769
+  },
+  {
+   "pass1_call": 1950,
+   "pass2_call": 1950,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "ggQQgQ",
+   "rel": 0.9910103804402496
+  },
+  {
+   "pass1_call": 2925,
+   "pass2_call": 2925,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.9910068185432713
+  },
+  {
+   "pass1_call": 2609,
+   "pass2_call": 2609,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQgQgg",
+   "rel": 0.9892854303976114
+  },
+  {
+   "pass1_call": 2685,
+   "pass2_call": 2609,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQgQgg",
+   "rel": 0.9892854303976114
+  },
+  {
+   "pass1_call": 1951,
+   "pass2_call": 1951,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2,
+    1
+   ],
+   "lines": "ggQQgQ",
+   "rel": 0.9809553562373948
+  },
+  {
+   "pass1_call": 1785,
+   "pass2_call": 1785,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    2
+   ],
+   "lines": "ggQgQQ",
+   "rel": 0.9802551894643847
+  },
+  {
+   "pass1_call": 2966,
+   "pass2_call": 2966,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    1
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.9695100812086971
+  },
+  {
+   "pass1_call": 3048,
+   "pass2_call": 2966,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    1
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.9695100812086971
+  },
+  {
+   "pass1_call": 2973,
+   "pass2_call": 2973,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.9648994222132499
+  },
+  {
+   "pass1_call": 3055,
+   "pass2_call": 2973,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.9648994222132499
+  },
+  {
+   "pass1_call": 2651,
+   "pass2_call": 2651,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQgQgg",
+   "rel": 0.9633688470820327
+  },
+  {
+   "pass1_call": 2659,
+   "pass2_call": 2651,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQgQgg",
+   "rel": 0.9633688470820327
+  },
+  {
+   "pass1_call": 2918,
+   "pass2_call": 2918,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.9523230453363638
+  },
+  {
+   "pass1_call": 1767,
+   "pass2_call": 1767,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "ggQQQ",
+   "rel": 0.9232441360640049
+  },
+  {
+   "pass1_call": 1866,
+   "pass2_call": 1767,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "ggQQQ",
+   "rel": 0.9232441360640049
+  },
+  {
+   "pass1_call": 2565,
+   "pass2_call": 2565,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "QQggQg",
+   "rel": 0.8933147408090775
+  },
+  {
+   "pass1_call": 2664,
+   "pass2_call": 2565,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "QQggQg",
+   "rel": 0.8933147408090775
+  },
+  {
+   "pass1_call": 2549,
+   "pass2_call": 2549,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    1
+   ],
+   "lines": "QQggQg",
+   "rel": 0.7139707756231894
+  },
+  {
+   "pass1_call": 2580,
+   "pass2_call": 2549,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    1
+   ],
+   "lines": "QQggQg",
+   "rel": 0.7139707756231894
+  },
+  {
+   "pass1_call": 1743,
+   "pass2_call": 1743,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "ggQQg",
+   "rel": 0.6196211648356619
+  },
+  {
+   "pass1_call": 1889,
+   "pass2_call": 1743,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "ggQQg",
+   "rel": 0.6196211648356619
+  },
+  {
+   "pass1_call": 2589,
+   "pass2_call": 2589,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2,
+    1
+   ],
+   "lines": "QQggQg",
+   "rel": 0.6032815943386798
+  },
+  {
+   "pass1_call": 1852,
+   "pass2_call": 1722,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "ggQQg",
+   "rel": 0.47777192070110924
+  },
+  {
+   "pass1_call": 2588,
+   "pass2_call": 2588,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "QQggQg",
+   "rel": 0.42412079581853407
+  },
+  {
+   "pass1_call": 2674,
+   "pass2_call": 2588,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "QQggQg",
+   "rel": 0.42412079581853407
+  },
+  {
+   "pass1_call": 2567,
+   "pass2_call": 2567,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2,
+    1
+   ],
+   "lines": "QQggQg",
+   "rel": 0.3649210986577629
+  },
+  {
+   "pass1_call": 2904,
+   "pass2_call": 2904,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    1
+   ],
+   "lines": "QQQgQg",
+   "rel": 0.3182526495949323
+  },
+  {
+   "pass1_call": 2907,
+   "pass2_call": 2904,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    1
+   ],
+   "lines": "QQQgQg",
+   "rel": 0.3182526495949323
+  },
+  {
+   "pass1_call": 2895,
+   "pass2_call": 2895,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    1
+   ],
+   "lines": "QQQgQg",
+   "rel": 0.2967453073449094
+  },
+  {
+   "pass1_call": 2901,
+   "pass2_call": 2895,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    1
+   ],
+   "lines": "QQQgQg",
+   "rel": 0.2967453073449094
+  },
+  {
+   "pass1_call": 1816,
+   "pass2_call": 1816,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "ggQQgQ",
+   "rel": 0.20126382824996414
+  },
+  {
+   "pass1_call": 2930,
+   "pass2_call": 2930,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQgQQg",
+   "rel": 0.19988974395210918
+  },
+  {
+   "pass1_call": 2557,
+   "pass2_call": 2557,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "QQggQg",
+   "rel": 0.13386504442622438
+  },
+  {
+   "pass1_call": 2575,
+   "pass2_call": 2557,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "QQggQg",
+   "rel": 0.13386504442622438
+  },
+  {
+   "pass1_call": 2566,
+   "pass2_call": 2566,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQggQg",
+   "rel": 0.09762622053222242
+  },
+  {
+   "pass1_call": 2665,
+   "pass2_call": 2566,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQggQg",
+   "rel": 0.09762622053222242
+  },
+  {
+   "pass1_call": 1794,
+   "pass2_call": 1794,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    2,
+    1,
+    1
+   ],
+   "lines": "ggQggQ",
+   "rel": 0.08191413982660971
+  },
+  {
+   "pass1_call": 2540,
+   "pass2_call": 2540,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "QQggQ",
+   "rel": 0.06938130488357183
+  },
+  {
+   "pass1_call": 2619,
+   "pass2_call": 2540,
+   "n": 5,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "QQggQ",
+   "rel": 0.06938130488357183
+  },
+  {
+   "pass1_call": 2558,
+   "pass2_call": 2558,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2,
+    1
+   ],
+   "lines": "QQggQg",
+   "rel": 0.02681576927795847
+  },
+  {
+   "pass1_call": 2576,
+   "pass2_call": 2558,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    2,
+    1
+   ],
+   "lines": "QQggQg",
+   "rel": 0.02681576927795847
+  },
+  {
+   "pass1_call": 2568,
+   "pass2_call": 2568,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQggQg",
+   "rel": 0.016828245038467943
+  },
+  {
+   "pass1_call": 2667,
+   "pass2_call": 2568,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    2,
+    1,
+    2
+   ],
+   "lines": "QQggQg",
+   "rel": 0.016828245038467943
+  },
+  {
+   "pass1_call": 1966,
+   "pass2_call": 1966,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    2,
+    1,
+    1
+   ],
+   "lines": "ggQggQ",
+   "rel": 0.012366642830147895
+  },
+  {
+   "pass1_call": 1973,
+   "pass2_call": 1973,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "ggQggQ",
+   "rel": 0.008815538764419867
+  },
+  {
+   "pass1_call": 1793,
+   "pass2_call": 1793,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    2
+   ],
+   "lines": "ggQggQ",
+   "rel": 0.007349836402924649
+  },
+  {
+   "pass1_call": 1965,
+   "pass2_call": 1965,
+   "n": 6,
+   "rank": 5,
+   "powers": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    2
+   ],
+   "lines": "ggQggQ",
+   "rel": 0.0070622612993120615
+  },
+  {
+   "pass1_call": 1801,
+   "pass2_call": 1801,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    1,
+    1,
+    2,
+    2
+   ],
+   "lines": "ggQggQ",
+   "rel": 0.002829846161327486
+  },
+  {
+   "pass1_call": 2700,
+   "pass2_call": 2700,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQgQgg",
+   "rel": 0.0002381673031630192
+  },
+  {
+   "pass1_call": 2705,
+   "pass2_call": 2700,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    1,
+    2
+   ],
+   "lines": "QQgQgg",
+   "rel": 0.0002381673031630192
+  },
+  {
+   "pass1_call": 2699,
+   "pass2_call": 2699,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "QQgQgg",
+   "rel": 8.578487050091194e-05
+  },
+  {
+   "pass1_call": 2704,
+   "pass2_call": 2699,
+   "n": 6,
+   "rank": 6,
+   "powers": [
+    1,
+    1,
+    2,
+    1,
+    2,
+    1
+   ],
+   "lines": "QQgQgg",
+   "rel": 8.578487050091194e-05
+  }
+ ],
+ "nrange_split": {
+  "m1_0_0": {
+   "mode": "1",
+   "nrange": "0 0",
+   "single_norm": -23.365328364027526,
+   "double_norm": 0.0,
+   "finite_norm": 1852.5140515003743,
+   "ret_code": 110
+  },
+  "m1_0_99": {
+   "mode": "1",
+   "nrange": "0 99",
+   "single_norm": 39354.75437137019,
+   "double_norm": -5.999999999974394,
+   "finite_norm": -39458.76233585602,
+   "ret_code": 110
+  },
+  "m1_1_1": {
+   "mode": "1",
+   "nrange": "1 1",
+   "single_norm": -23.365328364027526,
+   "double_norm": 0.0,
+   "finite_norm": 1852.5140515003743,
+   "ret_code": 110
+  },
+  "m1_2_2": {
+   "mode": "1",
+   "nrange": "2 2",
+   "single_norm": -17.116370741805014,
+   "double_norm": 0.0,
+   "finite_norm": -27.833871811756882,
+   "ret_code": 110
+  },
+  "m1_3_3": {
+   "mode": "1",
+   "nrange": "3 3",
+   "single_norm": -22.962775248589313,
+   "double_norm": -1.1954373827427278,
+   "finite_norm": 1854.2967206802514,
+   "ret_code": 110
+  },
+  "m1_4_4": {
+   "mode": "1",
+   "nrange": "4 4",
+   "single_norm": 110.79365940649878,
+   "double_norm": -1.2241525084589195,
+   "finite_norm": 2553.9203182041747,
+   "ret_code": 110
+  },
+  "m1_5_5": {
+   "mode": "1",
+   "nrange": "5 5",
+   "single_norm": 496.22511317858977,
+   "double_norm": 0.7772146977054506,
+   "finite_norm": 4114.838249537605,
+   "ret_code": 110
+  },
+  "m1_6_6": {
+   "mode": "1",
+   "nrange": "6 6",
+   "single_norm": 38734.456906121675,
+   "double_norm": -4.3576248064782,
+   "finite_norm": -40436.431616543756,
+   "ret_code": 110
+  },
+  "m2_0_0": {
+   "mode": "2",
+   "nrange": "0 0",
+   "single_norm": -23.365328364027526,
+   "double_norm": 0.0,
+   "finite_norm": 1852.5140515003743,
+   "ret_code": 110
+  },
+  "m2_0_99": {
+   "mode": "2",
+   "nrange": "0 99",
+   "single_norm": -517385.34121889225,
+   "double_norm": -6.000000000129506,
+   "finite_norm": -5064388.177420036,
+   "ret_code": 110
+  },
+  "m2_1_1": {
+   "mode": "2",
+   "nrange": "1 1",
+   "single_norm": -23.365328364027526,
+   "double_norm": 0.0,
+   "finite_norm": 1852.5140515003743,
+   "ret_code": 110
+  },
+  "m2_2_2": {
+   "mode": "2",
+   "nrange": "2 2",
+   "single_norm": -17.116370741805024,
+   "double_norm": 0.0,
+   "finite_norm": -27.83387181175672,
+   "ret_code": 110
+  },
+  "m2_3_3": {
+   "mode": "2",
+   "nrange": "3 3",
+   "single_norm": -22.96277524859178,
+   "double_norm": -1.1954373827427294,
+   "finite_norm": 1854.2967206802584,
+   "ret_code": 110
+  },
+  "m2_4_4": {
+   "mode": "2",
+   "nrange": "4 4",
+   "single_norm": 110.79365940626579,
+   "double_norm": -1.2241525084588578,
+   "finite_norm": 2553.9203180052896,
+   "ret_code": 110
+  },
+  "m2_5_5": {
+   "mode": "2",
+   "nrange": "5 5",
+   "single_norm": -86.66909917041049,
+   "double_norm": 0.7772146977064315,
+   "finite_norm": 4860.5228568204275,
+   "ret_code": 110
+  },
+  "m2_6_6": {
+   "mode": "2",
+   "nrange": "6 6",
+   "single_norm": -517462.8479465938,
+   "double_norm": -4.357624806634353,
+   "finite_norm": -5066219.027237732,
+   "ret_code": 110
+  },
+  "nc_m1_0_99": {
+   "mode": "1",
+   "nrange": "0 99",
+   "single_norm": 46550.016594746055,
+   "double_norm": -5.999999999974394,
+   "finite_norm": -743.4260677044997,
+   "ret_code": 110
+  },
+  "nc_m1_5_5": {
+   "mode": "1",
+   "nrange": "5 5",
+   "single_norm": 190.66405321327983,
+   "double_norm": 0.7772146977054506,
+   "finite_norm": 3298.2511474046373,
+   "ret_code": 110
+  },
+  "nc_m1_6_6": {
+   "mode": "1",
+   "nrange": "6 6",
+   "single_norm": 46195.17671466059,
+   "double_norm": -4.3576248064782,
+   "finite_norm": -1012.0041761803911,
+   "ret_code": 110
+  },
+  "nc_m2_0_99": {
+   "mode": "2",
+   "nrange": "0 99",
+   "single_norm": -517385.34121889225,
+   "double_norm": -6.000000000129506,
+   "finite_norm": -5064388.177420036,
+   "ret_code": 110
+  },
+  "nc_m2_5_5": {
+   "mode": "2",
+   "nrange": "5 5",
+   "single_norm": -86.66909917041049,
+   "double_norm": 0.7772146977064315,
+   "finite_norm": 4860.5228568204275,
+   "ret_code": 110
+  },
+  "nc_m2_6_6": {
+   "mode": "2",
+   "nrange": "6 6",
+   "single_norm": -517462.8479465938,
+   "double_norm": -4.357624806634353,
+   "finite_norm": -5066219.027237732,
+   "ret_code": 110
+  }
+ },
+ "isolated_replay": {
+  "file": "pairs_gg_chic0_chic0_632ed10.txt (32 records: 8 pairs of the same lines, pass-1 and pass-2 inputs, check flag 0 and 1)",
+  "records": [
+   {
+    "record": 1,
+    "pass": 1,
+    "call": 2546,
+    "check": 0
+   },
+   {
+    "record": 2,
+    "pass": 1,
+    "call": 2546,
+    "check": 1
+   },
+   {
+    "record": 3,
+    "pass": 2,
+    "call": 2546,
+    "check": 0
+   },
+   {
+    "record": 4,
+    "pass": 2,
+    "call": 2546,
+    "check": 1
+   },
+   {
+    "record": 5,
+    "pass": 1,
+    "call": 2896,
+    "check": 0
+   },
+   {
+    "record": 6,
+    "pass": 1,
+    "call": 2896,
+    "check": 1
+   },
+   {
+    "record": 7,
+    "pass": 2,
+    "call": 2896,
+    "check": 0
+   },
+   {
+    "record": 8,
+    "pass": 2,
+    "call": 2896,
+    "check": 1
+   },
+   {
+    "record": 9,
+    "pass": 1,
+    "call": 1789,
+    "check": 0
+   },
+   {
+    "record": 10,
+    "pass": 1,
+    "call": 1789,
+    "check": 1
+   },
+   {
+    "record": 11,
+    "pass": 2,
+    "call": 1789,
+    "check": 0
+   },
+   {
+    "record": 12,
+    "pass": 2,
+    "call": 1789,
+    "check": 1
+   },
+   {
+    "record": 13,
+    "pass": 1,
+    "call": 2601,
+    "check": 0
+   },
+   {
+    "record": 14,
+    "pass": 1,
+    "call": 2601,
+    "check": 1
+   },
+   {
+    "record": 15,
+    "pass": 2,
+    "call": 2601,
+    "check": 0
+   },
+   {
+    "record": 16,
+    "pass": 2,
+    "call": 2601,
+    "check": 1
+   },
+   {
+    "record": 17,
+    "pass": 1,
+    "call": 1806,
+    "check": 0
+   },
+   {
+    "record": 18,
+    "pass": 1,
+    "call": 1806,
+    "check": 1
+   },
+   {
+    "record": 19,
+    "pass": 2,
+    "call": 1806,
+    "check": 0
+   },
+   {
+    "record": 20,
+    "pass": 2,
+    "call": 1806,
+    "check": 1
+   },
+   {
+    "record": 21,
+    "pass": 1,
+    "call": 1946,
+    "check": 0
+   },
+   {
+    "record": 22,
+    "pass": 1,
+    "call": 1946,
+    "check": 1
+   },
+   {
+    "record": 23,
+    "pass": 2,
+    "call": 1946,
+    "check": 0
+   },
+   {
+    "record": 24,
+    "pass": 2,
+    "call": 1946,
+    "check": 1
+   },
+   {
+    "record": 25,
+    "pass": 1,
+    "call": 1888,
+    "check": 0
+   },
+   {
+    "record": 26,
+    "pass": 1,
+    "call": 1888,
+    "check": 1
+   },
+   {
+    "record": 27,
+    "pass": 2,
+    "call": 1742,
+    "check": 0
+   },
+   {
+    "record": 28,
+    "pass": 2,
+    "call": 1742,
+    "check": 1
+   },
+   {
+    "record": 29,
+    "pass": 1,
+    "call": 2631,
+    "check": 0
+   },
+   {
+    "record": 30,
+    "pass": 1,
+    "call": 2631,
+    "check": 1
+   },
+   {
+    "record": 31,
+    "pass": 2,
+    "call": 2546,
+    "check": 0
+   },
+   {
+    "record": 32,
+    "pass": 2,
+    "call": 2546,
+    "check": 1
+   }
+  ],
+  "record13_after_record9_vs_alone": 0.7658901605477116,
+  "record5_vs_record7_each_alone": 1.5038963116568296
+ }
+}

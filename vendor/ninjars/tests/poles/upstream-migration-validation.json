@@ -1,0 +1,314 @@
+{
+  "schema": "madloop-upstream-poles-migration-validation-v1",
+  "passed": true,
+  "scope": "Fresh CLI-generated strict bare-loop comparison after migrating UV/IR numerical selection into upstream NinjaRS/oneloopmaster; no timing campaign.",
+  "source_base_revision": "3ed442f0444b7e3367da123690b00e12c9d068dc",
+  "source_note": "The exact changed source files and lockfile are hashed below; the recorded base revision precedes the migration commit.",
+  "historical_abi4_baseline": {
+    "madgraph_revision": "3ed442f0444b7e3367da123690b00e12c9d068dc",
+    "source": "HEPTools/ninjars/lib",
+    "files": {
+      "libninjars.a": {
+        "sha256": "51fc066b71fd26132cc3da53b2cfbab4c7f2ec896c22df3fdcb0dfc15f81467f",
+        "bytes": 310886264
+      },
+      "mninjars.mod": {
+        "sha256": "bdbdea4365d04be8693de8ff10d9594137cca6ceaaf9ce2de3e6991467a625ec",
+        "bytes": 2102
+      },
+      "ninjars-config.json": {
+        "sha256": "a924184de8f4ef03ac86c477c0925fa77e8e13711ff615d76a1b2372232831dc",
+        "bytes": 4050
+      },
+      "ninjars-link-before.txt": {
+        "sha256": "f8acb08e54969d1b7572e50c8f55ea84e173342042f3f921709723632c46f8ab",
+        "bytes": 8
+      },
+      "ninjars-native-libs.txt": {
+        "sha256": "afa89c3fb66ad9127499e457c45353861e724856fa630955227d659dd241c871",
+        "bytes": 48
+      }
+    }
+  },
+  "historical_abi3_to_abi4_evidence": {
+    "receipt": "native-dp-baseline.json",
+    "sha256": "253412563b6241e5547f438e10c37c7de9d65694cf3ff8faa986e733b51f73c3",
+    "scope": "Earlier ABI3 to first selected-pole ABI4 combined-DP comparison; retained unchanged as historical evidence."
+  },
+  "production_installation": {
+    "passed": true,
+    "abi_version": 4,
+    "test_only_mutators_absent_from_install": true,
+    "installed_inputs_match_working_source_inputs": true,
+    "pins": {
+      "ninjars": "git+https://github.com/alphal00p/ninjars?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082",
+      "ninjars-symbolica": "git+https://github.com/alphal00p/ninjars?rev=41a4c00e7635e3ab188fc26bacf0aae6941e8082#41a4c00e7635e3ab188fc26bacf0aae6941e8082",
+      "oneloop": "git+https://github.com/alphal00p/oneloopmaster.git?rev=5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5#5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5"
+    },
+    "files_sha256": {
+      "lib/libninjars.a": "43ed42c237412a81838a6c4c0b4f89015a0785b4f331bdb2fbf01020124c67c7",
+      "lib/mninjars.mod": "bdbdea4365d04be8693de8ff10d9594137cca6ceaaf9ce2de3e6991467a625ec",
+      "lib/ninjars-config.json": "45b48d5991cef9b669c2942abb9020a864f462103c4943cb7e307235f84ba25c",
+      "Cargo.toml": "168b0a7239e1fffb23594b19dfaa7938410022015aeed49e99ae5e1ae12d8e95",
+      "Cargo.lock": "a0db06134fe266f080e0ecf0e4590de19932213cec12908c893e5380e40d549b",
+      "install.log": "40f79ca67266f65e404d2a0d19c6daa53605719472e0fd913857e012c455f385"
+    },
+    "fortran_compiler": "gfortran",
+    "native_libs": [
+      "-ldl",
+      "-lgcc_s",
+      "-lutil",
+      "-lrt",
+      "-lpthread",
+      "-lm",
+      "-ldl",
+      "-lc"
+    ],
+    "link_before": [
+      "-lgcc_s"
+    ]
+  },
+  "production_installation_receipt_sha256": "515edb73994aa623301b2256e7178ff753b5ac7f62b9c3543788b06e63c7eefd",
+  "bridge_rust_qualification": {
+    "passed": true,
+    "command": [
+      "cargo",
+      "test",
+      "--manifest-path",
+      "vendor/ninjars/Cargo.toml",
+      "--release",
+      "--locked",
+      "--features",
+      "fenv-test-support",
+      "--",
+      "--test-threads=1"
+    ],
+    "counts": [
+      {
+        "passed": 31,
+        "failed": 0,
+        "ignored": 7,
+        "measured": 0,
+        "filtered": 0
+      },
+      {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0,
+        "measured": 0,
+        "filtered": 0
+      }
+    ],
+    "log_sha256": "19e393682254abe0be58504696b61e758fd8f99d7286ea40ea1d3616fbaa7d33",
+    "installed_candidate_receipt": "installed-candidate.json",
+    "installed_files_unchanged_after_test_feature_build": true,
+    "source_inputs_sha256": {
+      "vendor/ninjars/Cargo.toml": "168b0a7239e1fffb23594b19dfaa7938410022015aeed49e99ae5e1ae12d8e95",
+      "vendor/ninjars/Cargo.lock": "a0db06134fe266f080e0ecf0e4590de19932213cec12908c893e5380e40d549b",
+      "vendor/ninjars/src/lib.rs": "567d984aabd8c94492653741fde71ec4f0ada0c7d8bbc6a48a8229b6de292443",
+      "vendor/ninjars/src/poles.rs": "4384e5898c4580e41677b543857a965548c7c2b4ae1db6e1bcc24922c7dfa278"
+    }
+  },
+  "bridge_rust_qualification_receipt_sha256": "b2a8ef3a38dc5afa5a5d2665a55d54ae6c7e852081c1c6d0624876a0050f203e",
+  "upstream_qualification": {
+    "oneloopmaster": {
+      "published_commit": "5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5",
+      "feature_enabled_new_tests": 6,
+      "default_features_new_tests": 5,
+      "existing_native_tensor_tests": 9,
+      "commands": [
+        [
+          "cargo",
+          "test",
+          "--release",
+          "--locked",
+          "--offline",
+          "--manifest-path",
+          "<oneloopmaster>/Cargo.toml",
+          "--features",
+          "generated-evaluators",
+          "--test",
+          "pole_selection",
+          "--",
+          "--test-threads=1"
+        ],
+        [
+          "cargo",
+          "test",
+          "--release",
+          "--locked",
+          "--offline",
+          "--manifest-path",
+          "<oneloopmaster>/Cargo.toml",
+          "--test",
+          "pole_selection",
+          "--",
+          "--test-threads=1"
+        ],
+        [
+          "cargo",
+          "test",
+          "--release",
+          "--locked",
+          "--offline",
+          "--manifest-path",
+          "<oneloopmaster>/Cargo.toml",
+          "--features",
+          "generated-evaluators",
+          "--test",
+          "native_tensor",
+          "--",
+          "--test-threads=1"
+        ]
+      ],
+      "private_resolved_lock_sha256": "eafa83ca8ef041de01e03741efd25b548b921ad009890d4b2b6a7949999b0306",
+      "dependency_resolution": "The upstream root Cargo.lock is ignored by convention. It was seeded from MG7 vendor/ninjars/Cargo.lock, then resolved offline by the first feature-enabled test invocation without --locked. The three final passing commands used --locked and the recorded resolved lock hash. No upstream tracked manifest dependency or lockfile was changed.",
+      "qualification_receipt_sha256": "573bbaf35abf020a2dc750d8a4e3670bad2ad0346144246975e02cca380c0851"
+    },
+    "ninjars": {
+      "published_commit": "41a4c00e7635e3ab188fc26bacf0aae6941e8082",
+      "oneloopmaster_commit": "5b710437ada83cbc6e8c6d51e56f7d6ee6a0edb5",
+      "distinct_tests_passed": 80,
+      "workspace_check_passed": true,
+      "results": [
+        {
+          "name": "provider_tests",
+          "command": "cargo test --release --locked --offline --manifest-path <ninjars>/Cargo.toml -p ninjars-symbolica --features native-masters --test pole_selection --test masters --test master_status --test fast_native_masters -- --test-threads=1",
+          "exit_code": 0,
+          "test_summaries": [
+            {
+              "passed": 6,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "passed": 13,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "passed": 15,
+              "failed": 0,
+              "ignored": 0
+            },
+            {
+              "passed": 6,
+              "failed": 0,
+              "ignored": 0
+            }
+          ],
+          "log_sha256": "6728bbd988bd5573a07e2e94267fd015438c246227d1feb2ba53b4254901549c"
+        },
+        {
+          "name": "core_fast_tests",
+          "command": "cargo test --release --locked --offline --manifest-path <ninjars>/Cargo.toml -p ninjars --lib fast:: -- --test-threads=1",
+          "exit_code": 0,
+          "test_summaries": [
+            {
+              "passed": 40,
+              "failed": 0,
+              "ignored": 0
+            }
+          ],
+          "log_sha256": "16cf2015b444e2ba422041c72bb6dd52013c40d6f1e1ef9a45c2123e5f25d591"
+        },
+        {
+          "name": "workspace_check",
+          "command": "cargo check --locked --offline --manifest-path <ninjars>/Cargo.toml --workspace",
+          "exit_code": 0,
+          "test_summaries": [],
+          "log_sha256": "0473df114f14171032c42d5e0afcb4f478ad03b7ba54b31c49ab529c010e283d"
+        }
+      ],
+      "qualification_receipt_sha256": "39ddf1bb8a55bfa70e578ff5c971f50d82d8618b4d08397bb8f320dd07b0096b"
+    }
+  },
+  "combined_mode_regression": {
+    "passed": true,
+    "comparison": "Exact printed binary128 records, including status, Laurent coefficients and rational diagnostic; combined mode0 repeated twice for each of455 tensor inputs.",
+    "results": [
+      {
+        "precision": "dp",
+        "mode": 0,
+        "compared_evaluations": 910,
+        "identical": true,
+        "difference_count": 0,
+        "differences": [],
+        "baseline_values_sha256": "a5e3ca0829995c2acffdebe169c73fa11a0862683a81fa8973091a29960bdec8",
+        "candidate_values_sha256": "a5e3ca0829995c2acffdebe169c73fa11a0862683a81fa8973091a29960bdec8",
+        "jobs_sha256": "4598f2e39ba45e05650161a7686f8a646bdad9920788e6bc4fc6643057809bc1"
+      },
+      {
+        "precision": "mp",
+        "mode": 0,
+        "compared_evaluations": 910,
+        "identical": true,
+        "difference_count": 0,
+        "differences": [],
+        "baseline_values_sha256": "170b5b9fd9606cd53a20265b72589b0edb87c543a48b6a8dfdb16af6590f9a07",
+        "candidate_values_sha256": "170b5b9fd9606cd53a20265b72589b0edb87c543a48b6a8dfdb16af6590f9a07",
+        "jobs_sha256": "4598f2e39ba45e05650161a7686f8a646bdad9920788e6bc4fc6643057809bc1"
+      }
+    ]
+  },
+  "all_mode_regression": [
+    {
+      "precision": "dp",
+      "compared_evaluations": 3640,
+      "identical": true,
+      "difference_count": 0,
+      "differences": []
+    },
+    {
+      "precision": "mp",
+      "compared_evaluations": 3640,
+      "identical": true,
+      "difference_count": 0,
+      "differences": []
+    }
+  ],
+  "tensor_qualification": {
+    "receipt": "tensor-validation.json",
+    "sha256": "0c833553435e39c7358e9453636c120aa4a66dc300f2828b69d82c9e953b8472",
+    "reference_sha256": "18f6694dd5af873d847e39bd299957454c698aeb31f3bf4b2389593bc44d3970",
+    "ordinary_dp_unstable_controls_pass_mp": true
+  },
+  "generated_madloop_qualification": {
+    "receipt": "madloop-validation.json",
+    "sha256": "8fd1e41c286a54dd841ecb6455b26d1c72c33a1dff953582a0b5e621cc4ae458",
+    "configurations": 74,
+    "recorded_point_evaluations": 222,
+    "result_rows": 444,
+    "runtime_switch_rows": 144,
+    "comparison_checks": 187,
+    "worst_normalized_error": 8.375047153834681e-05,
+    "all_74_result_records_equal_to_prior_campaign": true,
+    "status_rows": {
+      "110": 252,
+      "120": 144,
+      "218": 48
+    },
+    "switch_status_rows": {
+      "110": 144
+    }
+  },
+  "source_and_inputs_sha256": {
+    "vendor/ninjars/tests/poles/madloop_validation.py": "a409f9229dc3a739251b9645a6b461157cd896c9a3bfe25a24d90399270ae11d",
+    "vendor/ninjars/tests/poles/compare_madloop.py": "42a7218d1cf3bdae0f25f8a5f6bbc6371f11579ca7ec93dde77807a5f42eee1b",
+    "vendor/ninjars/tests/poles/bare_driver.f": "5412bd1e19ae0744e856cd88b39071f2ef0b937f8b4ba4e3d4c426af26b4eb24",
+    "vendor/ninjars/tests/poles/tensor_validation.py": "7cc16a2fc5c6afdc5f98a0c2f497cc2536b06b20b8dadc211a3a15fce587ee1f",
+    "vendor/ninjars/tests/poles/ninjars_poles.f90": "904ed1844d14edbe98ff00f21c55b0c23299a9d2affe7e721d2a7fc36e8063b8",
+    "vendor/ninjars/tests/poles/collier_reference.json": "18f6694dd5af873d847e39bd299957454c698aeb31f3bf4b2389593bc44d3970",
+    "vendor/ninjars/Cargo.toml": "168b0a7239e1fffb23594b19dfaa7938410022015aeed49e99ae5e1ae12d8e95",
+    "vendor/ninjars/Cargo.lock": "a0db06134fe266f080e0ecf0e4590de19932213cec12908c893e5380e40d549b",
+    "vendor/ninjars/src/lib.rs": "567d984aabd8c94492653741fde71ec4f0ada0c7d8bbc6a48a8229b6de292443",
+    "vendor/ninjars/src/poles.rs": "4384e5898c4580e41677b543857a965548c7c2b4ae1db6e1bcc24922c7dfa278",
+    "Template/loop_material/StandAlone/SubProcesses/MadLoopParamReader.f": "5652a40c2587d62d17116aca60a3024e54ef598917126dedb8c690d85e128682",
+    "madgraph/iolibs/template_files/loop_optimized/loop_matrix_standalone.inc": "20ef8e81d1709e692668d5092892b80f436d5d10b486a97bc741f02b6263df40"
+  },
+  "raw_receipt_sha256": {
+    "process_comparison.json": "f5145c4e4029724fde9bfc936c89654202d95731a0b8872adf2ee8cf0188d116",
+    "tensor-summary.json": "0c833553435e39c7358e9453636c120aa4a66dc300f2828b69d82c9e953b8472",
+    "combined-baseline-comparison.json": "ed4dcbc6c214a63ae54a5d2b830f937b6fd8cbda9aae885a73a255d948054ac4"
+  }
+}

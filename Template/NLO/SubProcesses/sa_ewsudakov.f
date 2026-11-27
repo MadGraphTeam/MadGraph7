@@ -4,7 +4,7 @@ c     This is the driver for the whole calculation
 c**************************************************************************
       implicit none
       include 'nexternal.inc'
-      double precision p(0:3, nexternal), gs, res(3)
+      double precision p(0:3, nexternal), gs, res(6)
       integer i 
       double precision t0, t1
  
@@ -18,7 +18,7 @@ c**************************************************************************
       enddo
 
       call cpu_time(t0)
-      call ewsudakov(p, gs, res)
+      call ewsudakov_f77(p, gs, res)
       call cpu_time(t1)
       write(*,*) "RES", res
       write(*,*) "TIME", t1-t0

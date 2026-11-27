@@ -52,7 +52,7 @@ import tempfile
 import unittest
 
 import madgraph.interface.master_interface as MGCmd
-import madgraph.various.misc as misc
+import tests
 
 pjoin = os.path.join
 
@@ -66,12 +66,7 @@ def _require_mg7_runtime(test):
     """``skipTest`` unless madspace and an LHAPDF grid for the run_card's
     default PDF are available, the same gate the other mg7 acceptance tests
     use."""
-    try:
-        import madspace
-        has_mg7 = hasattr(madspace, 'ChannelEventGenerator')
-    except ImportError:
-        has_mg7 = False
-    if not has_mg7:
+    if not hasattr(tests.import_madspace(), 'ChannelEventGenerator'):
         test.skipTest('mg7 runtime stack (madspace) unavailable')
 
     # The run itself locates LHAPDF from the MadGraph configuration, the way a
@@ -79,7 +74,7 @@ def _require_mg7_runtime(test):
     # not only at $LHAPDF_DATA_PATH.
     from madgraph.various.banner import RunCardMG7
     pdf = RunCardMG7()['beam']['pdf']
-    if not misc.resolve_lhapdf().find_set(pdf):
+    if not tests.lhapdf_data_path(pdf):
         test.skipTest('%s LHAPDF data not found (set the lhapdf option or '
                       '$LHAPDF_DATA_PATH)' % pdf)
 

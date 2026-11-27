@@ -7,7 +7,7 @@
 #ifndef RANDOMNUMBERKERNELS_H
 #define RANDOMNUMBERKERNELS_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "MemoryBuffers.h"
 

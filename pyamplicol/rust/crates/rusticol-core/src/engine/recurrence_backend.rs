@@ -195,7 +195,7 @@ pub(super) struct NativeRecurrenceDirectExecutorOwners {
 }
 
 impl NativeRecurrenceDirectExecutorBackend {
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     pub(super) fn load_from_process_pack(
         pack: &ProcessDirectExecutorPack,
@@ -307,7 +307,7 @@ impl NativeRecurrencePreparedExecutorPool {
         Ok(())
     }
 
-    #[cfg_attr(target_vendor = "apple", unsafe(link_section = "__TEXT,__rcl_load"))]
+    #[cfg_attr(target_vendor = "apple", unsafe(link_section = crate::rcl_load_section!()))]
     #[cfg_attr(target_vendor = "apple", inline(never))]
     pub(super) fn load_for_direct_plan_from_process_pack(
         pack: &ProcessDirectExecutorPack,

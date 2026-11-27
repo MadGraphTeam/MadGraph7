@@ -120,6 +120,9 @@ public:
      *                              (which all share the same top-level seed)
      *                              get non-overlapping `DerivedSeed`
      *                              channel-index ranges.
+     * @param channel_resonances    Per channel, ids of the resonances it maps
+     *                              (empty: no guard). Channel dropping keeps
+     *                              the last active channel of every id.
      */
     MadnisTraining(
         ContextPtr generator_context,
@@ -128,7 +131,8 @@ public:
         const std::vector<std::shared_ptr<Integrand>>& integrands,
         const std::optional<ChannelWeightNetwork>& cwnet,
         std::optional<std::uint64_t> seed = std::nullopt,
-        std::size_t channel_index_offset = 0
+        std::size_t channel_index_offset = 0,
+        const nested_vector2<std::size_t>& channel_resonances = {}
     );
     /// The configuration passed to the constructor.
     const Config& config() const { return _config; }
@@ -199,6 +203,7 @@ private:
         std::size_t sample_count = 0;
         std::shared_ptr<Integrand> integrand;
         std::shared_ptr<IntegrandProbability> integrand_prob;
+        std::vector<std::size_t> resonances;
         RuntimePtr generator_runtime = nullptr;
         RuntimePtr unweighter_runtime = nullptr;
         SampleBatch buffer;
@@ -273,6 +278,7 @@ private:
     std::vector<std::size_t> _arg_permutation;
     bool _buffer_ready = false;
     std::vector<std::size_t> _active_flavors_count;
+    std::vector<std::size_t> _active_resonances_count;
     std::optional<std::uint64_t> _seed;
     std::size_t _channel_index_offset;
     // sequence for seeding build_buffered_training_batch's BatchSampler::run() call
@@ -298,6 +304,9 @@ public:
         MadnisTraining::Config config;
         std::vector<std::shared_ptr<Integrand>> integrands;
         std::optional<ChannelWeightNetwork> cwnet;
+        /// Per integrand, ids of the resonances it maps; see the
+        /// `channel_resonances` argument of @ref MadnisTraining.
+        nested_vector2<std::size_t> channel_resonances = {};
     };
 
     /**

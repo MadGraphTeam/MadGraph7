@@ -1,0 +1,25 @@
+p0   ct1 1.2e-06 ct2 4.2e-06 | estimate 1.6e-05 true 1.5e-06 
+p1   ct1 9.1e-06 ct2 1.9e-05 | estimate 1.0e-04 true 7.9e-07 
+p2   ct1 5.3e-06 ct2 2.2e-06 | estimate 2.2e-05 true 1.6e-06 
+p3   ct1 7.4e-06 ct2 1.7e-05 | estimate 8.1e-05 true 7.1e-06 
+p4   ct1 2.9e-05 ct2 2.4e-05 | estimate 6.4e-05 true 1.8e-05 
+p5   ct1 1.7e-06 ct2 2.4e-07 | estimate 1.5e-05 true 7.6e-07 
+p6   ct1 1.5e-06 ct2 7.1e-06 | estimate 3.3e-05 true 2.8e-06 
+p7   ct1 5.3e-06 ct2 3.6e-06 | estimate 1.6e-05 true 5.4e-06 
+p8   ct1 4.5e-05 ct2 5.9e-06 | estimate 1.4e-04 true 1.9e-05 
+p9   ct1 3.1e-05 ct2 4.7e-05 | estimate 2.0e-04 true 3.1e-06 
+p10  ct1 6.5e-06 ct2 3.2e-06 | estimate 5.1e-05 true 1.8e-06 
+p11  ct1 5.0e-05 ct2 4.4e-05 | estimate 8.2e-05 true 3.5e-05 
+p12  ct1 1.9e-06 ct2 8.5e-06 | estimate 7.4e-05 true 6.1e-06 
+p13  ct1 4.0e-05 ct2 4.1e-06 | estimate 1.2e-04 true 1.8e-05 
+p14  ct1 1.2e-05 ct2 5.3e-05 | estimate 1.5e-04 true 2.1e-05 
+p15  ct1 1.8e-05 ct2 1.4e-05 | estimate 1.9e-05 true 1.6e-05 
+p16  ct1 2.5e-05 ct2 4.2e-05 | estimate 1.8e-04 true 6.5e-06 
+p17  ct1 1.6e-05 ct2 5.3e-05 | estimate 1.4e-04 true 2.5e-05 
+p18  ct1 6.1e-06 ct2 1.3e-05 | estimate 5.6e-05 true 4.4e-06 
+p19  ct1 4.6e-05 ct2 1.7e-05 | estimate 8.8e-05 true 3.1e-05 
+p20  ct1 1.1e-05 ct2 3.9e-05 | estimate 1.6e-04 true 4.4e-05 
+p21  ct1 2.3e-06 ct2 1.3e-05 | estimate 7.7e-05 true 1.3e-06 
+p22  ct1 4.2e-07 ct2 4.0e-06 | estimate 2.3e-05 true 3.6e-06 
+p23  ct1 7.3e-07 ct2 1.2e-06 | estimate 1.2e-05 true 9.0e-07 
+max ct1 5.0e-05, max ct2 5.3e-05, max estimate 2.0e-04, points above 1e-3 (estimate) 0/24, median time 0.519 s (ct1 0.188 s)

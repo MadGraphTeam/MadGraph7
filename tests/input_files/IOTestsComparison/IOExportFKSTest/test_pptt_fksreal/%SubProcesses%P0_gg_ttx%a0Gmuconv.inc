@@ -1,3 +1,1 @@
-      LOGICAL  STARTFROMA0
-      PARAMETER (STARTFROMA0=.FALSE.)
-
+../../_shared/IOExportEWSudTest%test_ppzz_ewsudakov%%SubProcesses%P0_bbx_zz%a0Gmuconv.inc

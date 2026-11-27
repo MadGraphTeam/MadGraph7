@@ -1,0 +1,112 @@
+{
+ "what": "the §4.1 rows other packages run (li_manifest.DELEGATED), recorded in data/lit.json from their records (m-lit brief R8: LI-B1 from lit-tir's report)",
+ "LI-B1": {
+  "status": "partial",
+  "owner": "lit-tir (this record) and lit-tir-mp (its G1 evidence at the re-pin); the Born-interfered L6 on the M-QCD, M-SM (CMS included), decay XX01-08 and HC campaigns and the theta = 1e-3..1e-5 forward points is lit-val's (R8): `li_manifest.py born-l6` screens each campaign row's binary64 lanes with lit-tir's scripts/li_b1.py `lanes` (passed by path, sha256 recorded) on the campaign's own generation (mqcd.Campaign), judges every flagged point set under the L6 estimate, and runs the HC rows on the public route through the one comparison (public_l6); its rows are ids['LI-B1'].campaigns",
+  "source": "workspace/reports/engine-v2/m-lit/lit-tir-report.md §F.4 and §G.3 (§G.3 replaces §4's synthetic tally); native loop-native-lit-tir-e8d076d1 = the slice's e852f448 (digest c3fda0c4)",
+  "rule": "Binary64, per lane and Laurent order, NinjaRS vs TIRust. SCREEN (lit-tir's lanes): E = the reduction-direction re-test's deviation, floor 4u x the lane's largest coefficient, |T - N| <= 10 max(E_N, E_T, floor). A point set with a lane beyond 10x the screen or deviating >= 1e-5 relative is judged entirely under the L6 ESTIMATE of ruling (6) / R3 (b): backends.checks() (three generic rotations and the rescaled re-test, as the executor's runs evaluates them), per lane and coefficient E = 2 x (largest rotation deviation + rescaled re-test deviation) + 16u |lane| (stability.StabilityEstimate with the lane as its sector), |T - N| <= 10 max(E_N, E_T) per coefficient through backends._compare; a point whose check run a backend fails is that backend's failed point (typed reasons). The screen alone misses the masters' own rounding (DESIGN §10.4): it only selects; a set it passes has no lane beyond 10x it and none >= 1e-5 relative, which no estimate can fail (DECISIONS 2026-11-08 08:31: a lane fails only beyond 10x at >= ~1e-5 relative, or served without an estimate). NUMERICAL ZEROS (lit-val's reading of Q13 / R5, not a ruling: for the coordinator): a lane beyond 10x whose deviation is <= 10 x the carrier floor (binary64 4u, double-double 1e-24) of the point's lane scale (the largest lane coefficient at the point, both backends) counts as a numerical zero, 'pass (lax)', its point-scale deviation recorded. TRUTH (ruling (7)): a binary64 lane still failing is judged against both backends' double-double lanes at its point, consistent when they agree (differenced in double-double) to a tenth of the binary64 deviation under test; a backend off that truth by more than 10x its estimate has an estimate miss. DOUBLE-DOUBLE at the first tier point and the forward points: lit-tir's lanes in double-double, |T - N| <= 10 max(E_N, E_T, 1e-24 x lane scale), E the double-double re-test (the 1e-24 target, R5); no AP L6 on these rows. FORWARD POINTS: theta = 1e-3, 1e-4, 1e-5 pT-defined (pT = theta sqrt(s_target) / 2, sqrt(s_target) the 2^x 5^y nearest the row's first reference point's): the CM angle is theta / beta for massive final states; each row's forward_points records the constructed sqrt(s) and CM angle per point. HC rows (public route): the one comparison with backends.checks() at |A|^2 per Laurent coefficient.",
+  "g1_six_leg_lanes": {
+   "g g > g g g g full": {
+    "lanes": 2200,
+    "tirust_serves": 1374,
+    "compared": 1274,
+    "beyond_10E": 9,
+    "worst_beyond_10E": "8 lanes <= 1.2e-13 of the lane; 1 lane 4.0e-4 (NinjaRS off by 4.0e-4, its estimate 3.6e-5; TIRust 9.7e-7); lit-tir's E here is the reduction-direction re-test alone (li_b1.py lanes), not ruling (6)'s L6 estimate: not a miss against it"
+   },
+   "u u~ > g g g g full": {
+    "lanes": 1256,
+    "tirust_serves": 961,
+    "compared": 930,
+    "beyond_10E": 17,
+    "worst_beyond_10E": "<= 7.1e-11 of the lane"
+   }
+  },
+  "g1_rows_first_session": "§4 (method choice then on; gate-passed lanes bitwise what the default serves now): 9 G1 rows, lanes beyond 10x reach 1.65e-10 of the lane scale; virtual totals agree to <= 1.5e-10",
+  "synthetic_default": {
+   "lanes": 152576,
+   "refused_on_gates": 40768,
+   "compared": 108672,
+   "beyond_10E": 1004,
+   "worst_ratio": 97.5,
+   "note": "worst at 1.1e-11 of the lane; every bin with a deviation > 1e-5 has worst ratio <= 6.8"
+  },
+  "executor_level": "TIRust fails every point closed on the 6- and 7-leg G1 rows at this pin (gate refusals, method choice off: ruling 17:20 (d)); the served-lane comparison is the cross-backend evidence (at lit-tir's pin; at lit-tir-mp's: at_lit_tir_mp)",
+  "at_lit_tir_mp": "slice-status DECISIONS 2026-11-08 06:08 (lit-tir-mp integrated at f1e8c98e, native loop-native-v2-slice-f1e8c98e, TIRust fefb5f2b): Born-interfered NinjaRS bitwise unchanged (N0 4 x 256/256, plans identical); the pulled range changes no served value (36,586 / 36,586 lanes bitwise ac1e234 -> fefb5f2); with the binary64 method choice on (rescaled-frame acceptance) TIRust serves G1 points gg_ggg 7/16 and uux_emepggg 3/16, the 6-leg rows still 16/16 fail closed; the 21 rotation-blind lanes are all refused by the rescaled check"
+ },
+ "LI-B2": {
+  "status": "delegated",
+  "owner": "lit-tir",
+  "source": "TIR unit row (rust/loop-reduction/tests/v2_tir.rs; lit-tir report §1-§2)"
+ },
+ "LI-X1": {
+  "status": "delegated",
+  "owner": "lit-eft",
+  "source": "run-only check, outside the rows and L6 (USER 2026-11-06 ~14:55)"
+ },
+ "LI-O1": {
+  "status": "partial",
+  "owner": "lit-obs",
+  "source": "lit-val's run of lit-obs's tools/loop_v2_observables_backends.py (LI-O1 set) at e80d31e4 (native loop-native-v2-slice-e80d31e4, digest b367124c), binary64 with the checks and double-double; the same tool, rows and E configuration as lit-tir-mp's workspace/tmp/lit-tir-mp/obs/{b64final,dd,ap,truth} at f1e8c98e and lit-cache's s2-agree-o1 at f1e8c98e (lit-cache report, R3 (b)), whose figures it reproduces",
+  "binary64": {
+   "rule": "|N - T| <= 10 max(E_N, E_T) per Laurent coefficient (backends.checks())",
+   "status": "partial: every compared output passes; TIRust fails outputs closed",
+   "li_gg_hgg": {
+    "outputs_compared": 16,
+    "coefficients": 48,
+    "beyond_bound": 0,
+    "worst_over_bound": 0.0273,
+    "tirust_failed_outputs": 125,
+    "tirust_reasons": {
+     "term scale of family # monomial #: TIRust method-choice lane refused by its check (deviation between its two frames above 2^-30 of the term scale)": 125
+    }
+   },
+   "li_uux_hgg": {
+    "outputs_compared": 30,
+    "coefficients": 90,
+    "beyond_bound": 0,
+    "worst_over_bound": 0.00841,
+    "tirust_failed_outputs": 87,
+    "tirust_reasons": {
+     "term scale of family # monomial #: TIRust method-choice lane refused by its check (deviation between its two frames above 2^-30 of the term scale)": 62,
+     "family # lane: TIRust method-choice lane refused by its check (deviation between its two frames above 2^-30 of the term scale)": 25
+    }
+   },
+   "agreement": "lit-tir-mp's b64final: 125 / 87 TIRust-failed outputs, worst 0.027 / 0.0084 of the bound; lit-cache's s2-agree-o1 (checks on): 128 / 90 failed outputs, worst 0.0273 / 0.00841; u u~ > h g g p0 not served by TIRust at the shipped settings"
+  },
+  "double-double": {
+   "rule": "|N - T| <= 1e-24 x the output sector's largest coefficient (a target, R5)",
+   "status": "pass (lax): every output served by both backends; the target is missed below ~1e-5 relative only",
+   "li_gg_hgg": {
+    "outputs": 471,
+    "coefficients": 1413,
+    "beyond_target": 145,
+    "outputs_beyond": 143,
+    "worst_over_target": 3980.0,
+    "worst_of_sector_largest": 3.98e-21
+   },
+   "li_uux_hgg": {
+    "outputs": 303,
+    "coefficients": 909,
+    "beyond_target": 3,
+    "outputs_beyond": 3,
+    "worst_over_target": 2.13,
+    "worst_of_sector_largest": 2.13e-24
+   },
+   "truth": "lit-tir-mp's obs/truth/gg_hgg.json (both backends at 50 digits on the fixture points): the misses are TIRust's double-double, <= 4.1e-21 of the anchor (3.1e-24 of the point's largest anchor); NinjaRS double-double <= 1.7e-22 of the anchor; TIRust at 50 digits <= 3.3e-52"
+  },
+  "arbitrary": "lit-tir-mp's obs/ap (40 digits, f1e8c98e): 48 outputs beyond 1e-24 of the sector, all numerical zeros near 1e-70 on both backends; li_gg_hgg worst 9.2e-18 of the bound",
+  "records": "workspace/tmp/lit-val/obs/backends.json, backends-dd.json (logs b64.log, dd.log)"
+ },
+ "findings": {
+  "li_gg_h": {
+   "L9": {
+    "note": "LI-A1's HEFT ratio (reported, no limit rule): the loop-induced g g > h over the built-in-sm-heft tree at the loop run's colour accuracy (full), whose large-m_t limit is 1; the 8/9 of the first scan was the tree's leading-colour default (colour factor N^2 against N^2 - 1, lit-heft), not a model defect"
+   }
+  },
+  "li_gg_h_tb": {
+   "L9": {
+    "note": "LI-A1's HEFT ratio in the four-flavour scheme (reported, no limit rule): the b-quark loop (m_b = y_b = 4.7) does not decouple as m_t = y_t grows, so the loop-induced g g > h over the full-colour HEFT tree (the top loop's limit) tends to |A_t + A_b|^2 / |A_t|^2 at m_t -> infinity (0.8885 at the fixture points), a physical constant of the scheme, not 1; the first scan's 0.7898 was 8/9 of it (the tree's leading-colour default, lit-heft)"
+   }
+  }
+ }
+}

@@ -443,6 +443,12 @@ C
 c
 c     Global
 c
+      INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      INTEGER TIRUST_DP_USAGE,TIRUST_QP_USAGE
+      COMMON/TIRUSTSTATS/TIRUST_DP_USAGE,TIRUST_QP_USAGE
+      DATA NINJARS_DP_USAGE,NINJARS_QP_USAGE/0,0/
+      DATA TIRUST_DP_USAGE,TIRUST_QP_USAGE/0,0/
       INTEGER U_RETURN_CODES(0:9)
       INTEGER T_RETURN_CODES(0:9)
       INTEGER H_RETURN_CODES(0:9)
@@ -479,6 +485,15 @@ c-----
       
       write(outUnit,*) '<run_statistics> '
       write(outUnit,33) '<u_return_code>',U_RETURN_CODES,'</u_return_code>'
+      write(outUnit,'(A)') '<return_code_version>2</return_code_version>'
+      write(outUnit,'(A,I0,A)') '<ninjars_dp_usage>',NINJARS_DP_USAGE,
+     &     '</ninjars_dp_usage>'
+      write(outUnit,'(A,I0,A)') '<ninjars_qp_usage>',NINJARS_QP_USAGE,
+     &     '</ninjars_qp_usage>'
+      write(outUnit,'(A,I0,A)') '<tirust_dp_usage>',TIRUST_DP_USAGE,
+     &     '</tirust_dp_usage>'
+      write(outUnit,'(A,I0,A)') '<tirust_qp_usage>',TIRUST_QP_USAGE,
+     &     '</tirust_qp_usage>'
       write(outUnit,33) '<t_return_code>',T_RETURN_CODES,'</t_return_code>'
       write(outUnit,33) '<h_return_code>',H_RETURN_CODES,'</h_return_code>'
       write(outUnit,*) '<average_time>'//trim(toStr_real(AVG_TIMING))
@@ -1775,8 +1790,9 @@ c     to which its events are normalised.
       double precision last_uref, last_ufix, last_lumi, last_goal, last_xnorm
       common /to_refine_last/ last_uref, last_ufix, last_lumi, last_goal,
      &     last_xnorm, last_it
-c     last_on: this job adapts its grid from scratch (normal refine); jobs that
-c     start from a stored grid (gridpack, MadSpin decays) keep the old stop rule
+c     last_on: this job adapts its grid from scratch (normal refine), or starts
+c     from a stored grid (gridpack, second refine) with max_overweight_truncation
+c     set; the other stored-grid jobs keep the old stop rule
       logical last_stop, last_on
       integer last_min
       save last_on, last_min
@@ -1807,7 +1823,8 @@ c-----
       if (first_time) then
          first_time = .false.
          last_it = .false.
-         last_on = use_cut .ne. 0 .and. use_cut .ne. -2
+         last_on = use_cut .ne. -2 .and. (use_cut .ne. 0 .or.
+     &        max_overweight_truncation .gt. 0d0)
          last_ufix = 0d0
          last_xnorm = 0d0
          last_lumi = 0d0
@@ -2418,8 +2435,9 @@ c     (no further grid update happens) until its number of unweighted events
 c     at this iteration's maximum weight reaches the request (plus three
 c     standard deviations, so that the job does not end short); its events
 c     are unweighted against that same maximum weight and kept whatever they
-c     contain. Jobs that start from a stored grid (last_on false: gridpack,
-c     MadSpin decays) keep the previous rule.
+c     contain. Jobs that start from a stored grid (gridpack, a second refine,
+c     MadSpin decays) keep the previous rule unless max_overweight_truncation
+c     is set (last_on).
 c     The request is counted with this iteration's own mean, the estimate the
 c     job reports and normalises the last iteration with: the (x/sigma)^2
 c     average tmeant is biased low with heavy-tailed weights. The decision is

@@ -25,6 +25,8 @@ change mode NLO    # Define type of Reweighting. For LO sample this command
 
 #uncomment if you want to use Sudakov Reweight
 #change include_sudakov True
+# FxFx (ickkw=3): clustering factors xi >= 1; default 1.5.
+#change sudakov_xi 1 1.5 3
 
                    
 launch

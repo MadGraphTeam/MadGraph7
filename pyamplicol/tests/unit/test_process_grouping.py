@@ -140,6 +140,21 @@ def test_candidate_mappings_cover_ties_conjugation_and_signed_pdg_fallback() -> 
     assert [mapping.method for mapping in fallback] == ["signed-pdg"]
 
 
+def test_candidate_mappings_are_not_truncated() -> None:
+    """Every flavour relabelling is a candidate (formerly the first 24):
+    4! quark x 2! lepton pairings of interchangeable flavours."""
+
+    member = process("u c d s e- ve > u c d s e- ve")
+    representative = process("d s u c ve e- > d s u c ve e-")
+    mappings = profile_mappings(member, representative, TABLE)
+    assert len(mappings) == len(set(mappings)) == 48
+    assert profile_mappings(member, representative, TABLE, limit=1) == mappings[:1]
+    every = candidate_mappings(
+        member, representative, TABLE, consider_charge_conjugation=False
+    )
+    assert every[:48] == mappings
+
+
 def test_flavour_blind_classes_choose_the_canonical_representative() -> None:
     processes = [
         process(expression, f"p{index}")
@@ -219,8 +234,16 @@ def test_merge_keeps_the_smaller_representative_and_inverts_the_link() -> None:
 def test_rational_factor_and_parameter_resolution() -> None:
     assert rational_factor(4.0 + 1e-13, tolerance=1e-9) == Fraction(4)
     assert rational_factor(-0.5, tolerance=1e-9) == Fraction(-1, 2)
-    assert rational_factor(3.14159, tolerance=1e-9) is None
-    assert rational_factor(150.0, tolerance=1e-9) is None
+    # No numerator/denominator cap (formerly 99): the simplest rational
+    # within the comparison tolerance, e.g. (Q_u / Q_d)^8 of u u~ > 4a vs
+    # d d~ > 4a, 1 / 256 the other way round.
+    assert rational_factor(150.0, tolerance=1e-9) == Fraction(150)
+    assert rational_factor(256.0 * (1 + 3e-14), tolerance=1e-9) == Fraction(256)
+    assert rational_factor(1 / 256, tolerance=1e-9) == Fraction(1, 256)
+    pi_like = rational_factor(3.14159, tolerance=1e-9)
+    assert pi_like is not None and abs(float(pi_like) - 3.14159) <= 3.2e-9
+    assert rational_factor(0.0, tolerance=1e-9) is None
+    assert rational_factor(float("nan"), tolerance=1e-9) is None
 
     class Record:
         def __init__(self, resolved: str) -> None:

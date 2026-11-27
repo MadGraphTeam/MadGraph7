@@ -42,7 +42,7 @@ where
 
 #[cfg(feature = "symbolica-runtime")]
 pub(super) fn is_zero<T: RealLike>(value: &T) -> bool {
-    value.to_f64() == 0.0
+    value.is_zero()
 }
 
 #[cfg(feature = "symbolica-runtime")]
@@ -187,7 +187,12 @@ pub(super) fn ext_quark_dirac_massive(
     } else {
         c64((pp3 * 0.5 / pp).sqrt(), 0.0)
     };
-    let chi2 = if pp3 == 0.0 || pp == 0.0 {
+    // At rest (pp = 0) the helicity axis is +z, the limit of the general
+    // branch along +z (HELAS ixxxxx/oxxxxx's rest spinor): chi = (1, 0). A
+    // momentum along -z (pp3 = 0) takes chi = (0, -nh).
+    let chi2 = if pp == 0.0 {
+        c64(0.0, 0.0)
+    } else if pp3 == 0.0 {
         c64(-(nh as f64), 0.0)
     } else {
         let denom = (2.0 * pp * pp3).sqrt();
@@ -233,7 +238,12 @@ pub(super) fn ext_antiquark_dirac_massive(
     } else {
         c64((pp3 * 0.5 / pp).sqrt(), 0.0)
     };
-    let chi2 = if pp3 == 0.0 || pp == 0.0 {
+    // At rest (pp = 0) the helicity axis is +z, the limit of the general
+    // branch along +z (HELAS ixxxxx/oxxxxx's rest spinor): chi = (1, 0). A
+    // momentum along -z (pp3 = 0) takes chi = (0, -nh).
+    let chi2 = if pp == 0.0 {
+        c64(0.0, 0.0)
+    } else if pp3 == 0.0 {
         c64(-(nh as f64), 0.0)
     } else {
         let denom = (2.0 * pp * pp3).sqrt();
@@ -257,8 +267,8 @@ where
     let px = momentum[1].clone();
     let py = momentum[2].clone();
     let pz = momentum[3].clone();
-    if energy.to_f64() > 0.0 {
-        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() < 0.0 {
+    if energy > T::new_zero() {
+        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz < T::new_zero() {
             T::new_zero()
         } else {
             t_max(&(energy.clone() + pz.clone()), &T::new_zero()).sqrt()
@@ -280,7 +290,7 @@ where
         }
         return [complex_zero(), complex_zero(), chi2, chi1];
     }
-    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() > 0.0 {
+    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz > T::new_zero() {
         T::new_zero()
     } else {
         -t_max(&(-(energy.clone() + pz.clone())), &T::new_zero()).sqrt()
@@ -313,8 +323,8 @@ where
     let px = momentum[1].clone();
     let py = momentum[2].clone();
     let pz = momentum[3].clone();
-    if energy.to_f64() > 0.0 {
-        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() < 0.0 {
+    if energy > T::new_zero() {
+        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz < T::new_zero() {
             T::new_zero()
         } else {
             -t_max(&(energy.clone() + pz.clone()), &T::new_zero()).sqrt()
@@ -336,7 +346,7 @@ where
         }
         return [chi2, chi1, complex_zero(), complex_zero()];
     }
-    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() > 0.0 {
+    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz > T::new_zero() {
         T::new_zero()
     } else {
         t_max(&(-(energy.clone() + pz.clone())), &T::new_zero()).sqrt()
@@ -358,6 +368,100 @@ where
     } else {
         [chi2, chi1, complex_zero(), complex_zero()]
     }
+}
+
+/// Massive Dirac spinor u (or v for an antiparticle) in any carrier: the
+/// binary64 `ext_quark_dirac_massive` / `ext_antiquark_dirac_massive` (HELAS
+/// ixxxxx/oxxxxx conventions) with the mass in the carrier, as the exact
+/// runtime's `_massive_dirac`.
+#[cfg(feature = "symbolica-runtime")]
+pub(super) fn ext_dirac_massive_generic<T>(
+    momentum: &[T; 4],
+    helicity: i32,
+    mass: T,
+    antiparticle: bool,
+) -> RusticolResult<[Complex<T>; 4]>
+where
+    T: Real + RealLike + From<f64> + PartialOrd + Clone,
+{
+    let zero = T::new_zero();
+    let energy = momentum[0].clone();
+    let positive = energy > zero;
+    let nsf: i64 = match (antiparticle, positive) {
+        (false, true) | (true, false) => 1,
+        (false, false) | (true, true) => -1,
+    };
+    let nh = nsf * i64::from(helicity);
+    let integer = |value: i64| energy.from_i64(value);
+    let [px, py, pz] = [1, 2, 3].map(|mu| momentum[mu].clone());
+    // Along the z axis |p| is |pz| exactly. DoubleFloat's square root is not
+    // correctly rounded, so sqrt(pz²) can miss |pz| by an ulp: for p along
+    // -z, |p| + pz below was then a rounding residue instead of zero, which
+    // took the general branch and made the spinor vanish (binary64 and MPFR
+    // keep sqrt(pz²) = |pz|; their values are unchanged).
+    let pp = if is_zero(&px) && is_zero(&py) {
+        pz.norm()
+    } else {
+        (px.clone() * px.clone() + py.clone() * py.clone() + pz.clone() * pz.clone())
+            .sqrt()
+            .norm()
+    };
+    let omega1 = (energy.norm() + pp.clone()).sqrt();
+    if is_zero(&omega1) {
+        return Err(RusticolError::invalid_argument(
+            "massive fermion source has zero normalization",
+        ));
+    }
+    let omega = [omega1.clone(), mass / omega1];
+    // (1 + nsf ± (1 - nsf) nh) is even: the factors are exactly ±1 or 0.
+    let sf1 = integer((1 + nsf + (1 - nsf) * nh) / 2);
+    let sf2 = integer((1 + nsf - (1 - nsf) * nh) / 2);
+    let ip = ((3 + nh) / 2 - 1) as usize;
+    let im = ((3 - nh) / 2 - 1) as usize;
+    let sfomeg = [sf1 * omega[ip].clone(), sf2 * omega[im].clone()];
+    let (signed_px, signed_py, signed_pz) = if positive {
+        (px, py, pz)
+    } else {
+        (-px, -py, -pz)
+    };
+    let pp3 = t_max(&(pp.clone() + signed_pz), &zero);
+    let two = integer(2);
+    let chi1 = if is_zero(&pp) {
+        c_generic(energy.one(), zero.clone())
+    } else {
+        c_generic(
+            (pp3.clone() / (two.clone() * pp.clone())).sqrt(),
+            zero.clone(),
+        )
+    };
+    // At rest the helicity axis is +z (as the binary64 branch): chi = (1, 0).
+    let chi2 = if is_zero(&pp) {
+        c_generic(zero.clone(), zero.clone())
+    } else if is_zero(&pp3) {
+        c_generic(-integer(nh), zero.clone())
+    } else {
+        let denominator = (two * pp * pp3).sqrt();
+        let y = signed_py / denominator.clone();
+        c_generic(
+            integer(nh) * signed_px / denominator,
+            if antiparticle { y } else { -y },
+        )
+    };
+    let chi = [chi1, chi2];
+    let scaled = |c: &Complex<T>, factor: &T| {
+        c_generic(c.re.clone() * factor.clone(), c.im.clone() * factor.clone())
+    };
+    let (upper, lower) = if antiparticle {
+        (&sfomeg[0], &sfomeg[1])
+    } else {
+        (&sfomeg[1], &sfomeg[0])
+    };
+    Ok([
+        scaled(&chi[im], upper),
+        scaled(&chi[ip], upper),
+        scaled(&chi[im], lower),
+        scaled(&chi[ip], lower),
+    ])
 }
 
 pub(super) fn ext_massive_vector(
@@ -412,7 +516,7 @@ where
     T: Real + RealLike + From<f64> + PartialOrd + Clone,
 {
     let energy = momentum[0].clone();
-    if energy.to_f64() < 0.0 {
+    if energy < T::new_zero() {
         return ext_massive_vector_generic(&negate_generic(momentum), -helicity, mass);
     }
     let px = momentum[1].clone();
@@ -637,14 +741,14 @@ pub(super) fn ext_gluon(momentum: [f64; 4], helicity: i32) -> [Complex<f64>; 4] 
 #[cfg(feature = "symbolica-runtime")]
 pub(super) fn ext_gluon_generic<T>(momentum: &[T; 4], helicity: i32) -> [Complex<T>; 4]
 where
-    T: Real + RealLike + From<f64> + Clone,
+    T: Real + RealLike + From<f64> + PartialOrd + Clone,
 {
     let energy = momentum[0].clone();
     let px = momentum[1].clone();
     let py = momentum[2].clone();
     let pz = momentum[3].clone();
     let sqh = (energy.one() / energy.from_i64(2)).sqrt();
-    if energy.to_f64() > 0.0 {
+    if energy > T::new_zero() {
         let hel = energy.from_i64(helicity as i64);
         let pp = energy;
         let pt = (px.clone() * px.clone() + py.clone() * py.clone()).sqrt();
@@ -753,8 +857,8 @@ where
     let px = momentum[1].clone();
     let py = momentum[2].clone();
     let pz = momentum[3].clone();
-    if energy.to_f64() > 0.0 {
-        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() < 0.0 {
+    if energy > T::new_zero() {
+        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz < T::new_zero() {
             T::new_zero()
         } else {
             t_max(&(energy.clone() + pz.clone()), &T::new_zero()).sqrt()
@@ -779,7 +883,7 @@ where
         }
         return vec![complex_zero(), complex_zero()];
     }
-    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() > 0.0 {
+    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz > T::new_zero() {
         T::new_zero()
     } else {
         -t_max(&(-(energy.clone() + pz.clone())), &T::new_zero()).sqrt()
@@ -864,8 +968,8 @@ where
     let px = momentum[1].clone();
     let py = momentum[2].clone();
     let pz = momentum[3].clone();
-    if energy.to_f64() > 0.0 {
-        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() < 0.0 {
+    if energy > T::new_zero() {
+        let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz < T::new_zero() {
             T::new_zero()
         } else {
             -t_max(&(energy.clone() + pz.clone()), &T::new_zero()).sqrt()
@@ -890,7 +994,7 @@ where
         }
         return vec![complex_zero(), complex_zero()];
     }
-    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz.to_f64() > 0.0 {
+    let sqp0p3 = if is_zero(&px) && is_zero(&py) && pz > T::new_zero() {
         T::new_zero()
     } else {
         t_max(&(-(energy.clone() + pz.clone())), &T::new_zero()).sqrt()
@@ -925,6 +1029,39 @@ mod tests {
         assert!((left.im - right.im).abs() < 1.0e-13);
     }
 
+    /// A massive Dirac spinor at rest (a decaying fermion in its rest frame,
+    /// e.g. t > b w+) is the +z limit of the moving one (HELAS's rest
+    /// spinor): its norm is 2E = 2m. The rest branch had chi = (1, -nh), the
+    /// +z and -z limits at once, and twice the norm (|M|^2 of t > b w+ at
+    /// rest twice its boosted value).
+    #[test]
+    fn massive_dirac_spinor_at_rest_is_the_limit_along_plus_z() {
+        use super::{ext_antiquark_dirac_massive, ext_quark_dirac_massive};
+
+        let mass: f64 = 173.0;
+        for energy_sign in [1.0, -1.0] {
+            let rest = [energy_sign * mass, 0.0, 0.0, 0.0];
+            let pz: f64 = 1.0e-9;
+            let moving = [
+                energy_sign * (mass * mass + pz * pz).sqrt(),
+                0.0,
+                0.0,
+                energy_sign * pz,
+            ];
+            for helicity in [-1, 1] {
+                for spinor in [ext_quark_dirac_massive, ext_antiquark_dirac_massive] {
+                    let at_rest = spinor(rest, helicity, mass);
+                    let norm: f64 = at_rest.iter().map(|z| z.re * z.re + z.im * z.im).sum();
+                    assert!((norm - 2.0 * mass).abs() <= 1.0e-12 * mass, "{norm}");
+                    for (left, right) in at_rest.into_iter().zip(spinor(moving, helicity, mass)) {
+                        assert!((left.re - right.re).abs() <= 1.0e-9, "{left} {right}");
+                        assert!((left.im - right.im).abs() <= 1.0e-9, "{left} {right}");
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn massive_vector_negative_energy_obeys_crossing_convention() {
         let momentum = [13.0, 4.0, 8.0, 8.0];
@@ -933,6 +1070,48 @@ mod tests {
             let incoming = ext_massive_vector(negate(momentum), -helicity, 5.0);
             for (left, right) in incoming.into_iter().zip(outgoing) {
                 assert_complex_close(left, right);
+            }
+        }
+    }
+
+    /// A massive spinor along -z in DoubleFloat equals binary64's: before the
+    /// exact |p| = |pz| on the axis it vanished (|p| + pz a rounding residue)
+    /// at the b b~ > t t~ reproducer's b (|pz| = 499.97790951201034 GeV, the
+    /// binary64 sqrt(500² - 4.7·4.7), m = 4.7 GeV), cast from its exact
+    /// decimal as the native trees do; whether DoubleFloat's sqrt(pz²) misses
+    /// |pz| from above depends on the value (499.97790951189532 kept it).
+    #[cfg(feature = "loop-v2")]
+    #[test]
+    fn massive_dirac_spinor_along_the_axis_survives_double_float() {
+        use super::ext_dirac_massive_generic;
+        use crate::loop_v2::dress::{cast, parse_rational};
+        use symbolica::domains::float::{DoubleFloat, RealLike};
+
+        let zero = DoubleFloat::from(0.0);
+        let exact = |text: &str| cast(&zero, &parse_rational(text).unwrap());
+        let mass = exact("4.7");
+        for pz in [
+            "499.97790951201034",
+            "-499.97790951201034",
+            "499.97790951189532",
+            "-499.97790951189532",
+        ] {
+            let wide = [exact("500"), zero.clone(), zero.clone(), exact(pz)];
+            let momentum = wide.clone().map(|x| x.to_f64());
+            for antiparticle in [false, true] {
+                for helicity in [-1, 1] {
+                    let narrow =
+                        ext_dirac_massive_generic(&momentum, helicity, mass.to_f64(), antiparticle)
+                            .unwrap();
+                    let double =
+                        ext_dirac_massive_generic(&wide, helicity, mass.clone(), antiparticle)
+                            .unwrap();
+                    let size: f64 = narrow.iter().map(|z| z.re.abs() + z.im.abs()).sum();
+                    assert!(size > 1.0, "{narrow:?}");
+                    for (a, b) in narrow.iter().zip(&double) {
+                        assert_complex_close(*a, Complex::new(b.re.to_f64(), b.im.to_f64()));
+                    }
+                }
             }
         }
     }
@@ -960,4 +1139,40 @@ mod tests {
             }
         }
     }
+}
+
+/// Evaluate existing tree massless Dirac states in one native batch.
+/// Positive-energy quark rows are u_bar; antiquark rows are v, in the
+/// chiral representation. The caller may form u/v_bar by the Dirac adjoint.
+#[cfg(feature = "symbolica-runtime")]
+pub(crate) fn massless_dirac_batch<T>(
+    momenta: &[[T; 4]],
+    helicities: &[i32],
+    antiquarks: &[bool],
+) -> RusticolResult<Vec<[Complex<T>; 4]>>
+where
+    T: Real + RealLike + From<f64> + PartialOrd + Clone,
+{
+    if momenta.len() != helicities.len() || momenta.len() != antiquarks.len() {
+        return Err(RusticolError::invalid_argument(
+            "massless state batch dimensions differ",
+        ));
+    }
+    momenta
+        .iter()
+        .zip(helicities)
+        .zip(antiquarks)
+        .map(|((p, h), anti)| {
+            if !matches!(h, -1 | 1) {
+                return Err(RusticolError::invalid_argument(
+                    "massless fermion helicity must be -1 or 1",
+                ));
+            }
+            Ok(if *anti {
+                ext_antiquark_dirac_generic(p, *h)
+            } else {
+                ext_quark_dirac_generic(p, *h)
+            })
+        })
+        .collect()
 }

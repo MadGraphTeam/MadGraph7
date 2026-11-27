@@ -24,6 +24,7 @@ program check_born_flow_rejection
   ! the run-card defaults; individual cases override these settings.
   MCExplicitKLSum=.true.
   FKSExplicitSum=.false.
+  no_event_projection=index(mode,'no_proj').eq.1
   nan=ieee_value(0d0,ieee_quiet_nan)
   inf=ieee_value(0d0,ieee_positive_inf)
   leading=[.true.,.true.,.false.]
@@ -123,6 +124,30 @@ program check_born_flow_rejection
       enddo
     enddo
     call deallocate_weight_lines()
+  elseif(trim(mode).eq.'massive_unfolded')then
+    ! One unfolded massive sector without a soft endpoint. No other fold or
+    ! sector can give an S event at this Born, so its flow stays negative.
+    nndim=5
+    ickkw=0
+    mcatnlo_delta=.false.
+    ifks=5
+    jfks=3
+    abrv='all'
+    x=0.5d0
+    MCExplicitKLSum=.false.
+    ifold=1
+    outer_no_endpoint=.true.
+    real_no_endpoint=.true.
+    call weight_lines_allocated(5,32,1,1)
+    dummy=sigintF(x,1d0,0,answer)
+    if(born_flow_picked.ge.0)error stop 'kept a Born flow without any S event'
+    dummy=sigintF(x,1d0,2,answer)
+    if(born_calls.ne.0.or.any(born_wgt_mint.ne.0d0).or.any(virt_wgt_mint.ne.0d0)) &
+         error stop 'included Born/virtual terms from an absent soft endpoint'
+    if(icontr.ne.1.or.any(answer.ne.3d0))error stop 'lost the real-sector contribution'
+    if(draws.ne.1.or.rejected_born_flow_points.ne.0)error stop 'changed flow sampling'
+    if(last_grid_weight.ne.3d0.or.real_point_active)error stop 'invalid completed unfolded point'
+    call deallocate_weight_lines()
   elseif(index(mode,'massive').eq.1)then
     nndim=5
     ickkw=0
@@ -133,6 +158,7 @@ program check_born_flow_rejection
     abrv='all'
     x=0.5d0
     FKSExplicitSum=.true.
+    if(trim(mode).eq.'massive_sampled')FKSExplicitSum=.false.
     MCExplicitKLSum=.false.
     outer_no_endpoint=.true.
     born_cuts=trim(mode).ne.'massive_uncut'
@@ -148,6 +174,37 @@ program check_born_flow_rejection
     if(icontr.ne.3.or.any(answer.ne.9d0))error stop 'lost supported real-sector contributions'
     if(draws.ne.1.or.rejected_born_flow_points.ne.0)error stop 'changed shared flow sampling'
     if(last_grid_weight.ne.9d0.or.real_point_active)error stop 'invalid completed massive point'
+    call deallocate_weight_lines()
+  elseif(index(mode,'no_proj').eq.1)then
+    ! Without event projection the Born depends on the radiation variables,
+    ! so neither folds nor the sectors of an explicit FKS sum share it. An
+    ! unfolded Born-only or virtual-only point has one Born and no sector sum.
+    nndim=5
+    ickkw=0
+    mcatnlo_delta=.false.
+    ifks=5
+    jfks=1
+    abrv='all'
+    x=0.5d0
+    call weight_lines_allocated(5,32,1,1)
+    select case(trim(mode))
+    case('no_projection')
+    case('no_proj_exp')
+      FKSExplicitSum=.true.
+      ifold=1
+    case('no_proj_born','no_proj_virt')
+      FKSExplicitSum=.true.
+      ifold=1
+      abrv=merge('born','virt',trim(mode).eq.'no_proj_born')
+    case default
+      error stop 'unknown test mode'
+    end select
+    dummy=sigintF(x,1d0,0,answer)
+    if(abrv.eq.'all')error stop 'accepted a summed point without event projection'
+    dummy=sigintF(x,1d0,2,answer)
+    if(icontr.ne.1.or.born_calls.ne.merge(1,0,abrv.eq.'born').or. &
+         any(answer.ne.merge(1d0,2d0,abrv.eq.'born'))) &
+         error stop 'changed an unfolded n-body point without event projection'
     call deallocate_weight_lines()
   else
     nndim=5

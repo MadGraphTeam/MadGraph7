@@ -1,0 +1,129 @@
+{
+ "provider": "MadLoop-3.7.0-loop_sm-no_b_mass",
+ "process": "e+ e- > t t~ [virt=QCD]",
+ "model": "MG5_aMC_v3_7_0/models/loop_sm-no_b_mass, Feynman gauge, complex_mass_scheme False",
+ "parameters": {
+  "aS": "0.118",
+  "MU_R": "1000",
+  "MT": "173",
+  "ymt": "173",
+  "all_widths": "0"
+ },
+ "mu_r": [
+  "1000",
+  "1000",
+  "1000"
+ ],
+ "points": [
+  [
+   [
+    "279.929",
+    "0",
+    "0",
+    "279.929"
+   ],
+   [
+    "279.929",
+    "0",
+    "0",
+    "-279.929"
+   ],
+   [
+    "279.929",
+    "105.63408",
+    "132.0426",
+    "140.84544"
+   ],
+   [
+    "279.929",
+    "-105.63408",
+    "-132.0426",
+    "-140.84544"
+   ]
+  ],
+  [
+   [
+    "418.705625",
+    "0",
+    "0",
+    "418.705625"
+   ],
+   [
+    "418.705625",
+    "0",
+    "0",
+    "-418.705625"
+   ],
+   [
+    "418.705625",
+    "134.21562",
+    "-137.265975",
+    "329.43834"
+   ],
+   [
+    "418.705625",
+    "-134.21562",
+    "137.265975",
+    "-329.43834"
+   ]
+  ],
+  [
+   [
+    "636.9716",
+    "0",
+    "0",
+    "636.9716"
+   ],
+   [
+    "636.9716",
+    "0",
+    "0",
+    "-636.9716"
+   ],
+   [
+    "636.9716",
+    "-367.81704",
+    "294.253632",
+    "-392.338176"
+   ],
+   [
+    "636.9716",
+    "367.81704",
+    "-294.253632",
+    "392.338176"
+   ]
+  ]
+ ],
+ "results": [
+  {
+   "born": 0.010776985803573077,
+   "finite": 0.005035882054709205,
+   "single_pole": 0.0006392225621764105,
+   "double_pole": 0.0,
+   "accuracy": 1.421377174139015e-14,
+   "status": 236
+  },
+  {
+   "born": 0.00716771133404571,
+   "finite": 0.00401985087436472,
+   "single_pole": 0.0007452333742499597,
+   "double_pole": 0.0,
+   "accuracy": 3.0034030732970423e-15,
+   "status": 236
+  },
+  {
+   "born": 0.0407662140538269,
+   "finite": 0.026763962419274475,
+   "single_pole": 0.006039301674200422,
+   "double_pole": 0.0,
+   "accuracy": 4.442142451642099e-15,
+   "status": 236
+  }
+ ],
+ "provenance": {
+  "source": "workspace/reference/runs/top-pair-ee-model-control.json",
+  "source_sha256": "0f4a7370f6e9142c3fa03f9d55dfae7d5ee8f9595aa45de8ad7319b1494cb6dc",
+  "scope": "Independent MadLoop correctness references (binary64); diagnostic CT split. Bare = full minus generated CT sum. No timing claim.",
+  "note": "Born and the complete renormalised virtual ('full') of each row; MadLoop accurate mode, its reported accuracy per point"
+ }
+}

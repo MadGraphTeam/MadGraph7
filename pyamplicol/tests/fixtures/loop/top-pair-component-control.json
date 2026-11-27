@@ -1,0 +1,210 @@
+{
+  "fixture": {
+    "process": "u u~ > t t~",
+    "born_orders": {
+      "QCD": 2,
+      "QED": 0
+    },
+    "loop_orders": {
+      "QCD": 4,
+      "QED": 0
+    },
+    "squared_orders": {
+      "QCD": 6,
+      "QED": 0
+    },
+    "parameters": {
+      "alpha_s": 0.118,
+      "mu": 1000.0,
+      "mt": 173.0,
+      "mb": 0.0
+    },
+    "renormalization_flavours": 5,
+    "loop_quark_flavours": 6,
+    "external_momenta": "positive-energy incoming legs 1,2; outgoing legs 3,4; E,px,py,pz in GeV; decimal values satisfy p3^2=p4^2=173^2 exactly",
+    "normalization": "initial spin/colour average, physical couplings, stable top, Cepsilon=(4pi)^epsilon/Gamma(1-epsilon)",
+    "points": [
+      [
+        [
+          514.9645,
+          0,
+          0,
+          514.9645
+        ],
+        [
+          514.9645,
+          0,
+          0,
+          -514.9645
+        ],
+        [
+          514.9645,
+          291.0213,
+          0,
+          388.0284
+        ],
+        [
+          514.9645,
+          -291.0213,
+          0,
+          -388.0284
+        ]
+      ],
+      [
+        [
+          237.41125,
+          0,
+          0,
+          237.41125
+        ],
+        [
+          237.41125,
+          0,
+          0,
+          -237.41125
+        ],
+        [
+          237.41125,
+          0,
+          130.071,
+          -97.55325
+        ],
+        [
+          237.41125,
+          0,
+          -130.071,
+          97.55325
+        ]
+      ],
+      [
+        [
+          174.8225,
+          0,
+          0,
+          174.8225
+        ],
+        [
+          174.8225,
+          0,
+          0,
+          -174.8225
+        ],
+        [
+          174.8225,
+          15.1065,
+          0,
+          20.142
+        ],
+        [
+          174.8225,
+          -15.1065,
+          0,
+          -20.142
+        ]
+      ]
+    ]
+  },
+  "scope": "Independent diagnostic component controls. Bare = unmodified full MadLoop minus generated CT contribution; not a performance reference.",
+  "instrumentation": "Generated SKIPLOOPEVAL switch with CT amplitude filtering only; original export and all Feynman rules unchanged; exact patches saved alongside binaries.",
+  "rows": [
+    {
+      "born": 0.8211891045997556,
+      "full": {
+        "finite": 0.2780402931795206,
+        "single_pole": -0.10676351822081927,
+        "double_pole": -0.04112577070616139
+      },
+      "bare": {
+        "finite": 0.5698202478151114,
+        "single_pole": 0.06288028594209623,
+        "double_pole": -0.04112577070616139
+      },
+      "uv": {
+        "finite": -0.2626357194132998,
+        "single_pole": -0.1696438041629155,
+        "double_pole": 0
+      },
+      "r2": {
+        "finite": -0.029144235222291013,
+        "single_pole": 0,
+        "double_pole": 0
+      },
+      "wf": {
+        "finite": -0.2987125550134951,
+        "single_pole": -0.061688656059242085,
+        "double_pole": 0
+      },
+      "uv_vertex": {
+        "finite": 0.036076835600195374,
+        "single_pole": -0.10795514810367345,
+        "double_pole": 0
+      }
+    },
+    {
+      "born": 0.8305739256638375,
+      "full": {
+        "finite": 0.18023150340351118,
+        "single_pole": -0.1316263416413629,
+        "double_pole": -0.04159576963459079
+      },
+      "bare": {
+        "finite": 0.4786071344762107,
+        "single_pole": 0.03995620810132405,
+        "double_pole": -0.04159576963459079
+      },
+      "uv": {
+        "finite": -0.26563720739934815,
+        "single_pole": -0.17158254974268694,
+        "double_pole": 0
+      },
+      "r2": {
+        "finite": -0.03273842367335128,
+        "single_pole": 0,
+        "double_pole": 0
+      },
+      "wf": {
+        "finite": -0.30212634102538155,
+        "single_pole": -0.06239365445188613,
+        "double_pole": 0
+      },
+      "uv_vertex": {
+        "finite": 0.036489133626033336,
+        "single_pole": -0.1091888952908008,
+        "double_pole": 0
+      }
+    },
+    {
+      "born": 0.9735915609477959,
+      "full": {
+        "finite": -0.20996221572870774,
+        "single_pole": -0.2372707712463181,
+        "double_pole": -0.04875820084888727
+      },
+      "bare": {
+        "finite": 0.1438892255139291,
+        "single_pole": -0.036143192744657826,
+        "double_pole": -0.04875820084888727
+      },
+      "uv": {
+        "finite": -0.3113776334731923,
+        "single_pole": -0.20112757850166027,
+        "double_pole": 0
+      },
+      "r2": {
+        "finite": -0.04247380776944467,
+        "single_pole": 0,
+        "double_pole": 0
+      },
+      "wf": {
+        "finite": -0.35414987982827584,
+        "single_pole": -0.0731373012733309,
+        "double_pole": 0
+      },
+      "uv_vertex": {
+        "finite": 0.04277224635508355,
+        "single_pole": -0.1279902772283293,
+        "double_pole": 0
+      }
+    }
+  ]
+}

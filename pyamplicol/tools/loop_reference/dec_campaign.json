@@ -1,0 +1,34 @@
+{
+ "description": "M-FINAL MF-DEC reference campaign (workspace/reports/engine-v2/m-final/PLAN.md §2.2): MadLoop quadruple-precision one-loop references of the eight decay rows XX01-XX08 (1 -> 2 and 1 -> 3, QCD and EW) at exact rest-frame points (decay_points.py), the decaying particle at its real mass with zero own width. Runs live under $LOOP_REFERENCE_ROOT/runs/dec/<run>/ and their merged references are committed as tests/fixtures/loop/required/dec/<run>.json. Driven by mqcd_campaign.py --campaign dec_campaign.json.",
+ "layout": {
+  "name": "MF-DEC",
+  "runs": "runs/dec",
+  "fixtures": "required/dec",
+  "manifest": "required/dec_references.json",
+  "schema": "dec-references/1",
+  "plan": "m-final/PLAN.md",
+  "r2_couplings": true
+ },
+ "madloop_settings": {
+  "evaluation": {
+   "requested_relative_accuracy": 1e-13,
+   "madloop_params": {
+    "HelicityFilterLevel": "0"
+   },
+   "quadruple_precision_stage": true,
+   "description": "as the M-SM campaign (msm_campaign.json): every point in MadLoop's quadruple-precision stage, its own test at MLStabThres 1e-13 choosing Ninja or CutTools, HelicityFilterLevel = 0. For a decay MadLoop's quadruple-precision point improvement takes its PSMC method (the ORIG method needs two massless beams)."
+  },
+  "requested_relative_accuracy": 1e-13,
+  "job_timeout_seconds": 2700
+ },
+ "runs": [
+  {"id": "t_bwp_qcd", "row": "XX01", "process": "t_bwp_qcd", "export": "runs/dec/t_bwp_qcd/madloop-export", "points": {"generator": "decay"}},
+  {"id": "t_bwp_ew", "row": "XX02", "process": "t_bwp_ew", "export": "runs/dec/t_bwp_ew/madloop-export", "points": {"generator": "decay"}},
+  {"id": "z_emep_ew", "row": "XX03", "process": "z_emep_ew", "export": "runs/dec/z_emep_ew/madloop-export", "points": {"generator": "decay"}},
+  {"id": "z_uux_ew", "row": "XX04", "process": "z_uux_ew", "export": "runs/dec/z_uux_ew/madloop-export", "points": {"generator": "decay"}},
+  {"id": "wp_epve_ew", "row": "XX05", "process": "wp_epve_ew", "export": "runs/dec/wp_epve_ew/madloop-export", "points": {"generator": "decay"}},
+  {"id": "h_bbx_4fs", "row": "XX06", "process": "h_bbx_4fs", "export": "runs/dec/h_bbx_4fs/madloop-export", "points": {"generator": "decay"}},
+  {"id": "t_bwpg_qcd", "row": "XX07", "process": "t_bwpg_qcd", "export": "runs/dec/t_bwpg_qcd/madloop-export", "points": {"generator": "decay"}},
+  {"id": "z_uuxg_ew", "row": "XX08", "process": "z_uuxg_ew", "export": "runs/dec/z_uuxg_ew/madloop-export", "points": {"generator": "decay"}}
+ ]
+}

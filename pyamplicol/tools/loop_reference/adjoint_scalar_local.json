@@ -1,0 +1,587 @@
+{
+  "scope": "local scalar two-point/VSS/VVSS tensors and actual ggSS R2 SU3 colour basis",
+  "native": "exact dependency tensor algebra",
+  "reference": "binary64 ALOHA + independent MG colour algebra",
+  "process_generated": false,
+  "scalar_coefficients_certified": false,
+  "full_process_certified": false,
+  "source_preserved": true,
+  "lorentz": [
+    {
+      "lorentz": "SS1",
+      "source_keys": [
+        [
+          "counterterm_vertices",
+          59,
+          0,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          129,
+          0,
+          0,
+          0
+        ]
+      ],
+      "spins": [
+        1,
+        1
+      ],
+      "checks": 2,
+      "max_scaled_error": 7.152448122690996e-17
+    },
+    {
+      "lorentz": "SS2",
+      "source_keys": [
+        [
+          "counterterm_vertices",
+          59,
+          0,
+          1,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          129,
+          0,
+          1,
+          0
+        ]
+      ],
+      "spins": [
+        1,
+        1
+      ],
+      "checks": 2,
+      "max_scaled_error": 2.5353728401694937e-16
+    },
+    {
+      "lorentz": "VSS1",
+      "source_keys": [
+        [
+          "vertices",
+          49,
+          0,
+          0,
+          null
+        ],
+        [
+          "counterterm_vertices",
+          9,
+          0,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          83,
+          0,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          83,
+          0,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          83,
+          0,
+          0,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          83,
+          0,
+          0,
+          3
+        ],
+        [
+          "counterterm_vertices",
+          83,
+          0,
+          0,
+          5
+        ],
+        [
+          "counterterm_vertices",
+          83,
+          0,
+          0,
+          4
+        ]
+      ],
+      "spins": [
+        3,
+        1,
+        1
+      ],
+      "checks": 5,
+      "max_scaled_error": 2.2887833992611187e-16
+    },
+    {
+      "lorentz": "VVSS1",
+      "source_keys": [
+        [
+          "vertices",
+          50,
+          1,
+          0,
+          null
+        ],
+        [
+          "vertices",
+          50,
+          0,
+          0,
+          null
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          0,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          0,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          2,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          2,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          6,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          6,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          7,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          7,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          5,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          5,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          1,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          1,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          4,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          4,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          3,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          3,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          10,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          10,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          9,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          9,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          8,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          10,
+          8,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          0,
+          0,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          0,
+          0,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          2,
+          0,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          2,
+          0,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          6,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          6,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          6,
+          0,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          6,
+          0,
+          3
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          6,
+          0,
+          5
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          6,
+          0,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          7,
+          0,
+          0
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          7,
+          0,
+          1
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          7,
+          0,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          7,
+          0,
+          3
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          7,
+          0,
+          5
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          7,
+          0,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          5,
+          0,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          5,
+          0,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          1,
+          0,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          1,
+          0,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          4,
+          0,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          4,
+          0,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          3,
+          0,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          3,
+          0,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          10,
+          0,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          10,
+          0,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          9,
+          0,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          9,
+          0,
+          4
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          8,
+          0,
+          2
+        ],
+        [
+          "counterterm_vertices",
+          84,
+          8,
+          0,
+          4
+        ]
+      ],
+      "spins": [
+        3,
+        3,
+        1,
+        1
+      ],
+      "checks": 17,
+      "max_scaled_error": 7.152448122690996e-17
+    }
+  ],
+  "color": {
+    "source_color_basis_count": 11,
+    "complex_trace_probe_count": 2,
+    "exact_overlap_checks": 169,
+    "nonreal_overlap_count": 12,
+    "provider": "MadGraph UFOMG5Converter.treat_color + ColorMatrix, Nc=3",
+    "native_color_arithmetic": "exact native SU(3) tensor component contraction",
+    "color_sources": [
+      "Identity(1,2)*Identity(3,4)",
+      "Identity(1,3)*Identity(2,4)",
+      "Identity(1,4)*Identity(2,3)",
+      "d(-1,1,3)*d(-1,2,4)",
+      "d(-1,1,3)*f(-1,2,4)",
+      "d(-1,1,4)*d(-1,2,3)",
+      "d(-1,1,4)*f(-1,2,3)",
+      "d(-1,2,3)*f(-1,1,4)",
+      "d(-1,2,4)*f(-1,1,3)",
+      "f(-1,1,3)*f(-1,2,4)",
+      "f(-1,1,4)*f(-1,2,3)",
+      "Tr(1,2,3,4)",
+      "Tr(1,3,2,4)"
+    ],
+    "reference_code_sha256": "e0a5bc944d069bb021017d46c752e6a52a43dfb73216ac4cab28dce7e373f10e"
+  },
+  "additional_color_controls": [
+    {
+      "ports": [
+        9000001,
+        9000001
+      ],
+      "evidence": {
+        "source_color_basis_count": 1,
+        "complex_trace_probe_count": 2,
+        "exact_overlap_checks": 9,
+        "nonreal_overlap_count": 0,
+        "provider": "MadGraph UFOMG5Converter.treat_color + ColorMatrix, Nc=3",
+        "native_color_arithmetic": "exact native SU(3) tensor component contraction",
+        "color_sources": [
+          "Identity(1,2)",
+          "Tr(1,2)",
+          "Tr(1,2)"
+        ],
+        "reference_code_sha256": "e0a5bc944d069bb021017d46c752e6a52a43dfb73216ac4cab28dce7e373f10e"
+      }
+    },
+    {
+      "ports": [
+        21,
+        9000001,
+        9000001
+      ],
+      "evidence": {
+        "source_color_basis_count": 1,
+        "complex_trace_probe_count": 2,
+        "exact_overlap_checks": 9,
+        "nonreal_overlap_count": 4,
+        "provider": "MadGraph UFOMG5Converter.treat_color + ColorMatrix, Nc=3",
+        "native_color_arithmetic": "exact native SU(3) tensor component contraction",
+        "color_sources": [
+          "f(1,2,3)",
+          "Tr(1,2,3)",
+          "Tr(1,3,2)"
+        ],
+        "reference_code_sha256": "e0a5bc944d069bb021017d46c752e6a52a43dfb73216ac4cab28dce7e373f10e"
+      }
+    }
+  ]
+}

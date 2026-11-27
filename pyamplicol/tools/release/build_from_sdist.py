@@ -15,6 +15,7 @@ from _artifacts import audit_sdist, audit_wheel
 from _common import (
     CANDIDATE_ARTIFACTS,
     DIST,
+    DISTRIBUTION_WHEEL_SETTINGS,
     ReleaseError,
     build_mode,
     check_dependency_gate,
@@ -28,27 +29,42 @@ from _common import (
 
 def build_wheel_from_sdist(
     sdist: Path,
-    source_wheel: Path,
+    source_wheel: Path | None,
     output_directory: Path,
     *,
     mode: str,
     python: Path,
     replace: bool = False,
 ) -> Path:
-    """Build from an untouched sdist and retain the independently audited wheel."""
+    """Build from an untouched sdist and retain the independently audited wheel.
+
+    With a ``source_wheel`` (built from the checkout) the two wheels must share
+    their filename and identity fields. ``None`` builds the sdist wheel alone;
+    its own audit still pins the version, tags and target.
+    """
 
     python = python.resolve()
     sdist = sdist.resolve()
-    source_wheel = source_wheel.resolve()
     output_directory = output_directory.resolve()
     audit_sdist(sdist, mode=mode)
-    source_report = audit_wheel(source_wheel, mode=mode)
+    source_report = None
+    if source_wheel is not None:
+        source_wheel = source_wheel.resolve()
+        source_report = audit_wheel(source_wheel, mode=mode)
     with external_temporary_directory("pyamplicol-from-sdist-") as temporary:
         source = safe_extract_sdist(sdist, temporary / "unpacked")
         wheel_directory = temporary / "wheel"
         wheel_directory.mkdir()
         run(
-            [python, "-m", "build", "--wheel", "--outdir", wheel_directory],
+            [
+                python,
+                "-m",
+                "build",
+                "--wheel",
+                *DISTRIBUTION_WHEEL_SETTINGS,
+                "--outdir",
+                wheel_directory,
+            ],
             cwd=source,
             env=clean_environment(mode=mode),
         )
@@ -57,19 +73,27 @@ def build_wheel_from_sdist(
             "wheel rebuilt from sdist",
         )
         rebuilt_report = audit_wheel(rebuilt, mode=mode)
-        if rebuilt.name != source_wheel.name:
-            raise ReleaseError(
-                "source and sdist wheels have different filenames: "
-                f"{source_wheel.name} != {rebuilt.name}"
+        if source_wheel is not None and source_report is not None:
+            if rebuilt.name != source_wheel.name:
+                raise ReleaseError(
+                    "source and sdist wheels have different filenames: "
+                    f"{source_wheel.name} != {rebuilt.name}"
+                )
+            identity_fields = (
+                "version",
+                "python_tag",
+                "abi_tag",
+                "target",
+                "rust_target",
             )
-        identity_fields = ("version", "python_tag", "abi_tag", "target", "rust_target")
-        if any(
-            getattr(source_report, field) != getattr(rebuilt_report, field)
-            for field in identity_fields
-        ):
-            raise ReleaseError(
-                "source and sdist wheels have different package or platform metadata"
-            )
+            if any(
+                getattr(source_report, field) != getattr(rebuilt_report, field)
+                for field in identity_fields
+            ):
+                raise ReleaseError(
+                    "source and sdist wheels have different package or "
+                    "platform metadata"
+                )
 
         output_directory.mkdir(parents=True, exist_ok=True)
         target = output_directory / rebuilt.name

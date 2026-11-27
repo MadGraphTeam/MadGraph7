@@ -65,7 +65,7 @@ def build_process_ir(
             ),
             *(
                 _leg_ir(
-                    label=index + 3,
+                    label=len(physical_initial) + index + 1,
                     side="final",
                     particle=particle,
                     outgoing_particle=particle,

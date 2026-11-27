@@ -496,7 +496,10 @@ def test_projection_binds_global_helicity_flip_proof_only_for_complete_axes() ->
         "layout": "topology-replay",
         "topology_replay": _replay(),
         "normalization": _normalization(),
-        "coupling_order_limits": {"qcd": 4},
+        # QCD alone, as the minimal-order envelope of generation states it: a
+        # quark pair fuses into a photon or Z, so without QED = 0 the reachable
+        # inventory holds parity-violating vertices and no flip proof binds.
+        "coupling_order_limits": {"qcd": 4, "qed": 0},
         "model": BuiltinSMModel(),
     }
 

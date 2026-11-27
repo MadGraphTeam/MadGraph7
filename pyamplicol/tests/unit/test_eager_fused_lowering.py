@@ -45,11 +45,13 @@ def _build_case(
     process_id: str,
     prepared_closure: bool,
     color_accuracy: str = "lc",
+    max_coupling_orders: dict[str, int] | None = None,
 ) -> _LoweringCase:
     model = BuiltinSMModel()
     dag = compile_generic_dag(
         build_process_ir(process, color_accuracy=color_accuracy),
         model=model,
+        max_coupling_orders=max_coupling_orders,
     )
 
     # The current built-in compiler closes amplitudes directly.  Replace one
@@ -123,6 +125,9 @@ def three_line_nlc_case() -> _LoweringCase:
         process_id="three_line_nlc_fused_contract",
         prepared_closure=False,
         color_accuracy="nlc",
+        # QED <= 1: the pure-QCD DAG of one Born order (an electroweak
+        # exchange between the quark lines takes two QED vertices).
+        max_coupling_orders={"QED": 1},
     )
 
 

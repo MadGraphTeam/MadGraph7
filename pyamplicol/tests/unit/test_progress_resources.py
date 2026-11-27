@@ -88,3 +88,43 @@ def test_resource_monitor_thread_stops_cleanly() -> None:
     assert monitor._thread is None
     assert monitor.usage.current_rss_bytes == 123
     assert monitor.usage.peak_rss_bytes == 123
+
+
+def test_the_tree_leaves_out_multiprocessings_resource_tracker(monkeypatch) -> None:
+    """The resource tracker the first spawned process starts is a helper,
+    not a worker: "children N" counts the workers (uxaudit P3)."""
+
+    import pyamplicol.reporting.resources as resources
+
+    tracker = "from multiprocessing.resource_tracker import main;main(5)"
+    commands = {
+        11: b"python\x00-m\x00pyamplicol.worker",
+        12: b"python\x00-c\x00" + tracker.encode(),
+    }
+    monkeypatch.setattr(
+        resources.Path, "read_bytes", lambda self: commands[int(self.parent.name)]
+    )
+    sampler = ProcessTreeSampler(10)
+    records = {
+        10: ProcessInfo(10, 1, 100),
+        11: ProcessInfo(11, 10, 200),
+        12: ProcessInfo(12, 10, 30),
+    }
+    assert sampler.sample(records) == (300, 2)
+
+
+def test_the_helper_check_reads_the_command_line_once(tmp_path, monkeypatch) -> None:
+    import pyamplicol.reporting.resources as resources
+
+    reads: list[int] = []
+    original = resources.Path.read_bytes
+
+    def counted(self):
+        reads.append(1)
+        return original(self)
+
+    monkeypatch.setattr(resources.Path, "read_bytes", counted)
+    sampler = ProcessTreeSampler(10)
+    assert sampler._helper(999_999_999) is False
+    assert sampler._helper(999_999_999) is False
+    assert len(reads) == 1

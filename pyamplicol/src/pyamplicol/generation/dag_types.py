@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
+from ..color.nc_expansion import NcExpansion
 from ..color.plan import (
     ColorTopologyReplayCertificate,
     GenericColorPlan,
@@ -56,9 +57,21 @@ def _lc_color_identity_closures_compatible(
     closures: Iterable[frozenset[int]],
     sector: LCColorSector,
 ) -> bool:
+    """Whether every colour-identity closure fits the colour lines of ``sector``.
+
+    A closure lies inside one colour line, or is a union of complete lines: an
+    electroweak boson emitted by a fermion line that exchanged a gluon with
+    other lines carries all of their colour lines.
+    """
+
     groups = tuple(frozenset(group) for group in sector.coloured_label_groups)
     return all(
-        bool(closure) and any(closure.issubset(group) for group in groups)
+        bool(closure)
+        and (
+            any(closure.issubset(group) for group in groups)
+            or closure
+            == frozenset().union(*(group for group in groups if group & closure))
+        )
         for closure in closures
     )
 
@@ -70,12 +83,34 @@ class ColorState:
     The LC implementation stores the warmup sector and the open-line/trace
     groups touched by the current.  NLC/full colour will replace ``basis_key``
     with Idenso basis components without changing the current-index contract.
+
+    ``traces`` and ``lines`` are the closed colour components the current
+    carries besides its open word (the multi-trace state of counterterm
+    currents, design §6.1): a trace is a cyclic word of adjoint labels rotated
+    to start at its smallest label, a line a closed colour-flow string from a
+    fundamental through adjoint to an antifundamental label; each sorted.
+    Only loop-request blocks produce them (a colour-identity vertex closing
+    two adjoint currents into a colour singlet,
+    ``ColorEngine._loop_block_flows``); their labels are not part of the
+    current's ``ordered_external_labels``.
+
+    ``nc_grade`` is the N_c grade (minus the number of U(1)-subtraction
+    auxiliaries of its trees) of every current of a loop-request block whose
+    trees have several grades (``generation.dag_grades.split_u1_grades``): a
+    current whose own derivations mixed grades is split into one current per
+    grade, and a current of one grade in such a block (it mixes across its
+    helicity rows) takes its grade as a label. ``None`` for every current of
+    a block of one grade (its derivations fix it) and in a DAG compiled
+    without the split.
     """
 
     accuracy: str
     sector_id: int = 0
     line_groups: tuple[int, ...] = ()
     basis_key: tuple[str, ...] = ()
+    traces: tuple[tuple[int, ...], ...] = ()
+    lines: tuple[tuple[int, ...], ...] = ()
+    nc_grade: int | None = None
     _key: tuple[object, ...] = field(init=False, repr=False, compare=False)
     _hash: int = field(init=False, repr=False, compare=False)
 
@@ -86,8 +121,19 @@ class ColorState:
             self.line_groups,
             self.basis_key,
         )
+        if self.traces or self.lines:
+            key = (*key, self.traces, self.lines)
+        if self.nc_grade is not None:
+            key = (*key, ("nc_grade", self.nc_grade))
         object.__setattr__(self, "_key", key)
         object.__setattr__(self, "_hash", hash(key))
+
+    @property
+    def closed_labels(self) -> frozenset[int]:
+        """Labels of the closed traces and lines."""
+        return frozenset(
+            label for part in (*self.traces, *self.lines) for label in part
+        )
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ColorState):
@@ -98,12 +144,19 @@ class ColorState:
         return self._hash
 
     def to_json_dict(self) -> dict[str, object]:
-        return {
+        out: dict[str, object] = {
             "accuracy": self.accuracy,
             "sector_id": self.sector_id,
             "line_groups": list(self.line_groups),
             "basis_key": list(self.basis_key),
         }
+        if self.traces:
+            out["traces"] = [list(trace) for trace in self.traces]
+        if self.lines:
+            out["lines"] = [list(line) for line in self.lines]
+        if self.nc_grade is not None:
+            out["nc_grade"] = self.nc_grade
+        return out
 
 
 @dataclass(frozen=True)
@@ -146,7 +199,18 @@ class CurrentIndex:
         labels = tuple(sorted(self.external_labels))
         if labels != self.external_labels:
             object.__setattr__(self, "external_labels", labels)
-        if not self.ordered_external_labels:
+        closed = self.color_state.closed_labels
+        if closed:
+            # The open word holds every label outside the closed components.
+            source = self.ordered_external_labels or labels
+            word = tuple(label for label in source if label not in closed)
+            object.__setattr__(self, "ordered_external_labels", word)
+            if tuple(sorted((*word, *closed))) != labels:
+                raise ValueError(
+                    "ordered_external_labels and the closed colour components "
+                    "must contain the same labels as external_labels"
+                )
+        elif not self.ordered_external_labels:
             object.__setattr__(self, "ordered_external_labels", labels)
         elif tuple(sorted(self.ordered_external_labels)) != labels:
             raise ValueError(
@@ -403,6 +467,10 @@ class GenericDAG:
     color_topology_replay: ColorTopologyReplayCertificate | None = None
     helicity_recurrence: HelicityRecurrencePlan | None = None
     helicity_materialization: HelicityMaterialization | None = None
+    # Formal-N_c treatment of the colour sum (strict colour and graded
+    # output, ``color.nc_expansion``): the amplitudes are full colour and
+    # every root has one N_c grade (``generation.dag_grades``).
+    nc_expansion: NcExpansion | None = None
 
     def __post_init__(self) -> None:
         if self.helicity_coverage not in {"complete", "selected"}:
@@ -468,6 +536,15 @@ class GenericDAG:
                     "generic topology replay physical sectors do not match the "
                     "color plan"
                 )
+        if self.nc_expansion is not None and (
+            self.process.color_accuracy != "full"
+            or self.color_coverage != "complete"
+            or selected_color_sector_ids
+            or self.lc_topology_replay is not None
+        ):
+            raise ValueError(
+                "a formal-N_c expansion needs the complete full-colour amplitude basis"
+            )
         if self.helicity_recurrence is not None and (
             self.helicity_coverage != "complete"
             or bool(self.selected_source_helicities)

@@ -229,6 +229,17 @@ class TestRealChannelJobs(unittest.TestCase):
         with self.assertRaisesRegex(self.command.InvalidCmd, 'Cannot determine'):
             self.command.check_real_channels_nocompile(['P0_test'])
 
+    def test_crashed_test_executable_is_not_reported_as_passed(self):
+        with open(os.path.join(self.directory.name, 'test_MC_input.txt'), 'w'):
+            pass
+        with mock.patch.object(amcatnlo.misc, 'compile'), \
+                mock.patch.object(amcatnlo.misc, 'call', return_value=2):
+            with self.assertRaisesRegex(amcatnlo.aMCatNLOError,
+                                        'test_MC stopped with exit status 2 in P0_test'):
+                amcatnlo.compile_dir(self.directory.name, 'P0_test', 'NLO',
+                                    {'reweightonly': False}, ['test_MC'],
+                                    'madevent_mintFO', 0)
+
     def test_reweight_only_preserves_compiled_markers(self):
         self.write_compiled_setting('0.1')
         with mock.patch.object(amcatnlo.misc, 'compile') as compile, \

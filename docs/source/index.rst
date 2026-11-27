@@ -26,11 +26,14 @@ If you need a stable release, use the
    :hidden:
 
    installation
+   tirust
    first_steps
+   standalone
    run_card
    custom_functions
    diagram_filters
    gridpacks
+   cluster
    event_stream
    madevent_to_mg7
 

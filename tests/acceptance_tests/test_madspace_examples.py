@@ -44,6 +44,7 @@ import tempfile
 import textwrap
 import unittest
 
+import tests
 from madgraph import MG5DIR
 
 pjoin = os.path.join
@@ -132,17 +133,12 @@ def extract_named_block(rst_path, name):
 
 
 def has_madspace():
-    try:
-        import madspace
-        return hasattr(madspace, 'PhaseSpaceMapping')
-    except ImportError:
-        return False
+    return hasattr(tests.import_madspace(), 'PhaseSpaceMapping')
 
 
 def has_cuda_backend():
     try:
-        import madspace
-        madspace.cuda_device()
+        tests.import_madspace().cuda_device()
         return True
     except Exception:
         return False

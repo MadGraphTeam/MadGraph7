@@ -1,0 +1,851 @@
+[
+ {
+  "name": "aa_etac",
+  "label": "gamma gamma -> eta_c thin [\"\"^1 S_0^((1))]",
+  "reference": [
+   -6.753597065940427,
+   0.0,
+   0.0
+  ],
+  "libs": {
+   "9": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 4.803089071415067e-14,
+    "max_pole_deviation": 4.803089071415067e-14,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     213
+    ],
+    "time_ms": 0.2444355
+   },
+   "3": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 2182700227.271005,
+    "max_pole_deviation": 405740049.1922751,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 1.5841315
+   },
+   "8": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 2.66666666666667,
+    "max_pole_deviation": 2.66666666666667,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 43.05410499999999
+   },
+   "6": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 2.66666666666667,
+    "max_pole_deviation": 2.66666666666667,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 7.032387
+   },
+   "7": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 1.480692422476868e+39,
+    "max_pole_deviation": 4.622549450358841e+24,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 1.9290225
+   },
+   "1": {
+    "status": "timeout"
+   }
+  },
+  "against": "analytic"
+ },
+ {
+  "name": "ee_etac_a",
+  "label": "e^+ e^- -> eta_c gamma",
+  "reference": [
+   -5.14606,
+   0.0,
+   0.0
+  ],
+  "libs": {
+   "9": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 2.442308374335503e-07,
+    "max_pole_deviation": 2.8849114787230046e-14,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     213
+    ],
+    "time_ms": 0.45540200000000003
+   },
+   "3": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 2.501122042743685e+40,
+    "max_pole_deviation": 5.2434429718882875e+39,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 2.5633255
+   },
+   "8": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 3.264956861359905,
+    "max_pole_deviation": 2.666666666666672,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 68.36236
+   },
+   "6": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 6.587088199779735e+32,
+    "max_pole_deviation": 5.984730871645652e+32,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 22.266885
+   },
+   "7": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 3.613906481619296e+53,
+    "max_pole_deviation": 1.1569999008667044e+29,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 1.2171455
+   },
+   "1": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 3.0482856232983616e+39,
+    "max_pole_deviation": 3.70704114706552e+38,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 49.15871
+   }
+  },
+  "against": "analytic"
+ },
+ {
+  "name": "ee_jpsi",
+  "label": "e^+ e^- -> J\\/psi thin [\"\"^3 S_1^((1))]",
+  "reference": [
+   -10.666666666666666,
+   0.0,
+   0.0
+  ],
+  "libs": {
+   "9": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 1.7369582864862632e-14,
+    "max_pole_deviation": 1.7369582864862632e-14,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     213
+    ],
+    "time_ms": 0.055221
+   },
+   "3": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 7.23732619369275e-15,
+    "max_pole_deviation": 7.23732619369275e-15,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 0.199946
+   },
+   "8": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 4.000000000000006,
+    "max_pole_deviation": 4.000000000000006,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 1.4694155000000002
+   },
+   "6": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 4.000000000000006,
+    "max_pole_deviation": 4.000000000000006,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 1.1043440000000002
+   },
+   "7": {
+    "status": "ok",
+    "state": "guarded",
+    "max_deviation": 353315064.28002745,
+    "max_pole_deviation": 110284951.9930821,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 0.0736705
+   },
+   "1": {
+    "status": "timeout"
+   }
+  },
+  "against": "analytic"
+ },
+ {
+  "name": "ee_psi_etac",
+  "label": "e^+ e^- -> J\\/psi thin eta_c",
+  "reference": [
+   24.53642,
+   0.0,
+   0.0
+  ],
+  "libs": {
+   "9": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 6.126730430008951,
+    "max_pole_deviation": 6.126730430008951,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 632.37345
+   },
+   "3": {
+    "status": "failed"
+   },
+   "8": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 6.126730430008948,
+    "max_pole_deviation": 6.126730430008948,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 834.9398500000001
+   },
+   "6": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 1.64961244229088e+68,
+    "max_pole_deviation": 1.64961244229088e+68,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 410.91044999999997
+   },
+   "7": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 1.104438750654202e+56,
+    "max_pole_deviation": 1.104438750654202e+56,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 19.46651
+   },
+   "1": {
+    "status": "failed"
+   }
+  },
+  "against": "analytic"
+ },
+ {
+  "name": "gg_etac1",
+  "label": "g g -> eta_c thin [\"\"^1 S_0^((1))]",
+  "reference": [
+   14.050809535693613,
+   -9.0,
+   -6.0
+  ],
+  "libs": {
+   "9": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 3.517186542012496e-13,
+    "max_pole_deviation": 3.517186542012496e-13,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     213
+    ],
+    "time_ms": 0.9962134999999999
+   },
+   "3": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 1049126586.8456179,
+    "max_pole_deviation": 405740049.192279,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 5.0052695
+   },
+   "8": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 3.000000000000003,
+    "max_pole_deviation": 3.000000000000003,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 158.10645
+   },
+   "6": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 3.000000000000003,
+    "max_pole_deviation": 3.000000000000003,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 33.16815
+   },
+   "7": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 7.117027652105565e+38,
+    "max_pole_deviation": 4.622549450358841e+24,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 3.699369
+   },
+   "1": {
+    "status": "timeout"
+   }
+  },
+  "against": "analytic"
+ },
+ {
+  "name": "gg_etac8",
+  "label": "g g -> c overline(c) thin [\"\"^1 S_0^((8))]",
+  "reference": [
+   12.648606234876592,
+   -12.0,
+   -6.0
+  ],
+  "libs": {
+   "9": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 1.438849039914203e-13,
+    "max_pole_deviation": 1.438849039914203e-13,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     213
+    ],
+    "time_ms": 1.004044
+   },
+   "3": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 145678875.3785644,
+    "max_pole_deviation": 50717506.14903718,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 5.0259345
+   },
+   "8": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 3.3333333333333464,
+    "max_pole_deviation": 3.3333333333333464,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 169.36214999999999
+   },
+   "6": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 3.3333333333333464,
+    "max_pole_deviation": 3.3333333333333464,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 33.847825
+   },
+   "7": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 9.882511770769782e+37,
+    "max_pole_deviation": 5.778186812948552e+23,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 3.7159545
+   },
+   "1": {
+    "status": "timeout"
+   }
+  },
+  "against": "analytic"
+ },
+ {
+  "name": "gg_etac8_g",
+  "label": "g g -> c overline(c) thin [\"\"^1 S_0^((8))] thin g",
+  "reference": null,
+  "libs": {
+   "9": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 1.2434497875801753e-12,
+    "max_pole_deviation": 1.2434497875801753e-12,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     213
+    ],
+    "time_ms": 54.513665
+   },
+   "3": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 2.0737856327869729e+52,
+    "max_pole_deviation": 2.0737856327869729e+52,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 194.34425
+   },
+   "8": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 1.270711182831938e+53,
+    "max_pole_deviation": 1.270711182831938e+53,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 6319.515
+   },
+   "6": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 5.0166111675909343e+64,
+    "max_pole_deviation": 5.0166111675909343e+64,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 2146.4249999999997
+   },
+   "7": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 9.625721117795193e+39,
+    "max_pole_deviation": 9.625721117795193e+39,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 125.08235
+   },
+   "1": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 3.326662269594801e+64,
+    "max_pole_deviation": 3.326662269594801e+64,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 3428.2045
+   }
+  },
+  "against": "TIRust"
+ },
+ {
+  "name": "gg_psi8_g",
+  "label": "g g -> c overline(c) thin [\"\"^3 S_1^((8))] thin g",
+  "reference": null,
+  "libs": {
+   "9": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 1.3269385590319871e-11,
+    "max_pole_deviation": 1.3269385590319871e-11,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     213
+    ],
+    "time_ms": 92.476735
+   },
+   "3": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 3.07740423631419e+51,
+    "max_pole_deviation": 3.07740423631419e+51,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 230.49655
+   },
+   "8": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 4.422367165998958e+90,
+    "max_pole_deviation": 4.422367165998958e+90,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 8250.596000000001
+   },
+   "6": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 2.7916723031743093e+100,
+    "max_pole_deviation": 2.7916723031743093e+100,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 3860.9289999999996
+   },
+   "7": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 1.0409063040767064e+39,
+    "max_pole_deviation": 1.0409063040767064e+39,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 169.3285
+   },
+   "1": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 1.3121316449704406e+97,
+    "max_pole_deviation": 1.3121316449704406e+97,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 5157.629
+   }
+  },
+  "against": "TIRust"
+ },
+ {
+  "name": "gg_psi_g",
+  "label": "g g -> J\\/psi thin g",
+  "reference": null,
+  "libs": {
+   "9": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 2.616928895804449e-11,
+    "max_pole_deviation": 2.616928895804449e-11,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     213
+    ],
+    "time_ms": 95.48664
+   },
+   "3": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 2.4839400657571997e+55,
+    "max_pole_deviation": 2.541020245909332e+54,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 236.97145
+   },
+   "8": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 1.0582509552947534e+93,
+    "max_pole_deviation": 1.0582509552947534e+93,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 7361.884
+   },
+   "6": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 9.146460178819512e+102,
+    "max_pole_deviation": 6.151449198166594e+102,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 3718.8585000000003
+   },
+   "7": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 4.793062349805821e+41,
+    "max_pole_deviation": 4.793062349805821e+41,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 170.59815
+   },
+   "1": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 3.735830231344916e+101,
+    "max_pole_deviation": 3.735830231344916e+101,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 4929.2175
+   }
+  },
+  "against": "TIRust"
+ },
+ {
+  "name": "uu_ps",
+  "label": "u overline(u) -> \"Ps\" thin [\"\"^3 S_1^((1))]",
+  "reference": [
+   2.492805868119144,
+   -4.0,
+   -2.6666666666666665
+  ],
+  "libs": {
+   "9": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 2.4868995751603507e-14,
+    "max_pole_deviation": 2.4868995751603507e-14,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     213
+    ],
+    "time_ms": 0.0513155
+   },
+   "3": {
+    "status": "ok",
+    "state": "silent",
+    "max_deviation": 4.000000000000006,
+    "max_pole_deviation": 4.000000000000006,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     213
+    ],
+    "time_ms": 0.13589
+   },
+   "8": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 5.219746156336043e-14,
+    "max_pole_deviation": 2.7977620220553945e-14,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     212
+    ],
+    "time_ms": 0.045405499999999994
+   },
+   "6": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 4.3520742565306136e-14,
+    "max_pole_deviation": 4.3520742565306136e-14,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     216
+    ],
+    "time_ms": 0.04564
+   },
+   "7": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 2.1316282072803006e-14,
+    "max_pole_deviation": 2.1316282072803006e-14,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     217
+    ],
+    "time_ms": 0.0647305
+   },
+   "1": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 9.085564982018369e-14,
+    "max_pole_deviation": 4.884981308350689e-14,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     211
+    ],
+    "time_ms": 0.07088499999999999
+   }
+  },
+  "against": "analytic"
+ },
+ {
+  "name": "uu_psi8",
+  "label": "u overline(u) -> c overline(c) thin [\"\"^3 S_1^((8))]",
+  "reference": [
+   7.955603598236256,
+   -7.0,
+   -2.6666666666666665
+  ],
+  "libs": {
+   "9": {
+    "status": "ok",
+    "state": "ok",
+    "max_deviation": 1.0900717464608735e-08,
+    "max_pole_deviation": 2.3989699116100383e-12,
+    "stable": 10,
+    "npoints": 10,
+    "return_codes": [
+     213
+    ],
+    "time_ms": 0.206456
+   },
+   "3": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 0.0418991883168189,
+    "max_pole_deviation": 2.3998580900297384e-12,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 0.823113
+   },
+   "8": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 4.0000000000000115,
+    "max_pole_deviation": 4.0000000000000115,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 23.60359
+   },
+   "6": {
+    "status": "ok",
+    "state": "flagged",
+    "max_deviation": 4.0000000000000115,
+    "max_pole_deviation": 4.0000000000000115,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     420
+    ],
+    "time_ms": 4.803989499999999
+   },
+   "7": {
+    "status": "ok",
+    "state": "guarded",
+    "max_deviation": 59214457.65319558,
+    "max_pole_deviation": 13785618.999135297,
+    "stable": 0,
+    "npoints": 10,
+    "return_codes": [
+     410
+    ],
+    "time_ms": 0.5448365000000001
+   },
+   "1": {
+    "status": "timeout"
+   }
+  },
+  "against": "analytic"
+ }
+]

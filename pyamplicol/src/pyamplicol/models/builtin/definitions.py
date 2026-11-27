@@ -121,6 +121,7 @@ class BuiltinSMDefinitionMixin:
             Vertex(3, (21, -21, 21)),
         ]
         self._extend_quark_gluon_vertices(vertices)
+        self._extend_quark_electroweak_fusion_vertices(vertices)
         self._extend_electroweak_gauge_vertices(vertices)
         self._extend_higgs_vertices(vertices)
         self._extend_lepton_vertices(vertices)
@@ -162,6 +163,45 @@ class BuiltinSMDefinitionMixin:
                         11, (-i, -24, -i - 1), (self.charged_current_coupling(), 0.0)
                     )
                 )
+
+    def _extend_quark_electroweak_fusion_vertices(self, vertices: list[Vertex]) -> None:
+        """A quark line emits a photon, Z or W as well as absorbing one.
+
+        Quark-antiquark fusion to the photon, Z and W (quark first, as the
+        colour-singlet U(1) current of kind 8), and the absorption with the
+        boson as the left input, which a current fed by such a fusion
+        needs: without them a quark line could only absorb an electroweak
+        current, and every electroweak exchange between two quark lines
+        (u u~ > d d~ through the photon and Z, u d > u d through the W) was
+        missing in every lane.
+        """
+
+        ccc = (self.charged_current_coupling(), 0.0)
+        for i in range(1, 7):
+            for boson, coupling, anti_coupling in (
+                (22, self.photon_fermion_coupling(i), self.photon_fermion_coupling(-i)),
+                (23, self.z_fermion_coupling(i), self.z_fermion_coupling(-i)),
+            ):
+                vertices.extend(
+                    [
+                        Vertex(21, (i, -i, boson), coupling),
+                        Vertex(23, (boson, i, i), coupling),
+                        Vertex(24, (boson, -i, -i), anti_coupling),
+                    ]
+                )
+            if i % 2:
+                continue
+            up, down = i, i - 1
+            vertices.extend(
+                [
+                    Vertex(21, (up, -down, 24), ccc),
+                    Vertex(21, (down, -up, -24), ccc),
+                    Vertex(23, (-24, up, down), ccc),
+                    Vertex(23, (24, down, up), ccc),
+                    Vertex(24, (24, -up, -down), ccc),
+                    Vertex(24, (-24, -down, -up), ccc),
+                ]
+            )
 
     def _extend_electroweak_gauge_vertices(self, vertices: list[Vertex]) -> None:
         ngc = self.neutral_gauge_coupling()
@@ -256,13 +296,30 @@ class BuiltinSMDefinitionMixin:
                 Vertex(17, (23, 23, 127), (0.5 * wc2 / cw2, 0.0)),
                 Vertex(20, (125, 25, 25), (1.0, 0.0)),
                 Vertex(20, (25, 125, 25), (1.0, 0.0)),
+                # A current of three Higgs legs meets the H H H H contact
+                # through each of its three pairings into the non-propagating
+                # auxiliary 125, so each pairing carries a third of the
+                # 3/4 g^2 MH^2 / MW^2 contact, with the phase i (the -10.0
+                # marker of kind 20, as H H -> 126) that the scalar
+                # propagator gives the H exchange. The value
+                # (-3/4 g^2 MH^2 / MW^2, 0) made h h > h h's contact three
+                # times too large and out of phase with the exchange.
                 Vertex(
                     20,
                     (25, 25, 125),
-                    ((-3.0 / 4.0) * wc2 * self.mass(25) ** 2 / self.mass(24) ** 2, 0.0),
+                    (
+                        (1.0 / 4.0) * wc2 * self.mass(25) ** 2 / self.mass(24) ** 2,
+                        -10.0,
+                    ),
                 ),
-                Vertex(20, (127, 25, 25), (1.0, 0.0)),
-                Vertex(20, (25, 127, 25), (1.0, 0.0)),
+                # V V -> 127 -> (with H) H closes the H H V V contact on a
+                # Higgs current (h h > z z with a Higgs sink); H H -> 126 ->
+                # (with V) V closes it on a vector current. Both must carry the
+                # same contact: the 127 leg takes the phase i and the sign of
+                # the 126 leg ((1.0, 0.0) made h h > z z and h h > w+ w- up to
+                # 400 times the UFO sm while z z > h h was right).
+                Vertex(20, (127, 25, 25), (-1.0, -10.0)),
+                Vertex(20, (25, 127, 25), (-1.0, -10.0)),
                 Vertex(20, (25, 25, 126), (1.0, -10.0)),
                 Vertex(18, (126, 23, 23), (-0.5 * wc2 / cw2, 0.0)),
                 Vertex(19, (23, 126, 23), (-0.5 * wc2 / cw2, 0.0)),
@@ -337,5 +394,51 @@ class BuiltinSMDefinitionMixin:
                     Vertex(
                         24, (23, -charged, -charged), self.z_fermion_coupling(-charged)
                     ),
+                ]
+            )
+            # The neutrino's neutral current and the remaining charged-current
+            # orientations: every lepton pair fuses to its gauge boson in both
+            # input orders, and a lepton absorbs a gauge boson from either
+            # side, as the charged leptons and photon / Z above. A colour-
+            # singlet pair may meet in either order, so a missing orientation
+            # silently drops diagrams (e+ e- > w+ w- lost its t-channel
+            # neutrino exchange and was not gauge invariant).
+            ccc = (self.charged_current_coupling(), 0.0)
+            vertices.extend(
+                [
+                    Vertex(
+                        21, (neutrino, -neutrino, 23), self.z_fermion_coupling(neutrino)
+                    ),
+                    Vertex(
+                        22,
+                        (-neutrino, neutrino, 23),
+                        self.z_fermion_coupling(-neutrino),
+                    ),
+                    Vertex(
+                        10, (neutrino, 23, neutrino), self.z_fermion_coupling(neutrino)
+                    ),
+                    Vertex(
+                        11,
+                        (-neutrino, 23, -neutrino),
+                        self.z_fermion_coupling(-neutrino),
+                    ),
+                    Vertex(
+                        23, (23, neutrino, neutrino), self.z_fermion_coupling(neutrino)
+                    ),
+                    Vertex(
+                        24,
+                        (23, -neutrino, -neutrino),
+                        self.z_fermion_coupling(-neutrino),
+                    ),
+                    Vertex(21, (neutrino, -charged, 24), ccc),
+                    Vertex(22, (-neutrino, charged, -24), ccc),
+                    Vertex(10, (charged, 24, neutrino), ccc),
+                    Vertex(10, (neutrino, -24, charged), ccc),
+                    Vertex(11, (-charged, -24, -neutrino), ccc),
+                    Vertex(11, (-neutrino, 24, -charged), ccc),
+                    Vertex(23, (24, charged, neutrino), ccc),
+                    Vertex(23, (-24, neutrino, charged), ccc),
+                    Vertex(24, (-24, -charged, -neutrino), ccc),
+                    Vertex(24, (24, -neutrino, -charged), ccc),
                 ]
             )

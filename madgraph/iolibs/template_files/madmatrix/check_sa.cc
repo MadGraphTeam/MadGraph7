@@ -23,10 +23,10 @@
 //
 //==========================================================================
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "CPPProcess.h"
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
 #include "GpuAbstraction.h"
 #include "GpuRuntime.h"
 #endif
@@ -230,7 +230,7 @@ namespace
       << "                    RAMBO, identical to the Fortran/C++ 'check' drivers,\n"
       << "                    Ecms = <energy>, default 1000 GeV) and print it with\n"
       << "                    the matrix element for each flavor combination.\n"
-      << "                    With -v also prints backend/fptype/hardcodePARAM header.\n"
+      << "                    With -v also prints backend/fptype header.\n"
       << "  perf              Run #blocks*#threads events over #iterations iterations\n"
       << "                    on a single flavor index, then print performance counters.\n"
       << "                    Always prints inputs + backend/fptype header.\n"
@@ -292,7 +292,7 @@ namespace
     }
   }
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
   __global__ void
   aosoa_to_umami_kernel( const fptype_momenta* aosoa,
                          double* soa,
@@ -317,11 +317,11 @@ namespace
 
   const char* fp_label()
   {
-#if defined MGONGPU_FPTYPE_DOUBLE and defined MGONGPU_FPTYPE2_FLOAT
+#if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
     return "MIXED";
-#elif defined MGONGPU_FPTYPE_DOUBLE
+#elif defined MADMATRIX_FPTYPE_DOUBLE
     return "DOUBLE";
-#elif defined MGONGPU_FPTYPE_FLOAT
+#elif defined MADMATRIX_FPTYPE_FLOAT
     return "FLOAT";
 #else
     return "UNKNOWN";
@@ -330,12 +330,7 @@ namespace
 
   void print_run_header( std::ostream& os )
   {
-    os << "Process                     = " << XSTRINGIFY( MG_EPOCH_PROCESS_ID ) << "_" << backend_label()
-#ifdef MGONGPU_HARDCODE_PARAM
-       << " [hardcodePARAM=1]" << std::endl
-#else
-       << " [hardcodePARAM=0]" << std::endl
-#endif
+    os << "Process                     = " << XSTRINGIFY( MG_EPOCH_PROCESS_ID ) << "_" << backend_label() << std::endl
        << "FP precision                = " << fp_label() << std::endl
        << "Random number generation    = COMMON RANDOM HOST" << std::endl;
   }
@@ -378,7 +373,7 @@ namespace
   bool run_umami(
     UmamiHandle handle,
     unsigned int nevt,
-    mgOnGpu::TimerMap& timermap,
+    madmatrix::TimerMap& timermap,
     double& wavetime,
     const std::vector<UmamiInputKey>& in_keys,
     const std::vector<const void*>& inputs,
@@ -388,7 +383,7 @@ namespace
     timermap.start( "3a UmamiCall" );
     UmamiStatus st = umami_matrix_element(
       handle, nevt, nevt, 0, in_keys.size(), in_keys.data(), inputs.data(), out_keys.size(), out_keys.data(), outputs.data() );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     // UMAMI only enqueues the kernels; wait for them so the ME time is the computation, not the launch.
     checkGpu( gpuDeviceSynchronize() );
 #endif
@@ -409,8 +404,7 @@ namespace
   // generator: the shared one (rambo::rn) feeds RamboSamplingKernelHost.
   // Host-side only.
   // --------------------------------------------------------------------------
-  std::vector<std::vector<double>>
-  classic_rambo_momenta( int ninitial, double energy, const std::vector<double>& masses, double& wgt )
+  rambo::Random& classic_rambo_random()
   {
     static rambo::Random random;
     static bool seeded = false;
@@ -419,7 +413,18 @@ namespace
       random.rmarin( 1802, 9373 );
       seeded = true;
     }
-    auto draw = []( int )
+    return random;
+  }
+
+  // Re-seed, so that the next point is the FIRST one of a standalone run
+  // (the crossing demo draws it once per crossed mass permutation).
+  void classic_rambo_reset() { classic_rambo_random().rmarin( 1802, 9373 ); }
+
+  std::vector<std::vector<double>>
+  classic_rambo_momenta( int ninitial, double energy, const std::vector<double>& masses, double& wgt )
+  {
+    rambo::Random& random = classic_rambo_random();
+    auto draw = [&random]( int )
     {
       double r = random.ranmar();
       while( r <= 1e-16 ) r = random.ranmar();
@@ -438,15 +443,9 @@ namespace
     constexpr unsigned int nevt = kMatrixBlocks * kMatrixThreads;
     const unsigned int nFlavors = CPPProcess::nmaxflavor;
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     GpuRuntime gpuRuntime( false );
 
-    PinnedHostBufferRndNumMomenta hstRndmom( nevt );
-    PinnedHostBufferMomenta hstMomenta( nevt );
-    PinnedHostBufferWeights hstWeights( nevt );
-    DeviceBufferRndNumMomenta devRndmom( nevt );
-    DeviceBufferMomenta devMomenta( nevt );
-    DeviceBufferWeights devWeights( nevt );
     DeviceBufferBase<double> devUmamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
     DeviceBufferBase<double> devUmamiMEs( nevt );
     DeviceBufferBase<unsigned int> devFlv( nevt );
@@ -454,9 +453,6 @@ namespace
     std::vector<unsigned int> flvVec( nevt );
     std::vector<double> hstUmamiMEs( nevt );
 #else
-    HostBufferRndNumMomenta hstRndmom( nevt );
-    HostBufferMomenta hstMomenta( nevt );
-    HostBufferWeights hstWeights( nevt );
     std::vector<double> umamiMomenta( (std::size_t)4 * CPPProcess::npar * nevt );
     std::vector<double> umamiMEs( nevt );
     std::vector<unsigned int> flvVec( nevt );
@@ -490,40 +486,36 @@ namespace
       umami_free( umami_handle );
       return 2;
     }
-    const std::vector<fptype> masses( massesD.begin(), massesD.end() ); // RamboSamplingKernelHost takes vector<fptype>
-
-    // NB: feed the double-precision masses to the classic RAMBO, which works in
-    // double throughout: 'masses' is fptype and would not convert at FPTYPE=f.
+    // NB: the classic RAMBO works in double throughout.
+    // As the Fortran/C++ 'check' drivers: an energy at or below twice the sum
+    // of the external masses is raised to that (t t~ > w+ w- at 1 TeV runs at
+    // 1013.676 GeV), so that the same point is evaluated.
+    double energy = (double)kEnergy;
+    if( CPPProcess::npari == 2 )
+    {
+      double totalmass = 0.;
+      for( double m : massesD ) totalmass += m;
+      if( energy <= 2. * totalmass ) energy = 2. * totalmass;
+    }
     std::vector<std::vector<double>> point =
-      classic_rambo_momenta( CPPProcess::npari, (double)kEnergy, massesD, rambowgt );
+      classic_rambo_momenta( CPPProcess::npari, energy, massesD, rambowgt );
 
     std::vector<double> alphasVec( nevt, param_card_alpha_s() );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     DeviceBufferBase<double> devAlphaS( nevt );
     gpuMemcpy( devAlphaS.data(), alphasVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
 #endif
 
-    // Always massive RAMBO
-    std::unique_ptr<SamplingKernelBase> prsk(
-      new RamboSamplingKernelHost( kEnergy, hstRndmom, masses, CPPProcess::npari, nevt, hstMomenta, hstWeights ) );
-    prsk->getMomentaInitial();
-    prsk->getMomentaFinal();
-
-    // Fill the UMAMI SoA buffer with nevt copies of the same event:
-    // soa[ip4 * npar*nevt + ipar*nevt + ievt]
+    // Fill the UMAMI SoA buffer with nevt copies of the printed point:
+    // soa[ip4 * npar*nevt + ipar*nevt + ievt]. (It used to be overwritten
+    // with the momenta of a second, device-style RAMBO at the unchanged
+    // energy, so the matrix element was not the one of the printed point.)
     for( int ip4 = 0; ip4 < 4; ++ip4 )
       for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
         for( unsigned int ievt = 0; ievt < nevt; ++ievt )
           umamiMomenta[(std::size_t)ip4 * CPPProcess::npar * nevt + (std::size_t)ipar * nevt + ievt] = point[ipar][ip4];
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     gpuMemcpy( devUmamiMomenta.data(), umamiMomenta.data(), umamiMomenta.size() * sizeof( double ), gpuMemcpyHostToDevice );
-    // Host only implementation now (copy)
-    copyDeviceFromHost( devMomenta, hstMomenta );
-    gpuLaunchKernel( aosoa_to_umami_kernel, kMatrixBlocks, kMatrixThreads, devMomenta.data(), devUmamiMomenta.data(), (std::size_t)nevt );
-    checkGpu( gpuPeekAtLastError() );
-#else
-    for( std::size_t ievt = 0; ievt < nevt; ++ievt )
-      aosoa_to_umami_one( hstMomenta.data(), umamiMomenta.data(), ievt, nevt );
 #endif
 
     if( verbose )
@@ -552,12 +544,12 @@ namespace
     for( unsigned int iflav = 0; iflav < nFlavors; ++iflav )
     {
       std::fill( flvVec.begin(), flvVec.end(), iflav );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       gpuMemcpy( devFlv.data(), flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
 #endif
       UmamiInputKey in_keys[3] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S };
       UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       const void* inputs[3] = { devUmamiMomenta.data(), devFlv.data(), devAlphaS.data() };
       void* outputs[1] = { devUmamiMEs.data() };
 #else
@@ -572,7 +564,7 @@ namespace
         umami_free( umami_handle );
         return 3;
       }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       gpuMemcpy( hstUmamiMEs.data(), devUmamiMEs.data(), nevt * sizeof( double ), gpuMemcpyDeviceToHost );
       const double* mes = hstUmamiMEs.data();
 #else
@@ -587,6 +579,84 @@ namespace
                 << mes[0] << " GeV^" << kMEGeVExponent << std::endl
                 << std::defaultfloat
                 << std::string( SEP79, '-' ) << std::endl;
+    }
+
+    // === Crossed subprocesses folded into this base matrix element ===
+    // The exporter lists their extended flavor ids in crossing_demo.dat; show
+    // each at the RAMBO point generated for ITS OWN mass permutation (the crossed
+    // legs carry the same particles as the base, relabelled, so the crossed
+    // masses are a permutation of the base masses).
+    {
+      std::vector<unsigned int> demo_ids;
+      std::ifstream fdemo( "crossing_demo.dat" );
+      unsigned int _did;
+      while( fdemo >> _did ) demo_ids.push_back( _did );
+      if( !demo_ids.empty() )
+      {
+        std::cout << std::endl
+                  << " Crossed processes folded into this matrix element:"
+                  << std::endl;
+        for( unsigned int fid : demo_ids )
+        {
+          // Crossed masses: base mass of the leg carrying the same |PDG|.
+          std::vector<double> xmasses( CPPProcess::npar );
+          for( int k = 0; k < CPPProcess::npar; ++k )
+          {
+            const int pk = std::abs( CPPProcess::flavorPDG( (int)fid, k ) );
+            double mk = 0.;
+            for( int j = 0; j < CPPProcess::npar; ++j )
+              if( std::abs( CPPProcess::flavorPDG( 0, j ) ) == pk ) { mk = massesD[j]; break; }
+            xmasses[k] = mk;
+          }
+          double xwgt = 0.;
+          classic_rambo_reset(); // draw the FIRST point for this mass permutation
+          std::vector<std::vector<double>> xpoint =
+            classic_rambo_momenta( CPPProcess::npari, energy, xmasses, xwgt ); // the base point's energy: same total mass
+          for( int ip4 = 0; ip4 < 4; ++ip4 )
+            for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
+              for( unsigned int ievt = 0; ievt < nevt; ++ievt )
+                umamiMomenta[(std::size_t)ip4 * CPPProcess::npar * nevt + (std::size_t)ipar * nevt + ievt] = xpoint[ipar][ip4];
+          std::fill( flvVec.begin(), flvVec.end(), fid );
+          UmamiInputKey in_keys[3] = { UMAMI_IN_MOMENTA, UMAMI_IN_FLAVOR_INDEX, UMAMI_IN_ALPHA_S };
+          UmamiOutputKey out_keys[1] = { UMAMI_OUT_MATRIX_ELEMENT };
+#ifdef MADMATRIX_GPUIMPL
+          gpuMemcpy( devUmamiMomenta.data(), umamiMomenta.data(), umamiMomenta.size() * sizeof( double ), gpuMemcpyHostToDevice );
+          gpuMemcpy( devFlv.data(), flvVec.data(), nevt * sizeof( unsigned int ), gpuMemcpyHostToDevice );
+          const void* inputs[3] = { devUmamiMomenta.data(), devFlv.data(), devAlphaS.data() };
+          void* outputs[1] = { devUmamiMEs.data() };
+#else
+          const void* inputs[3] = { umamiMomenta.data(), flvVec.data(), alphasVec.data() };
+          void* outputs[1] = { umamiMEs.data() };
+#endif
+          UmamiStatus xst = umami_matrix_element(
+            umami_handle, nevt, nevt, 0, 3, in_keys, inputs, 1, out_keys, outputs );
+          if( xst != UMAMI_SUCCESS )
+          {
+            std::cerr << "ERROR! crossed umami_matrix_element failed (flavorID=" << fid << ")" << std::endl;
+            continue;
+          }
+#ifdef MADMATRIX_GPUIMPL
+          gpuMemcpy( hstUmamiMEs.data(), devUmamiMEs.data(), nevt * sizeof( double ), gpuMemcpyDeviceToHost );
+          const double* xmes = hstUmamiMEs.data();
+#else
+          const double* xmes = umamiMEs.data();
+#endif
+          std::cout << std::endl << " flavorID " << fid << std::endl
+                    << "   PDG            E              px              py              pz" << std::endl;
+          for( int ipar = 0; ipar < CPPProcess::npar; ++ipar )
+            std::cout << std::scientific << std::setprecision( 7 )
+                      << std::setw( 6 ) << CPPProcess::flavorPDG( (int)fid, ipar )
+                      << std::setw( 16 ) << xpoint[ipar][0]
+                      << std::setw( 16 ) << xpoint[ipar][1]
+                      << std::setw( 16 ) << xpoint[ipar][2]
+                      << std::setw( 16 ) << xpoint[ipar][3]
+                      << std::endl << std::defaultfloat;
+          std::cout << " Matrix element = " << std::scientific << std::setprecision( 16 )
+                    << xmes[0] << " GeV^" << kMEGeVExponent << std::endl
+                    << std::defaultfloat
+                    << std::string( SEP79, '-' ) << std::endl;
+        }
+      }
     }
 
     umami_free( umami_handle );
@@ -673,17 +743,19 @@ namespace
         return 2;
       }
     }
+    // An extended id K*nmaxflavor + flavor (crossing-table row K) is valid, as for -f
+    const unsigned int nflavorIds = CPPProcess::nmaxflavor * CPPProcess::ncross;
     for( unsigned int iflav : flavorsIn )
     {
-      if( iflav >= CPPProcess::nmaxflavor )
+      if( iflav >= nflavorIds )
       {
         std::cerr << "ERROR! flavor index " << iflav << " in the flavor file is out of range [0, "
-                  << CPPProcess::nmaxflavor << ")" << std::endl;
+                  << nflavorIds << ")" << std::endl;
         return 2;
       }
     }
 
-    mgOnGpu::TimerMap timermap;
+    madmatrix::TimerMap timermap;
 
     // The per-event inputs and outputs of one batch (host side)
     std::vector<unsigned int> flvVec( nevt, flavorID );
@@ -691,7 +763,7 @@ namespace
     std::vector<double> rndHelVec( nevt, 0.5 ), rndColVec( nevt, 0.5 );
     std::vector<int> helVec( nevt ), colVec( nevt );
     std::vector<int> helInVec( nevt, 0 );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     timermap.start( "00 GpuInit" );
     GpuRuntime gpuRuntime( false );
 
@@ -770,7 +842,7 @@ namespace
       out_keys.push_back( UMAMI_OUT_COLOR_INDEX );
       outputs.push_back( colPtr );
     }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     if( stream != nullptr )
     {
       out_keys.push_back( UMAMI_OUT_GPU_STREAM );
@@ -826,7 +898,7 @@ namespace
     }
     else
     {
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       prsk.reset( new MasslessRamboSamplingKernelDevice( kEnergy, devRndmom, devMomenta, devWeights, gpublocks, gputhreads ) );
 #else
       prsk.reset( new MasslessRamboSamplingKernelHost( kEnergy, hstRndmom, hstMomenta, hstWeights, nevt ) );
@@ -858,7 +930,7 @@ namespace
         timermap.start( "1b GenRnGen" );
         prnk->generateRnarray();
         genrtime += timermap.stop();
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
         if( ramboType == RAMBO_MASSLESS )
         {
           timermap.start( "1c CpHTDrnd" );
@@ -872,12 +944,12 @@ namespace
         rambtime += timermap.stop();
         timermap.start( "2b RamboFin" );
         prsk->getMomentaFinal();
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
         // Massless RAMBO runs on the device
         checkGpu( gpuDeviceSynchronize() );
 #endif
         rambtime += timermap.stop();
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
         // Massive host only (copy)
         if( ramboType != RAMBO_MASSLESS )
         {
@@ -904,7 +976,7 @@ namespace
               MemoryAccessMomenta::ieventAccessIp4Ipar( hstMomenta.data(), ievt, ip4, ipar ) = (fptype_momenta)ev[ipar][ip4];
         }
         rambtime += timermap.stop();
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
         timermap.start( "2c CpHTDmom" );
         copyDeviceFromHost( devMomenta, hstMomenta );
         timermap.stop();
@@ -912,7 +984,7 @@ namespace
       }
 
       timermap.start( "2d Aosoa2U " );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       gpuLaunchKernel( aosoa_to_umami_kernel, gpublocks, gputhreads, devMomenta.data(), devUmamiMomenta.data(), (std::size_t)nevt );
       checkGpu( gpuPeekAtLastError() );
       checkGpu( gpuDeviceSynchronize() );
@@ -942,7 +1014,7 @@ namespace
         for( unsigned int ievt = 0; ievt < nevt; ++ievt )
           helInVec[ievt] = helIndexIn[base + std::min( ievt, nreal - 1 )];
       }
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       if( !alphasIn.empty() ) gpuMemcpy( alphasPtr, alphasVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
       if( !rndHelIn.empty() ) gpuMemcpy( rndHelPtr, rndHelVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
       if( !rndColIn.empty() ) gpuMemcpy( rndColPtr, rndColVec.data(), nevt * sizeof( double ), gpuMemcpyHostToDevice );
@@ -960,7 +1032,7 @@ namespace
         return 3;
       }
 
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
       timermap.start( "3b CpDTHmes" );
       // nor do the copies below wait for the work on a non-blocking stream
       if( stream != nullptr ) gpuStreamSynchronize( stream );
@@ -1055,7 +1127,7 @@ namespace
               << "NumThreadsPerBlock          = " << gputhreads << std::endl
               << "NumIterations               = " << niter << std::endl
               << "FlavorIndex                 = " << ( flavorsIn.empty() ? std::to_string( flavorID ) : "per event" )
-              << " / " << CPPProcess::nmaxflavor << std::endl
+              << " / " << CPPProcess::nmaxflavor * CPPProcess::ncross << std::endl
               << std::string( SEP79, '-' ) << std::endl
               << "NaN/abnormal MEs            = " << nevtABN << std::endl
               << "Zero MEs                    = " << nevtZERO << std::endl
@@ -1084,7 +1156,7 @@ namespace
     std::cout << std::string( SEP79, '*' ) << std::endl;
 
     umami_free( umami_handle );
-#ifdef MGONGPUCPP_GPUIMPL
+#ifdef MADMATRIX_GPUIMPL
     if( stream != nullptr ) gpuStreamDestroy( stream );
 #endif
     for( std::ofstream* file : { &dumpMomenta, &dumpMEs, &dumpHel, &dumpCol } )
@@ -1244,7 +1316,7 @@ int main( int argc, char** argv )
     return usage( argv[0] );
   }
   if( perfEnergy > 0 ) kEnergy = perfEnergy;
-#ifndef MGONGPUCPP_GPUIMPL
+#ifndef MADMATRIX_GPUIMPL
   if( io.nonblockingStream )
   {
     std::cerr << "ERROR: --nonblocking-stream needs a CUDA or HIP build." << std::endl;
@@ -1252,10 +1324,12 @@ int main( int argc, char** argv )
   }
 #endif
 
-  if( flavorID >= CPPProcess::nmaxflavor )
+  // An extended id (a crossing-table row K > 0, K*nmaxflavor + flavor) is a
+  // valid request on a build that folds crossings, on every backend.
+  if( flavorID >= (unsigned int)( CPPProcess::nmaxflavor * CPPProcess::ncross ) )
   {
     std::cerr << "ERROR: flavor index " << flavorID
-              << " is out of range [0, " << CPPProcess::nmaxflavor << ")." << std::endl;
+              << " is out of range [0, " << CPPProcess::nmaxflavor * CPPProcess::ncross << ")." << std::endl;
     return 1;
   }
 

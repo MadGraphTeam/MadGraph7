@@ -26,6 +26,7 @@ import subprocess
 import sys
 import optparse
 import time
+import threading
 import shutil
 import stat
 import tempfile
@@ -755,6 +756,105 @@ def get_gfortran_version(compiler='gfortran'):
     except Exception as error:
         raise error
         return '0'
+
+def get_gcc_version(compiler='gcc'):
+    """ Returns the version of the gcc found in the PATH as a tuple of int,
+        e.g. (13, 2, 1).
+        Returns None if the compiler is not in the PATH, if its version cannot
+        be parsed, or if it is not a real gcc -- on MacOS 'gcc' usually is a
+        clang wrapper, whose version numbering is unrelated to gcc's."""
+    if not which(compiler):
+        return None
+    try:
+        p = Popen([compiler, '--version'], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE)
+        output, error = p.communicate()
+        banner = output.decode("utf-8",errors='ignore').split('\n',1)[0]
+        if p.returncode or 'clang' in banner.lower():
+            return None
+        p = Popen([compiler, '-dumpversion'], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE)
+        output, error = p.communicate()
+        output = output.decode("utf-8",errors='ignore')
+        version = re.search(r"(?P<version>\d[\d.]*)", output).group('version')
+        return tuple(int(v) for v in version.rstrip('.').split('.'))
+    except Exception:
+        return None
+
+def _parse_min_version(min_version):
+    """ '13' or '13.2' -> (13,) or (13, 2); None if it cannot be parsed."""
+    try:
+        return tuple(int(v) for v in str(min_version).split('.'))
+    except ValueError:
+        logger.debug('ignoring invalid minimal compiler version: %s' % min_version)
+        return None
+
+def _too_old_compiler_warning(compiler, version, min_version, name):
+    return ('The %s found in your PATH is version %s, older than the minimal '
+            'version supported by MadGraph7 (%s). Compiling the generated code '
+            'or installing packages is likely to fail: please put a more recent '
+            '%s in your PATH.' %
+            (compiler, '.'.join(str(v) for v in version), min_version, name))
+
+def check_gcc_version(min_version, compiler='gcc'):
+    """ Returns a warning message if the gcc of the PATH is older than
+        min_version (a string such as '12' or '12.2'), None otherwise.
+        This is called at start-up because a too old gcc otherwise only shows
+        up much later, when compiling the generated code or when installing
+        madspace."""
+    minimum = _parse_min_version(min_version)
+    if minimum is None:
+        return None
+    version = get_gcc_version(compiler)
+    if version is None or version >= minimum:
+        return None
+    return _too_old_compiler_warning(compiler, version, min_version, 'gcc')
+
+def get_clang_version(compiler='clang'):
+    """ Returns the version of the clang found in the PATH as a tuple
+        (is_apple, version), e.g. (False, (17, 0, 6)) or (True, (15, 0, 0)).
+        Apple clang has its own version numbering (Apple clang 15 ~ LLVM 16),
+        hence the flag.
+        Returns None if the compiler is not in the PATH, if it is not clang
+        (e.g. a real gcc) or if its version cannot be parsed."""
+    if not which(compiler):
+        return None
+    try:
+        p = Popen([compiler, '--version'], stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE)
+        output, error = p.communicate()
+        if p.returncode:
+            return None
+        output = output.decode("utf-8",errors='ignore')
+        # 'clang version 17.0.6', 'Ubuntu clang version 14.0.0-1ubuntu1',
+        # 'Homebrew clang version 19.1.7', 'Apple clang version 15.0.0 (...)'
+        match = re.search(r"(?P<apple>Apple )?clang version (?P<version>\d+(?:\.\d+)*)",
+                          output)
+        if not match:
+            return None
+        version = tuple(int(v) for v in match.group('version').split('.'))
+        return (bool(match.group('apple')), version)
+    except Exception:
+        return None
+
+def check_clang_version(min_version, min_apple_version, compiler='clang'):
+    """ Returns a warning message if the clang of the PATH is older than
+        min_version (LLVM numbering) or, for Apple clang, than
+        min_apple_version (Apple numbering), None otherwise.
+        This is the clang counterpart of check_gcc_version: on MacOS 'gcc' is
+        usually Apple clang, which check_gcc_version skips."""
+    info = get_clang_version(compiler)
+    if info is None:
+        return None
+    is_apple, version = info
+    if is_apple:
+        min_version = min_apple_version
+    minimum = _parse_min_version(min_version)
+    if minimum is None or version >= minimum:
+        return None
+    return _too_old_compiler_warning(
+        'Apple %s' % compiler if is_apple else compiler, version, min_version,
+        'clang (or Xcode command line tools)' if is_apple else 'clang')
 
 def mod_compilator(directory, new='gfortran', current=None, compiler_type='gfortran'):
     #define global regular expression
@@ -2542,28 +2642,57 @@ class ProcessTimer:
     self.cmd_args = args
     self.cmd_opts = opts
     self.execution_state = False
+    self.p = None
 
   def execute(self):
+    if self.execution_state and not self._completion.is_set():
+      raise RuntimeError('ProcessTimer is already running')
+    self.execution_state = False
+    self.p = None
     self.max_vms_memory = 0
     self.max_rss_memory = 0
 
     self.t1 = None
-    self.t0 = time.time()
+    self._wait_error = None
+    self._completion = threading.Event()
+    self.t0 = time.perf_counter()
     self.p = subprocess.Popen(*self.cmd_args,**self.cmd_opts)
     self.execution_state = True
+    self._waiter = threading.Thread(target=self._wait_for_process, daemon=True)
+    self._waiter.start()
+
+  def _wait_for_process(self):
+    try:
+      self.p.wait()
+    except Exception as error:
+      self._wait_error = error
+    finally:
+      # Record completion independently of the memory sampling interval.
+      self.t1 = time.perf_counter()
+      self._completion.set()
+
+  def wait(self, timeout=None):
+    completed = self._completion.wait(timeout)
+    if completed and self._wait_error is not None:
+      raise self._wait_error
+    return completed
 
   def poll(self):
     if not self.check_execution_state():
       return False
 
-    self.t1 = time.time()
     # I redirect stderr to void, because from MacOX snow leopard onward, this
     # ps -p command writes a million times the following stupid warning
     # dyld: DYLD_ environment variables being ignored because main executable (/bin/ps) is setuid or setgid
-    flash = subprocess.Popen("ps -p %i -o rss"%self.p.pid,
-                  shell=True,stdout=subprocess.PIPE,stderr=open(os.devnull,"w"))
-    stdout_list = flash.communicate()[0].decode(errors='ignore').split('\n')
-    rss_memory = int(stdout_list[1])
+    with open(os.devnull,"w") as devnull:
+      flash = subprocess.Popen("ps -p %i -o rss"%self.p.pid,
+                    shell=True,stdout=subprocess.PIPE,stderr=devnull)
+      stdout_list = flash.communicate()[0].decode(errors='ignore').splitlines()
+    try:
+      rss_memory = int(stdout_list[1])
+    except (IndexError, ValueError):
+      # A short-lived child may exit before ps obtains its memory sample.
+      return self.check_execution_state()
     # for now we ignore vms
     vms_memory = 0
 
@@ -2607,14 +2736,17 @@ class ProcessTimer:
   def check_execution_state(self):
     if not self.execution_state:
       return False
-    if self.is_running():
+    if not self._completion.is_set() and self.is_running():
       return True
-    self.executation_state = False
-    self.t1 = time.time()
+    # poll() can observe exit before the waiter publishes its timestamp.
+    self.wait()
+    self.execution_state = False
     return False
 
   def close(self,kill=False):
 
+    if self.p is None:
+      return
     if self.p.poll() == None:
         if kill:
             self.p.kill()
@@ -2886,7 +3018,10 @@ class EasterEgg(object):
         to_add = []
         ff = open(authors, 'r')
         for line in ff:
-            author, fdate = line.split()
+            data = line.split()
+            if len(data) != 2:
+                continue
+            author, fdate = data
             year, month, day = [int(i) for i in fdate.split('-')]
             if (day, month) == date:
                 to_add.append((author, year))

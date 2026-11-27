@@ -1,5 +1,13 @@
       SUBROUTINE %(proc_prefix)sLOOP_%(nloopline)d%(nwfsargs_header)s(%(pairingargs)s%(wfsargs)s%(margs)s RANK, SQUAREDSOINDEX, LOOPNUM)
       USE ALOHA_OBJECT
+## if(OniaPwave){
+## if(OniaPwaveEP){
+      USE EP_PRECISION
+      USE %(proc_prefix)sPW_DUAL, ONLY: PWW, MPPWW, EPPWW
+## } else {
+      USE %(proc_prefix)sPW_DUAL, ONLY: PWW, MPPWW
+## }
+## }
       INTEGER    NEXTERNAL
       PARAMETER (NEXTERNAL=%(nexternal)d)
       INTEGER    NLOOPLINE
@@ -39,6 +47,10 @@ C
       INTEGER PAIRING(NLOOPLINE),WE(%(nwfsargs)d)
       INTEGER I, J, K, TEMP,I_LIB
       LOGICAL complex_mass,doing_qp
+## if(OniaPwaveEP){
+      REAL(EPK) EP_PL(0:3,NLOOPLINE)
+      LOGICAL DOING_EP
+## }
 ## if(AmplitudeReduction){
       LOGICAL AMP_CONTRIBUTES
 ## }
@@ -71,10 +83,35 @@ C
 	  common/%(proc_prefix)sAMPL/AMPL
 ## }
 
+## if(not OniaPwave){
 	  type(aloha) W(NWAVEFUNCS)
 	  common/%(proc_prefix)sW/W
+## }
+## if(OniaPwave){
+C     A P-wave bound state: the derivatives of the momenta entering the loop
+C     in the relative momentum, along the last direction (onia_loop.f)
+      %(complex_dp_format)s PW_DPL(0:3,NEXTERNAL)
+      common/%(proc_prefix)sPW_DPL/PW_DPL
+      %(complex_mp_format)s MP_PW_DPL(0:3,NEXTERNAL)
+      common/%(proc_prefix)sMP_PW_DPL/MP_PW_DPL
+## if(OniaPwaveEP){
+C     and in the extended-precision passes (#PWaveExtendedPrecision)
+      COMPLEX(EPK) EP_PW_DPL(0:3,NEXTERNAL)
+      common/%(proc_prefix)sEP_PW_DPL/EP_PW_DPL
+      LOGICAL ONIA_EP_PASS
+      common/%(proc_prefix)sONIA_EP/ONIA_EP_PASS
+## }
+## if(OniaPwave2){
+C     and along the direction of the second P-wave state
+      %(complex_dp_format)s PW_DPL2(0:3,NEXTERNAL)
+      common/%(proc_prefix)sPW_DPL2/PW_DPL2
+      %(complex_mp_format)s MP_PW_DPL2(0:3,NEXTERNAL)
+      common/%(proc_prefix)sMP_PW_DPL2/MP_PW_DPL2
+## }
+## } else {
       type(mp_aloha) MP_W(NWAVEFUNCS)
       common/%(proc_prefix)sMP_W/MP_W
+## }
 
 	  %(real_dp_format)s LSCALE 
 	  INTEGER CTMODE
@@ -88,6 +125,10 @@ C ----------
 
 C Determine it uses qp or not
       DOING_QP = (CTMODE.GE.4)
+## if(OniaPwaveEP){
+C or extended precision (a P-wave bound state, #PWaveExtendedPrecision)
+      DOING_EP = ONIA_EP_PASS.AND.(CTMODE.EQ.1.OR.CTMODE.EQ.2)
+## }
 
 ## if(not AmplitudeReduction){
 	  IF (CHECKPHASE.OR.(.NOT.HELDOUBLECHECKED).OR.GOODAMP(SQUAREDSOINDEX,LOOPNUM)) THEN
@@ -111,14 +152,48 @@ C For loop-induced processes, we must reduce this loop amplitude if it contribut
         TEMP=1
         DO J=1,NLOOPLINE
 		  PL(I,J)=0.D0
+## if(OniaPwave){
+          PW_DPL(I,J)=(0.0D0,0.0D0)
+          MP_PW_DPL(I,J)=(0.0E0_16,0.0E0_16)
+## if(OniaPwaveEP){
+          EP_PW_DPL(I,J)=(0.0E0_EPK,0.0E0_EPK)
+          EP_PL(I,J)=0.0E0_EPK
+## }
+## if(OniaPwave2){
+          PW_DPL2(I,J)=(0.0D0,0.0D0)
+          MP_PW_DPL2(I,J)=(0.0E0_16,0.0E0_16)
+## }
+## }
 		  IF (DOING_QP) THEN
 		    MP_PL(I,J)=0.0e+0_16		    
 		  ENDIF
           DO K=TEMP,(TEMP+PAIRING(J)-1)
+## if(OniaPwave){
+C           the dual momenta: value (component 0) and derivative
+            PL(I,J)=PL(I,J)-DBLE(PWW(WE(K))%P(I)%COMP(0))
+            PW_DPL(I,J)=PW_DPL(I,J)-PWW(WE(K))%P(I)%COMP(1)
+## if(OniaPwave2){
+            PW_DPL2(I,J)=PW_DPL2(I,J)-PWW(WE(K))%P(I)%COMP(2)
+## }
+			IF (DOING_QP) THEN
+		      MP_PL(I,J)=MP_PL(I,J)-REAL(MPPWW(WE(K))%P(I)%COMP(0),KIND=16)
+		      MP_PW_DPL(I,J)=MP_PW_DPL(I,J)-MPPWW(WE(K))%P(I)%COMP(1)
+## if(OniaPwave2){
+		      MP_PW_DPL2(I,J)=MP_PW_DPL2(I,J)-MPPWW(WE(K))%P(I)%COMP(2)
+## }
+		    ENDIF
+## if(OniaPwaveEP){
+			IF (DOING_EP) THEN
+		      EP_PL(I,J)=EP_PL(I,J)-REAL(EPPWW(WE(K))%P(I)%COMP(0),KIND=EPK)
+		      EP_PW_DPL(I,J)=EP_PW_DPL(I,J)-EPPWW(WE(K))%P(I)%COMP(1)
+		    ENDIF
+## }
+## } else {
             PL(I,J)=PL(I,J)-W(WE(K))%P(I)
 			IF (DOING_QP) THEN
 		      MP_PL(I,J)=MP_PL(I,J)-MP_W(WE(K))%P(I)
 		    ENDIF
+## }
           ENDDO
           TEMP=TEMP+PAIRING(J)
         ENDDO
@@ -159,6 +234,26 @@ C Ninja is used
 ## }
 	ENDIF
 ##	}
+## if(ninjars_available){
+      ELSEIF (MLReductionLib(I_LIB).EQ.8) THEN
+        IF (.NOT.DOING_QP) THEN
+          CALL %(proc_prefix)sNINJARS_LOOP(NLOOPLINE,PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
+        ELSE
+## if(ninjars_supports_quad_prec){
+          CALL %(proc_prefix)sMP_NINJARS_LOOP(NLOOPLINE,MP_PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
+## } else {
+          STOP 'NinjaRS quadruple precision is unavailable'
+## }
+        ENDIF
+## }
+## if(OniaPwaveEP){
+      ELSEIF(MLReductionLib(I_LIB).EQ.9.AND.DOING_EP) THEN
+        CALL %(proc_prefix)sEP_TIRUST_LOOP(NLOOPLINE,EP_PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
+## }
+## if(tirust_supports_quad_prec){
+      ELSEIF(MLReductionLib(I_LIB).EQ.9.AND.DOING_QP) THEN
+        CALL %(proc_prefix)sMP_TIRUST_LOOP(NLOOPLINE,MP_PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
+## }
       ELSE
 C Tensor Integral Reduction is used 
 	CALL %(proc_prefix)sTIRLOOP(SQUAREDSOINDEX,LOOPNUM,I_LIB,NLOOPLINE,PL,M2L,RANK,LOOPRES(1,SQUAREDSOINDEX,LOOPNUM),S(SQUAREDSOINDEX,LOOPNUM))
@@ -182,6 +277,22 @@ C Tensor Integral Reduction is used
 	    ENDIF
 
 ##	}
+## if(ninjars_available){
+      ELSEIF (MLReductionLib(I_LIB).EQ.8) THEN
+        IF (.NOT.DOING_QP) THEN
+          CALL %(proc_prefix)sNINJARS_LOOP(NLOOPLINE,PL,M2L,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))
+        ELSE
+## if(ninjars_supports_quad_prec){
+          CALL %(proc_prefix)sMP_NINJARS_LOOP(NLOOPLINE,MP_PL,M2L,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))
+## } else {
+          STOP 'NinjaRS quadruple precision is unavailable'
+## }
+        ENDIF
+## }
+## if(tirust_supports_quad_prec){
+      ELSEIF(MLReductionLib(I_LIB).EQ.9.AND.DOING_QP) THEN
+        CALL %(proc_prefix)sMP_TIRUST_LOOP(NLOOPLINE,MP_PL,M2L,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))
+## }
       ELSE
 C Tensor Integral Reduction is used 
 	CALL %(proc_prefix)sTIRLOOP(1,LOOPNUM,I_LIB,NLOOPLINE,PL,M2L,RANK,AMPL(1,NCTAMPS+LOOPNUM),S(1,LOOPNUM))

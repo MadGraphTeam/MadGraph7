@@ -1,0 +1,243 @@
+{
+  "fixture": {
+    "process": "u u~ > g g g",
+    "born_orders": {
+      "QCD": 3,
+      "QED": 0
+    },
+    "loop_orders": {
+      "QCD": 5,
+      "QED": 0
+    },
+    "squared_orders": {
+      "QCD": 8,
+      "QED": 0
+    },
+    "parameters": {
+      "alpha_s": 0.118,
+      "mu": 1000.0,
+      "mt": 173.0,
+      "mb": 0.0
+    },
+    "renormalization_flavours": 5,
+    "loop_quark_flavours": 6,
+    "external_momenta": "positive-energy incoming legs1,2; outgoinglegs3,4,5; E,px,py,pz inGeV",
+    "normalization": "initialspin/colouraverage and finalidentical-gluonfactor1/6; physicalcouplings; Cepsilon=(4pi)^epsilon/Gamma(1-epsilon)",
+    "points": [
+      [
+        [
+          663.0,
+          0.0,
+          0.0,
+          663.0
+        ],
+        [
+          663.0,
+          0.0,
+          0.0,
+          -663.0
+        ],
+        [
+          331.5,
+          -12.24,
+          315.18,
+          -102.0
+        ],
+        [
+          442.0,
+          -112.24,
+          127.68,
+          408.0
+        ],
+        [
+          552.5,
+          124.48,
+          -442.86,
+          -306.0
+        ]
+      ],
+      [
+        [
+          663.0,
+          0.0,
+          0.0,
+          663.0
+        ],
+        [
+          663.0,
+          0.0,
+          0.0,
+          -663.0
+        ],
+        [
+          331.5,
+          116.16,
+          302.4,
+          70.38
+        ],
+        [
+          442.0,
+          -333.84,
+          62.4,
+          282.88
+        ],
+        [
+          552.5,
+          217.68,
+          -364.8,
+          -353.26
+        ]
+      ],
+      [
+        [
+          663.0,
+          0.0,
+          0.0,
+          663.0
+        ],
+        [
+          663.0,
+          0.0,
+          0.0,
+          -663.0
+        ],
+        [
+          331.5,
+          -92.4,
+          164.88,
+          -272.34
+        ],
+        [
+          442.0,
+          -332.4,
+          -285.12,
+          -59.84
+        ],
+        [
+          552.5,
+          424.8,
+          120.24,
+          332.18
+        ]
+      ]
+    ]
+  },
+  "scope": "Independent diagnostic component controls. Bare = unmodified full MadLoop minus generated CT contribution; not a performance reference.",
+  "instrumentation": "Generated SKIPLOOPEVAL switch with CT amplitude filtering only; original export and all Feynman rules unchanged; exact patches saved alongside binaries.",
+  "rows": [
+    {
+      "born": 0.0003405030004901894,
+      "full": {
+        "finite": -5.3978600686596943e-05,
+        "single_pole": -0.00019874368593491697,
+        "double_pole": -7.460533276635825e-05
+      },
+      "bare": {
+        "finite": -1.2509080417723328e-05,
+        "single_pole": -0.0001252041436366504,
+        "double_pole": -7.460533276635825e-05
+      },
+      "uv": {
+        "finite": 1.4744647600352635e-21,
+        "single_pole": -7.353954229826658e-05,
+        "double_pole": 0
+      },
+      "r2": {
+        "finite": -4.146952026887375e-05,
+        "single_pole": 0,
+        "double_pole": 0
+      },
+      "wf": {
+        "finite": -2.243868805841948e-05,
+        "single_pole": -6.394742808545024e-06,
+        "double_pole": 0
+      },
+      "uv_vertex": {
+        "finite": 2.2438688058419455e-05,
+        "single_pole": -6.714479948972203e-05,
+        "double_pole": 0
+      },
+      "r2_quark_two_point": {
+        "finite": 1.23279631038637e-05,
+        "single_pole": 0,
+        "double_pole": 0
+      }
+    },
+    {
+      "born": 0.00013461880846483022,
+      "full": {
+        "finite": 8.842122978598006e-06,
+        "single_pole": -6.788720063444236e-05,
+        "double_pole": -2.9495425848438955e-05
+      },
+      "bare": {
+        "finite": 2.7766657215074573e-05,
+        "single_pole": -3.881313801240998e-05,
+        "double_pole": -2.9495425848438955e-05
+      },
+      "uv": {
+        "finite": 7.529181753371558e-22,
+        "single_pole": -2.9074062622032386e-05,
+        "double_pole": 0
+      },
+      "r2": {
+        "finite": -1.8924534236476618e-05,
+        "single_pole": 0,
+        "double_pole": 0
+      },
+      "wf": {
+        "finite": -8.871197744483553e-06,
+        "single_pole": -2.528179358437615e-06,
+        "double_pole": 0
+      },
+      "uv_vertex": {
+        "finite": 8.8711977444835e-06,
+        "single_pole": -2.654588326359479e-05,
+        "double_pole": 0
+      },
+      "r2_quark_two_point": {
+        "finite": 3.249356601899987e-06,
+        "single_pole": 0,
+        "double_pole": 0
+      }
+    },
+    {
+      "born": 0.0001923675767091996,
+      "full": {
+        "finite": -3.346203478035581e-06,
+        "single_pole": -0.00010176397997707155,
+        "double_pole": -4.2148371829872736e-05
+      },
+      "bare": {
+        "finite": 2.0479280558643613e-05,
+        "single_pole": -6.021772774477029e-05,
+        "double_pole": -4.2148371829872736e-05
+      },
+      "uv": {
+        "finite": -3.764590876685779e-22,
+        "single_pole": -4.154625223230125e-05,
+        "double_pole": 0
+      },
+      "r2": {
+        "finite": -2.382548403667902e-05,
+        "single_pole": 0,
+        "double_pole": 0
+      },
+      "wf": {
+        "finite": -1.26767636118266e-05,
+        "single_pole": -3.6127175854176596e-06,
+        "double_pole": 0
+      },
+      "uv_vertex": {
+        "finite": 1.2676763611826591e-05,
+        "single_pole": -3.7933534646882984e-05,
+        "double_pole": 0
+      },
+      "r2_quark_two_point": {
+        "finite": 6.694987079175906e-06,
+        "single_pole": 0,
+        "double_pole": 0
+      }
+    }
+  ]
+}

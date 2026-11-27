@@ -18,7 +18,11 @@ from pyamplicol.generation.dag_algorithms import (
 from pyamplicol.generation.dag_color import ColorEngine
 from pyamplicol.generation.dag_compiler import compile_generic_dag
 from pyamplicol.generation.dag_ordering import _closure_candidate_splits
-from pyamplicol.generation.dag_types import AmplitudeRoot, GenericDAG
+from pyamplicol.generation.dag_types import (
+    AmplitudeRoot,
+    GenericDAG,
+    _lc_color_identity_closures_compatible,
+)
 from pyamplicol.generation.helicity_replay import _SemanticAmplitudeRootSignature
 from pyamplicol.models._physics_ir import ContractionIR
 from pyamplicol.models.builtin.model import BuiltinSMModel
@@ -544,3 +548,18 @@ def test_full_colour_pure_gluon_closure_remains_on_public_sinks() -> None:
     )
     with pytest.raises(ValueError, match="absent from the color plan: 999"):
         _canonical_open_line_alias_owner_sector_ids(plan, (999,))
+
+
+def test_colour_identity_closure_fits_one_line_or_complete_lines() -> None:
+    """An electroweak boson emitted after a gluon exchange between two quark
+    lines carries both colour lines; part of a second line does not fit."""
+
+    _process, sector = _sector_for_word("u u~ > d d~ s s~", (2, 6, 3, 4, 5, 1))
+
+    assert _lc_color_identity_closures_compatible((frozenset({2, 6}),), sector)
+    assert _lc_color_identity_closures_compatible((frozenset({1, 2, 5, 6}),), sector)
+    assert _lc_color_identity_closures_compatible(
+        (frozenset({1, 2, 3, 4, 5, 6}),), sector
+    )
+    assert not _lc_color_identity_closures_compatible((frozenset({1, 2}),), sector)
+    assert not _lc_color_identity_closures_compatible((frozenset({1, 2, 5}),), sector)

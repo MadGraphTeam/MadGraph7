@@ -63,6 +63,7 @@ class _RecordingServices:
     plan = _record
     evaluate = _record
     benchmark = _record
+    check = _record
     inspect = _record
     model_inspect = _record
     model_compile = _record

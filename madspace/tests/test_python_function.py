@@ -3,6 +3,9 @@ import pytest
 
 import madspace as ms
 
+# Python callbacks on a CPU context
+pytestmark = pytest.mark.cpu_only
+
 PDG_IDS = [21, 21, 6, -6]
 
 

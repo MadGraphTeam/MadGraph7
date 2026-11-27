@@ -10,6 +10,7 @@ from pyamplicol.reporting import (
     get_logger,
     reset_cli_logging,
 )
+from pyamplicol.reporting.logging import notice
 
 logging_module = importlib.import_module("pyamplicol.reporting.logging")
 
@@ -27,10 +28,23 @@ def test_cli_logging_is_package_local_idempotent_and_resettable() -> None:
             handler
             for handler in logger.handlers
             if getattr(handler, "_pyamplicol_cli_handler", False)
+            and not getattr(handler, "_pyamplicol_cli_notice_handler", False)
         ]
-        assert len(owned) == 1
+        notices = [
+            handler
+            for handler in logger.handlers
+            if getattr(handler, "_pyamplicol_cli_notice_handler", False)
+        ]
+        assert len(owned) == 1 and len(notices) == 1
         get_logger("unit").warning("diagnostic")
         assert "diagnostic" in stream.getvalue()
+        # Above INFO: plain INFO records stay hidden, notices show as the
+        # CLI's own short lines (never in the logger format).
+        get_logger("unit").info("plain record")
+        notice(get_logger("unit"), "widths", "WZ = 0")
+        assert "plain record" not in stream.getvalue()
+        assert "widths    WZ = 0" in stream.getvalue()
+        assert "INFO" not in stream.getvalue()
         assert tuple(root.handlers) == root_handlers
         assert root.level == root_level
     finally:
@@ -39,6 +53,17 @@ def test_cli_logging_is_package_local_idempotent_and_resettable() -> None:
         getattr(handler, "_pyamplicol_cli_handler", False)
         for handler in get_logger().handlers
     )
+
+
+def test_a_notice_keeps_its_label_in_the_logger_format() -> None:
+    stream = io.StringIO()
+    reset_cli_logging()
+    try:
+        configure_cli_logging("info", stream=stream)
+        notice(get_logger("unit"), "model", "built-in-sm %s", "x")
+        assert stream.getvalue() == "INFO pyamplicol.unit: model: built-in-sm x\n"
+    finally:
+        reset_cli_logging()
 
 
 def test_cli_logging_restores_embedding_application_state() -> None:

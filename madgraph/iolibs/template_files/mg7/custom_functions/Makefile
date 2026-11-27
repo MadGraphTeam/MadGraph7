@@ -40,7 +40,7 @@ ifeq ($(LANGUAGE),cuda)
 
 $(LIB): wrapper_gpu.cu $(BODY) parameters.h umami.h
 	@mkdir -p $(dir $(LIB))
-	$(NVCC) $(OPTFLAGS) -std=c++17 $(GPUARCHFLAGS) -Xcompiler -fPIC --shared $(CFLAGS) \
+	$(NVCC) $(OPTFLAGS) -std=c++20 $(GPUARCHFLAGS) -Xcompiler -fPIC --shared $(CFLAGS) \
 		-o $@ wrapper_gpu.cu -Xlinker -soname=$(notdir $(LIB)) $(LIBS)
 
 else ifeq ($(LANGUAGE),hip)
@@ -57,7 +57,7 @@ else ifeq ($(LANGUAGE),hip)
 
 $(LIB): wrapper_gpu.cu $(BODY) parameters.h umami.h
 	@mkdir -p $(dir $(LIB))
-	$(HIPCC) $(OPTFLAGS) -std=c++17 --offload-arch=$(MADGRAPH_HIP_ARCHITECTURE) -fPIC -shared \
+	$(HIPCC) $(OPTFLAGS) -std=c++20 --offload-arch=$(MADGRAPH_HIP_ARCHITECTURE) -fPIC -shared \
 		$(CFLAGS) -x hip -o $@ wrapper_gpu.cu $(SONAME_FLAGS) $(LIBS)
 
 else
@@ -66,7 +66,7 @@ else
     BODY_COMPILE = $(CC) $(OPTFLAGS) -fPIC $(CFLAGS)
     LINKER = $(CC)
   else ifeq ($(LANGUAGE),cpp)
-    BODY_COMPILE = $(CXX) $(OPTFLAGS) -std=c++17 -fPIC $(CFLAGS)
+    BODY_COMPILE = $(CXX) $(OPTFLAGS) -std=c++20 -fPIC $(CFLAGS)
     LINKER = $(CXX)
   else ifeq ($(LANGUAGE),fortran)
     # parameters.h is included through the preprocessor of .F90 files

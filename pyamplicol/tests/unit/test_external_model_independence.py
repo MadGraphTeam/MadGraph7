@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: 0BSD
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from pyamplicol.color.plan import build_color_plan
@@ -16,6 +18,7 @@ from pyamplicol.processes.model import (
     ModelParticleCatalog,
     build_model_process_ir,
     expand_model_processes,
+    resolve_model_particle_name,
 )
 
 
@@ -491,3 +494,24 @@ def test_pure_adjoint_lc_reflection_folding_requires_explicit_model_proof() -> N
     assert unproven.color_plan.sector_count == 24
     assert proven.color_plan.trace_reflections_folded is True
     assert proven.color_plan.sector_count == 12
+
+
+def test_existing_particle_catalog_name_resolution_is_preserved():
+    upper = _particle("G", "G", 21, spin=3, color=8)
+    catalog = ModelParticleCatalog("actual", (upper,))
+    assert catalog.resolve("G") is upper
+    assert catalog.resolve("g") is upper
+    hidden = _particle("g", "g", 9001, spin=-1, color=8, ghost_number=1)
+    catalog = ModelParticleCatalog("actual", (upper, hidden))
+    assert catalog.resolve("g") is upper  # ordinary public external-state filter
+    assert catalog.resolve("g", external=False) is hidden
+    first = replace(upper, name="Gauge", antiname="Gauge")
+    second = replace(upper, name="GAUGE", antiname="GAUGE", pdg_code=9002)
+    catalog = ModelParticleCatalog("ambiguous", (first, second))
+    assert catalog.resolve("Gauge") is first
+    assert catalog.resolve("GAUGE") is second
+    with pytest.raises(ValueError, match="case-ambiguous"):
+        catalog.resolve("gauge")
+    with pytest.raises(ValueError, match="not an external state"):
+        catalog.resolve("missing")
+    assert resolve_model_particle_name("g", ("G",), model_name="actual") == "G"

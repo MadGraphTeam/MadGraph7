@@ -7,13 +7,12 @@
 #ifndef MemoryAccessGs_H
 #define MemoryAccessGs_H 1
 
-#include "mgOnGpuConfig.h"
+#include "MadMatrixConfig.h"
 
 #include "MemoryAccessHelpers.h"
 #include "MemoryAccessVectors.h"
 #include "MemoryBuffers.h" // for HostBufferMatrixElements::isaligned
 
-//One namespace. Split ber backend.
 namespace madmatrix
 {
   //----------------------------------------------------------------------------
@@ -26,7 +25,6 @@ namespace madmatrix
   private:
 
     friend class MemoryAccessHelper<MemoryAccessGsBase>;
-    friend class KernelAccessHelper<MemoryAccessGsBase, true>;
     friend class KernelAccessHelper<MemoryAccessGsBase, false>;
 
     //--------------------------------------------------------------------------
@@ -107,7 +105,7 @@ namespace madmatrix
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (non-const, SCALAR) ===> fptype& kernelAccess( fptype* buffer ) <===]
     static constexpr auto kernelAccess_s =
-      KernelAccessHelper<MemoryAccessGsBase, onDevice>::template kernelAccessField<>; // requires cuda 11.4
+      KernelAccessHelper<MemoryAccessGsBase, onDevice>::template kernelAccessField<>;
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal)
     // [Signature (non-const, SCALAR OR VECTOR) ===> fptype_sv& kernelAccess( fptype* buffer ) <===]
@@ -117,7 +115,7 @@ namespace madmatrix
       fptype& out = kernelAccess_s( buffer );
       // NB: derived from MemoryAccessMomenta, restricting the implementation to contiguous aligned arrays (#435)
       static_assert( madmatrix::HostBufferGs::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      //assert( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
+      //assert( (size_t)( buffer ) % madmatrix::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       return madmatrix::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
     }
 
@@ -132,7 +130,7 @@ namespace madmatrix
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal) and the given field indexes (input)
     // [Signature (const, SCALAR) ===> const fptype& kernelAccessConst( const fptype* buffer ) <===]
     static constexpr auto kernelAccessConst_s =
-      KernelAccessHelper<MemoryAccessGsBase, onDevice>::template kernelAccessFieldConst<>; // requires cuda 11.4
+      KernelAccessHelper<MemoryAccessGsBase, onDevice>::template kernelAccessFieldConst<>;
 
     // Locate a field (output) in a memory buffer (input) from a kernel event-indexing mechanism (internal)
     // [Signature (const, SCALAR OR VECTOR) ===> const fptype_sv& kernelAccess( const fptype* buffer ) <===]
@@ -142,7 +140,7 @@ namespace madmatrix
       const fptype& out = kernelAccessConst_s( buffer );
       // NB: derived from MemoryAccessMomenta, restricting the implementation to contiguous aligned arrays (#435)
       static_assert( madmatrix::HostBufferGs::isaligned() ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
-      //assert( (size_t)( buffer ) % mgOnGpu::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
+      //assert( (size_t)( buffer ) % madmatrix::cppAlign == 0 ); // ASSUME ALIGNED ARRAYS (reinterpret_cast will segfault otherwise!)
       return madmatrix::fptypevFromAlignedArray( out ); // SIMD bulk load of neppV, use reinterpret_cast
     }
   };
@@ -150,7 +148,6 @@ namespace madmatrix
   //----------------------------------------------------------------------------
 
   typedef KernelAccessGs<false> HostAccessGs;
-  typedef KernelAccessGs<true> DeviceAccessGs;
 
   //----------------------------------------------------------------------------
 

@@ -1,0 +1,313 @@
+{
+ "kind": "providers",
+ "process": "li_gg_hgg",
+ "cpu": 333,
+ "host": "itphlies",
+ "points": 16,
+ "timing_scope": "single pinned core; point 1 once untimed, then points 2..n, 1 timed one by one with the driver's own timer",
+ "providers": {
+  "madloop": {
+   "provider": "madloop",
+   "loop_induced": true,
+   "mode": "loop-induced, the export's card (warm-up past the initialisation), production: MLStabThres and the default stability test, MG5 production Fortran flags, COLLIERGlobalCache as in production (below 7 legs)",
+   "version": "MadLoop/MG5_aMC 3.7.0",
+   "export": "${LOOP_REFERENCE_ROOT}/runs/li/li_gg_hgg/madloop-export",
+   "collier_cache": {
+    "on": true,
+    "collier": "1.2.9",
+    "reason": "below 7 legs"
+   },
+   "madloop_params": {
+    "MLReductionLib": "6|7|1",
+    "COLLIERGlobalCache": "-1",
+    "MLStabThres": "1.000000d-03",
+    "ImprovePSPoint": "2"
+   },
+   "fortran_flags": {
+    "GLOBAL_FLAG": "-O",
+    "ALOHA_FLAG": "",
+    "MATRIX_FLAG": ""
+   },
+   "qp_model_repairs": [
+    "added KIND=16 to 19 CMPLX calls in MP_ functions",
+    "replaced 6 TWOPII pi literals 3.14169258478796109557151794433593750E0_16 by 3.14159265358979323846264338327950288E0_16"
+   ],
+   "points": 16,
+   "mean_seconds_per_point": 0.286861126875,
+   "median_seconds_per_point": 0.287406925,
+   "min_seconds_per_point": 0.280277362,
+   "max_seconds_per_point": 0.293934066,
+   "rows": [
+    {
+     "born": 0.0,
+     "finite": 3.917980265841126e-07,
+     "single_pole": -8.021973712282791e-17,
+     "double_pole": 5.055011845023425e-23,
+     "accuracy": 4.154521620517136e-08,
+     "status": 216,
+     "seconds": 0.286854938,
+     "total_all_orders": [
+      0.0,
+      3.917980265841126e-07,
+      -8.021973712282791e-17,
+      5.055011845023425e-23
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.1862757729077332e-07,
+     "single_pole": -1.2007525943510259e-18,
+     "double_pole": 1.1378010570289247e-28,
+     "accuracy": 1.2039406907723533e-10,
+     "status": 216,
+     "seconds": 0.289344027,
+     "total_all_orders": [
+      0.0,
+      1.1862757729077332e-07,
+      -1.2007525943510259e-18,
+      1.1378010570289247e-28
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.4957825005449227e-07,
+     "single_pole": 1.008430564558849e-19,
+     "double_pole": 3.4372817525380724e-30,
+     "accuracy": 1.5577501084849028e-11,
+     "status": 216,
+     "seconds": 0.290649484,
+     "total_all_orders": [
+      0.0,
+      2.4957825005449227e-07,
+      1.008430564558849e-19,
+      3.4372817525380724e-30
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 9.125038836595373e-08,
+     "single_pole": 3.4551753576323412e-19,
+     "double_pole": 6.296895930049846e-29,
+     "accuracy": 1.6373000790111957e-10,
+     "status": 216,
+     "seconds": 0.285476863,
+     "total_all_orders": [
+      0.0,
+      9.125038836595373e-08,
+      3.4551753576323412e-19,
+      6.296895930049846e-29
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.5397273382248297e-07,
+     "single_pole": -4.17902603596477e-20,
+     "double_pole": 8.896918234457377e-29,
+     "accuracy": 8.640697539196353e-11,
+     "status": 216,
+     "seconds": 0.280277362,
+     "total_all_orders": [
+      0.0,
+      2.5397273382248297e-07,
+      -4.17902603596477e-20,
+      8.896918234457377e-29
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.257433194784125e-07,
+     "single_pole": -6.496089792964742e-20,
+     "double_pole": 1.0527688712711696e-27,
+     "accuracy": 3.492979475876622e-10,
+     "status": 216,
+     "seconds": 0.287117259,
+     "total_all_orders": [
+      0.0,
+      2.257433194784125e-07,
+      -6.496089792964742e-20,
+      1.0527688712711696e-27
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 1.5402184474725966e-07,
+     "single_pole": 2.592386585877674e-19,
+     "double_pole": 6.31149111274336e-30,
+     "accuracy": 4.338134051653011e-12,
+     "status": 216,
+     "seconds": 0.283503075,
+     "total_all_orders": [
+      0.0,
+      1.5402184474725966e-07,
+      2.592386585877674e-19,
+      6.31149111274336e-30
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.863373640598692e-08,
+     "single_pole": -5.5061811569118735e-21,
+     "double_pole": 2.818681591880186e-32,
+     "accuracy": 6.827030290417527e-10,
+     "status": 216,
+     "seconds": 0.282738142,
+     "total_all_orders": [
+      0.0,
+      2.863373640598692e-08,
+      -5.5061811569118735e-21,
+      2.818681591880186e-32
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 5.32646443690307e-07,
+     "single_pole": 2.0358052078946736e-17,
+     "double_pole": 1.1516611639700531e-24,
+     "accuracy": 2.9047222169505034e-10,
+     "status": 216,
+     "seconds": 0.288233123,
+     "total_all_orders": [
+      0.0,
+      5.32646443690307e-07,
+      2.0358052078946736e-17,
+      1.1516611639700531e-24
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 6.811614805860229e-08,
+     "single_pole": 8.965232985074772e-21,
+     "double_pole": 8.172954945521472e-32,
+     "accuracy": 6.042829547394374e-11,
+     "status": 216,
+     "seconds": 0.293934066,
+     "total_all_orders": [
+      0.0,
+      6.811614805860229e-08,
+      8.965232985074772e-21,
+      8.172954945521472e-32
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 3.0210468196911403e-07,
+     "single_pole": 3.2210648227960675e-20,
+     "double_pole": 3.1370198043271785e-29,
+     "accuracy": 2.7770095833204373e-11,
+     "status": 216,
+     "seconds": 0.288734295,
+     "total_all_orders": [
+      0.0,
+      3.0210468196911403e-07,
+      3.2210648227960675e-20,
+      3.1370198043271785e-29
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 4.9077686425921727e-08,
+     "single_pole": 9.174468944997982e-20,
+     "double_pole": 3.1899342024904185e-30,
+     "accuracy": 2.1693731607226103e-10,
+     "status": 216,
+     "seconds": 0.281138476,
+     "total_all_orders": [
+      0.0,
+      4.9077686425921727e-08,
+      9.174468944997982e-20,
+      3.1899342024904185e-30
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.2929878047507652e-07,
+     "single_pole": 4.1201102929546596e-20,
+     "double_pole": 9.240418627134252e-31,
+     "accuracy": 2.74476684631837e-12,
+     "status": 216,
+     "seconds": 0.287696591,
+     "total_all_orders": [
+      0.0,
+      2.2929878047507652e-07,
+      4.1201102929546596e-20,
+      9.240418627134252e-31
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 5.4303906581451985e-08,
+     "single_pole": -1.1600935811415985e-20,
+     "double_pole": 1.3311718213806093e-32,
+     "accuracy": 3.1390101007136844e-11,
+     "status": 216,
+     "seconds": 0.288636976,
+     "total_all_orders": [
+      0.0,
+      5.4303906581451985e-08,
+      -1.1600935811415985e-20,
+      1.3311718213806093e-32
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.5223868065493833e-07,
+     "single_pole": 1.296948807237948e-18,
+     "double_pole": 1.104126395867817e-28,
+     "accuracy": 1.8991406537254277e-11,
+     "status": 216,
+     "seconds": 0.286778828,
+     "total_all_orders": [
+      0.0,
+      2.5223868065493833e-07,
+      1.296948807237948e-18,
+      1.104126395867817e-28
+     ]
+    },
+    {
+     "born": 0.0,
+     "finite": 2.9460013495647496e-07,
+     "single_pole": -2.2078373820442337e-19,
+     "double_pole": 4.597007642580797e-30,
+     "accuracy": 1.6469217997464313e-11,
+     "status": 216,
+     "seconds": 0.288664525,
+     "total_all_orders": [
+      0.0,
+      2.9460013495647496e-07,
+      -2.2078373820442337e-19,
+      4.597007642580797e-30
+     ]
+    }
+   ],
+   "setup": {
+    "split_order_indices": [
+     1,
+     1,
+     1
+    ],
+    "initial_call_seconds": 1.31396347,
+    "initialization_calls": 8
+   },
+   "process_wall_seconds": 5.917542116949335,
+   "stages": {
+    "stages_seconds_per_point": {
+     "loop numerator coefficients": 0.0751307514375,
+     "Born and counterterm HELAS": 0.00035834340112500003,
+     "reduction and masters": 0.21344742368749997,
+     "colour flows and squaring": 0.00033556626275
+    },
+    "residual_seconds_per_point": -0.0026785326638750218,
+    "instrumented_seconds_per_point": 0.286593552125,
+    "points": 16,
+    "calls_per_point": [
+     32.0,
+     32.0,
+     32.0,
+     64.0
+    ],
+    "method": "loop-induced: (stage totals of the points twice - once) / n, same warm-up"
+   },
+   "harness_wall_seconds": 30.21446786215529
+  }
+ }
+}

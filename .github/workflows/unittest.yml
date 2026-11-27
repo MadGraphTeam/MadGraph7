@@ -4,20 +4,17 @@ name: running unittest
 # Controls when the workflow will run
 # branches: [ main LTS ]
 on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   # Triggers the workflow on push or pull request events but only for the 3.4.0 branch
   push:
-    # All branches, no tags: a release tag points at a commit that already
-    # ran this suite when it was pushed to main, and release.yml gates on
-    # that main run rather than re-testing the same tree. '**' is needed
-    # over '*' so branch names containing a slash still match.
+    # main only: other branches run through workflow_dispatch
     branches:
-      - '**'
+      - main
     paths-ignore:
       - 'docs/**'
 # - '.github/**'
 
-  pull_request:
-    types: [opened, synchronize, reopened]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -50,17 +47,26 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
+
+      - name: "MadLoop NinjaRS interfaces, defaults, and reporting"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            command -v gfortran
+            python3 -m unittest discover -s tests/unit_tests/loop -p 'test_ninjars*.py'
+            python3 -m unittest discover -s tests/unit_tests/various -p 'test_ninjars*.py'
+            python3 -m unittest tests.unit_tests.loop.test_loop_poles tests.unit_tests.interface.test_madevent_loop_warnings
 
       # ---- unittest_0 ----
       - name: "unittest_0"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_v31_syntax_crash test_polarisation_nlo_regimes test_the_exit_from_child_cmd test_the_exit_from_child_cmd2 test_get_final_part test_InvalidCmd test_check_generate test_cleaning_history test_generate_polarised test_help_category test_output_default test_shell_and_continuation_line test_simple_generate test_card_type_recognition test_help_category test_autocompletion test_modif_ML_card test_modif_madweight_card test_modif_param_card test_modif_pythia8_card test_modif_run_card test_modif_shower_card test_modif_reweight_card test_wrapped_model_path test_wrapped_processes test_processes_after_last_import_model test_model_v4 test_default_model test_density_option_survives_every_wrap_position test_regression_layout test_last_output_options test_wrapped_modelname test_density_flag_split_by_the_wrap test_density_flag_on_one_line test_no_density test_write_keeps_long_lines_whole -t0
+            ./tests/test_manager.py test_v31_syntax_crash test_polarisation_nlo_regimes test_the_exit_from_child_cmd test_the_exit_from_child_cmd2 test_get_final_part test_InvalidCmd test_check_generate test_cleaning_history test_generate_polarised test_help_category test_output_default test_output_pythia8_refused test_color_basis_follows_exporter_capability test_shell_and_continuation_line test_simple_generate test_card_type_recognition test_help_category test_autocompletion test_modif_ML_card test_modif_madweight_card test_modif_param_card test_modif_pythia8_card test_modif_run_card test_modif_shower_card test_modif_reweight_card test_wrapped_model_path test_wrapped_processes test_processes_after_last_import_model test_model_v4 test_default_model test_density_option_survives_every_wrap_position test_regression_layout test_last_output_options test_wrapped_modelname test_density_flag_split_by_the_wrap test_density_flag_on_one_line test_no_density test_write_keeps_long_lines_whole -t0
 
       # ---- unittest_2 ----
       - name: "unittest_2"
@@ -170,7 +176,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_fd_gauge_import test_get_symmetric_color test_get_symmetric_lorentz test_merge_iden_couplings_with_minus test_remove_interactions2 test_remove_interactions3 test_reshape_FFV_coeff test_reshape_FFV_coeff_gamma5_and_vector test_reshape_FFV_coeff_unknown_structure_ignored test_read_feynman_diagram_count test_read_feynman_diagram_count_missing_file -t0
+            ./tests/test_manager.py test_fd_gauge_import test_fd_gauge_unverified_tag test_get_symmetric_color test_get_symmetric_lorentz test_merge_iden_couplings_with_minus test_remove_interactions2 test_remove_interactions3 test_reshape_FFV_coeff test_reshape_FFV_coeff_gamma5_and_vector test_reshape_FFV_coeff_unknown_structure_ignored test_read_feynman_diagram_count test_read_feynman_diagram_count_missing_file -t0
 
       # ---- unittest_33 ----
       # Uncovered unit tests in tests/unit_tests/fks/test_ewsudakov.py
@@ -223,6 +229,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_bundle_2:
@@ -233,7 +253,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -349,16 +369,30 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_bundle_3:
     # former jobs, run one after the other: unittest_10 unittest_density_29
-    #   unittest_madspin_sequential
+    #   unittest_ewsudakov unittest_mg7_event_stream unittest_madspin_sequential
     # Each keeps its own steps, run even when an earlier one failed.
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -386,6 +420,21 @@ jobs:
             if command -v apt-get > /dev/null; then sudo pip install scipy; else python3 -m pip install --user scipy; fi
             ./tests/test_manager.py test_DensityMatrixObservables test_DensityMatrixObservables22 test_additional_steering test_DensityMatrixObservables23 test_DensityMatrixObservables33 test_utilities test_density_selection_not_used test_density_selection_default_order test_matrix_normalisation test_density_selection_observable_order test_density_selection_observable_ranks test_density_selection_tie test_density_selection_wrong_inputs -t0
 
+      # ---- unittest_ewsudakov ----
+      - name: "unittest_ewsudakov: run the EW Sudakov unit tests"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py tests.unit_tests.ewsudakov -t0
+
+      # ---- unittest_mg7_event_stream ----
+      - name: "unittest_mg7_event_stream: run EventStream and cluster-combine tests with NumPy"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py tests.unit_tests.iolibs.test_mg7_event_stream -t0
+            ./tests/test_manager.py tests.unit_tests.iolibs.test_mg7_combine_cluster -t0
+
       # ---- unittest_madspin_sequential ----
       # MadSpin density primitives and decay/mass drawing (sequential accept/reject),
       # plus the lhe_parser split/merge of the unweighted output. These modules were
@@ -401,6 +450,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_bundle_4:
@@ -410,7 +473,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -436,7 +499,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_CF_simple test_cf_computation test_generate_ewsud_ttbar test_generate_ewsud_ww test_generate_ewsud_zz testIO_test_pptt_ewsudakovSA testIO_test_ppzz_ewsudakov testIO_test_ppw_fksall testIO_Loop_sqso_uux_ddx test_check_import_model test_schedular test_dummy_fcts test_UFO_Python_helas_call_writer_fd test_get_symmetric_color test_get_symmetric_lorentz test_remove_interactions2 test_remove_interactions3 test_fd_python_value_matches_unitary_fixed_point test_shower_card_write -t0
+            ./tests/test_manager.py test_CF_simple test_cf_computation test_generate_ewsud_ttbar test_generate_ewsud_ww test_generate_ewsud_zz test_check_import_model test_schedular test_dummy_fcts test_UFO_Python_helas_call_writer_fd test_get_symmetric_color test_get_symmetric_lorentz test_remove_interactions2 test_remove_interactions3 test_fd_python_value_matches_unitary_fixed_point test_shower_card_write -t0
 
       # ---- unittest_run_output (from mg5 3.8.2) ----
       # combine_runs, histograms and the madevent run helpers (Delphes split
@@ -459,6 +522,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_bundle_5:
@@ -468,7 +545,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -497,6 +574,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_bundle_6:
@@ -505,7 +596,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -541,6 +632,20 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_bundle_7:
@@ -555,7 +660,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
@@ -575,25 +680,25 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_plugin_diagram_filter test_tree_interference DDMColorBasisTest TestQuarticUnrolling TestSeedRule TestAsymmetricFlavorRestriction TestDiagramFlavorCheck TestDiagramFlavorCheckQQG TestDiagramFlavorCheckQQbarG TestExternalFlavorsQGTTXQG TestFlavorStore TestFlavorStoreDecayChain TestFlavorStoreNoMerged test_depends_on_scale test_get_running_blocks test_rge_parameters_used test_running_coupling_indexed_by_event test_nice_string_offshell_and_polarization test_nice_string_offshell_last_leg test_color_basis_symmetry test_color_basis_symmetry_no_symmetry test_color_factor_simplify_merges_like_strings test_color_matrix_matches_direct_computation test_permute_immutable test_relabel_canonical test_spanning_generators test_spanning_tree_rebuilds_color_matrix test_born_basis_link_matrices -t0
+            ./tests/test_manager.py test_plugin_diagram_filter test_tree_interference DDMColorBasisTest DDMColorSingletTest TestQuarticUnrolling TestSeedRule TestAsymmetricFlavorRestriction TestDiagramFlavorCheck TestDiagramFlavorCheckQQG TestDiagramFlavorCheckQQbarG TestExternalFlavorsQGTTXQG TestFlavorStore TestFlavorStoreDecayChain TestFlavorStoreNoMerged FLVCouplingTableTest test_depends_on_scale test_get_running_blocks test_rge_parameters_used test_running_coupling_indexed_by_event test_nice_string_offshell_and_polarization test_nice_string_offshell_last_leg test_color_basis_symmetry test_color_basis_symmetry_no_symmetry test_color_factor_simplify_merges_like_strings test_color_matrix_matches_direct_computation test_permute_immutable test_relabel_canonical test_spanning_generators test_spanning_tree_rebuilds_color_matrix test_born_basis_link_matrices -t0
 
       - name: "unittest_interface_uncovered"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_default_switch test_history_recording test_interference_syntax test_mg7_systematics_summary test_reweight_card_input test_tutorials TestNoFileOutsideOutputDir CheckDisplayWithoutProcessTest DisplayInertCouplingOrderTest NeglectedMassAdviceTest RequiredSChannelErrorTest TestHepToolsInstallTarget test_display_processes TestDelphesFusion TestLhapdfInfoPatch TestSharedPdfsetsDir test_generate_propagator_only_polarisation test_propagator_polarisation_round_trip test_dynamical_scale_choice_ht -e TestOneImplementation -e TestRealRunNumbers -t0
+            ./tests/test_manager.py test_default_switch test_history_recording test_interference_syntax test_mg7_systematics_summary test_reweight_card_input test_tutorials TestNoFileOutsideOutputDir CheckDisplayWithoutProcessTest DisplayInertCouplingOrderTest NeglectedMassAdviceTest RequiredSChannelErrorTest TestHepToolsInstallTarget test_display_processes TestDelphesFusion TestLhapdfInfoPatch TestSharedPdfsetsDir test_generate_propagator_only_polarisation test_propagator_polarisation_round_trip test_dynamical_scale_choice_ht TestAutomaticGauge TestAutomaticGaugeOutput TestProcessGauge TestProcessGaugeOutput TestProcCardOneGauge TestGaugeHelpers test_save_and_load_processes_are_refused -e TestOneImplementation -e TestRealRunNumbers -t0
 
       - name: "unittest_iolibs_uncovered"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_madmatrix_writer test_mg7_gridpack_compression test_mg7_launcher_script AlohaModelPathTest DDMColorFlowMG7Test IOExportPythia8Test TestBornGscale F2PYSplitterFlavorOrderTest OptimiseJampTest AxialGaugeReferenceTest CombineNameHashTest test_flavor_mask_placeholders_present_in_nonstandalone_templates test_splitorders_entry_points_agree_with_their_callers test_standalone_files_next_to_matrix_file test_UFO_cpp_flavor_mask_prefix_uses_index_bits test_UFO_fortran_flavor_mask_prefix_uses_index_bits -t0
+            ./tests/test_manager.py test_madmatrix_writer test_mg7_gridpack_compression test_mg7_launcher_script AlohaModelPathTest DDMColorFlowMG7Test CPPTemplateWriterTest TestBornGscale F2PYSplitterFlavorOrderTest OptimiseJampTest AxialGaugeReferenceTest CombineNameHashTest test_flavor_mask_placeholders_present_in_nonstandalone_templates test_splitorders_entry_points_agree_with_their_callers test_standalone_files_next_to_matrix_file test_UFO_cpp_flavor_mask_prefix_uses_index_bits test_UFO_fortran_flavor_mask_prefix_uses_index_bits TestFlavorTableGuard -t0
 
       - name: "unittest_loop_madevent_uncovered"
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_loop_induced_output test_loop_induced_x_tree test_hel_recycle test_transpole test_copy_events_no_blank_line test_combine_grid test_gen_ximprove_resubmit -t0
+            ./tests/test_manager.py test_loop_induced_output test_loop_induced_x_tree test_loop_f2py_makefile test_hel_recycle test_transpole test_copy_events_no_blank_line test_combine_grid test_gen_ximprove_resubmit -t0
 
       - name: "unittest_various_uncovered"
         if: ${{ !cancelled() }}
@@ -615,34 +720,85 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_new_coverage:
-    # New unit tests added in 3.7.1: q_polynomial and hepmc_parser
+    # New unit tests added in 3.7.1: q_polynomial and hepmc_parser, and the
+    # reweight density / merged-label ones added with crossing symmetry
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     permissions:
       contents: read
 
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
+      - uses: ./.github/actions/restore-pip-cache
 
       - name: test q_polynomial and hepmc_parser modules
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_q_polynomial test_hepmc_parser -t0
 
+      # TestAverageDensityMatrix: the average-density-matrix helpers shared by
+      # DensityInterface and do_reweight's multicore recombination.
+      # TestPdgForMeCall: merged-particle labels, both signs, resolved to the
+      # event's concrete PDGs before the fortran call. Pure python.
+      - name: reweight density / merged-label unit tests
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py TestAverageDensityMatrix TestPdgForMeCall -t0
+
+      # Crossing on by default: the reweight folds the crossed subprocesses
+      # (and keys their helicity on the crossed process's own code), the
+      # interface lists them in display processes and the generation summary;
+      # the C++ outputs' diagram drawings stay light (smooth curls, one
+      # decimal, gzip).
+      - name: crossing reweight / display and SVG drawing unit tests
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py TestReweightGenerationFoldsCrossings TestReweightGenerationUnfoldsIncompleteRecords TestFindMatrixElement TestCrossingRecordsCoverTheFoldedSubprocesses TestFoldedCrossingHelicity CrossingDisplayTest TestSvgCurls TestMultiSvgFiles -t0
+
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_real_channels:
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
 
     steps:
       - uses: actions/checkout@v5
@@ -651,7 +807,21 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             gfortran --version
-            ./tests/test_manager.py TestRealChannelExport TestBornGscale test_amcatnlo_real_channels test_real_channels_weights test_real_channels_phase_space test_born_spreading test_fks_explicit_sum test_mc_flow_sum test_born_flow_rejection test_tau_cut_cache test_mint_channels test_mint_uncertainty test_virtual_surrogate test_virtual_surrogate_mixed test_real_channels_auto -t0
+            ./tests/test_manager.py TestRealChannelExport TestBornGscale test_amcatnlo_real_channels test_real_channels_weights test_real_channels_phase_space test_born_spreading test_fks_explicit_sum test_mc_flow_sum test_born_flow_rejection test_tau_cut_cache test_mint_channels test_mint_uncertainty test_folding_virtual test_virtual_surrogate test_virtual_surrogate_mixed test_nlo_call_arguments test_real_channels_auto -t0
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
   unittest_write_model:
@@ -659,7 +829,7 @@ jobs:
     # Runs on the self-hosted alma10 runners (cern1, ...) to spare the hosted queue;
     # fork PRs stay on ubuntu-24.04 so outside code never runs on our machines.
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
 
     steps:
       - uses: actions/checkout@v5
@@ -673,29 +843,63 @@ jobs:
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
         uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
 
 
 
   unittest_native_born:
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
       - name: Check shared Born providers and native subtraction
         run: |
           ./tests/test_manager.py test_born_support test_born_amplitude_cache test_compact_model_state test_model_state_layout test_real_helicity_filter test_native_frame_masks TestPythia8FxFxPlugin test_amcatnlo_shower_preflight test_mcatnlo_delta_scales test_herwig7_scales test_soft_col_limits test_momentum_maps test_mc_dead_zones test_mc_kernels test_mc_event_colours test_mc_history_weights test_pdf_luminosity_cache test_cluster test_pythia8 test_pythia8_matching test_qed_mc_kernels test_pythia8_qed_dipoles test_qed_shower_scales test_pythia8_qed_support -t0
 
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true
+
 
   unittest_uncovered:
     # unit tests that were not listed in any workflow (CI coverage audit).
     # test_fks_ppzz_in_RS is left out: the RS UFO model is still python2 only.
-    runs-on: ubuntu-24.04
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10"]') }}
+    if: ${{ (github.event_name != 'pull_request' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.fork == true)) || (github.event_name == 'pull_request') }}
 
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/clean_tmp
       - uses: ./.github/actions/checkout_mg5
       - uses: ./.github/actions/restore-pip-cache
 
@@ -703,4 +907,30 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_gmu_dependencies_do_not_leak_between_models test_loop_scale_dependencies_do_not_leak_between_models -t0
-            ./tests/test_manager.py test_CF_simple test_cf_computation test_generate_ewsud_ttbar test_generate_ewsud_ww test_generate_ewsud_zz testIO_test_pptt_ewsudakovSA testIO_test_ppzz_ewsudakov testIO_test_ppw_fksall testIO_Loop_sqso_uux_ddx test_check_import_model test_schedular test_dummy_fcts test_UFO_Python_helas_call_writer_fd test_get_symmetric_color test_get_symmetric_lorentz test_remove_interactions2 test_remove_interactions3 test_fd_python_value_matches_unitary_fixed_point test_shower_card_write -t0
+            ./tests/test_manager.py test_CF_simple test_cf_computation test_generate_ewsud_ttbar test_generate_ewsud_ww test_generate_ewsud_zz test_check_import_model test_schedular test_dummy_fcts test_UFO_Python_helas_call_writer_fd test_get_symmetric_color test_get_symmetric_lorentz test_remove_interactions2 test_remove_interactions3 test_fd_python_value_matches_unitary_fixed_point test_shower_card_write -t0
+
+      # IOtest.yml runs these IOTests on push only, so a pull request from a
+      # fork would otherwise run no IOTest at all. A push already runs them there.
+      - name: run the NLO and squared-order IOTests (fork pull requests)
+        if: github.event.pull_request.head.repo.fork == true
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py testIO_test_pptt_ewsudakovSA testIO_test_ppzz_ewsudakov testIO_test_ppw_fksall testIO_Loop_sqso_uux_ddx -t0
+
+      # Leave /tmp empty for the next job on this self-hosted machine.
+      - if: always()
+        uses: ./.github/actions/clean_tmp
+      - name: Cancel the other CI runs of this commit (fail fast)
+        if: ${{ failure() && github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'run-ci') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh run list --repo "$REPO" --commit "$HEAD_SHA" --event pull_request --limit 300 \
+            --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' |
+          while read -r id; do
+            [ "$id" = "$RUN_ID" ] || gh run cancel "$id" --repo "$REPO" || true
+          done
+          gh run cancel "$RUN_ID" --repo "$REPO" || true

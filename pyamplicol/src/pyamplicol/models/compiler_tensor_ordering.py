@@ -256,7 +256,10 @@ def compile_tensor_ordering_metadata(
         if term.index_bindings and term.index_bindings != index_bindings:
             raise ValueError(f"vertex term {term.id} has stale tensor index bindings")
         annotated_terms.append(
-            replace(
+            term
+            if term.source_ordering_ids == source_ordering_ids
+            and term.index_bindings == index_bindings
+            else replace(
                 term,
                 source_ordering_ids=source_ordering_ids,
                 index_bindings=index_bindings,
@@ -282,12 +285,18 @@ def compile_tensor_ordering_metadata(
             and kernel.output_ordering_id != output_ordering_id
         ):
             raise ValueError(f"oriented kernel {kernel.kind} has stale output ordering")
+        term_ids = kernel.term_ids or (kernel.term_id,)
+        # A kernel annotated by an earlier pass is kept as it is.
         annotated_kernels.append(
-            replace(
+            kernel
+            if kernel.input_ordering_ids == input_ordering_ids
+            and kernel.output_ordering_id == output_ordering_id
+            and kernel.term_ids == term_ids
+            else replace(
                 kernel,
                 input_ordering_ids=input_ordering_ids,
                 output_ordering_id=output_ordering_id,
-                term_ids=kernel.term_ids or (kernel.term_id,),
+                term_ids=term_ids,
             )
         )
 

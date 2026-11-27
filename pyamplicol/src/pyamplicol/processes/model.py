@@ -5,6 +5,8 @@ import itertools
 import re
 from collections import Counter
 from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from typing import cast
 
@@ -29,6 +31,82 @@ from .ir import (
     SourceOrientation,
     WavefunctionFamily,
 )
+from .refusals import ProcessRequestUnsupported
+
+GOLDSTONE_FLAG_SPELLINGS = ("GoldstoneBoson", "goldstoneboson", "goldstone")
+
+
+def ufo_goldstone_flag(fields: Mapping[str, object]) -> bool:
+    """MadGraph's UFO convention: any truthy established Goldstone spelling.
+
+    ``GoldstoneBoson``, ``goldstoneboson`` and legacy ``goldstone`` are all
+    honoured; a false constructor default in one spelling must not hide a true
+    flag in another. Every reader of source or native particle metadata uses
+    this one interpretation (ufo_model_loader PR3 exposes the same; prefer it
+    once a release provides it).
+    """
+    return any(bool(fields.get(name)) for name in GOLDSTONE_FLAG_SPELLINGS)
+
+
+def is_external_model_particle(
+    *,
+    spin: int,
+    ghost_number: int,
+    goldstoneboson: bool,
+    propagating: bool,
+    auxiliary_kind: str | None,
+) -> bool:
+    """The declared external-state eligibility shared by model consumers."""
+    return (
+        spin > 0
+        and ghost_number == 0
+        and not goldstoneboson
+        and propagating
+        and auxiliary_kind is None
+    )
+
+
+def resolve_model_particle_name(
+    name: str, names: Sequence[str], *, model_name: str
+) -> str:
+    """Use the public exact-first, uniquely case-insensitive particle spelling."""
+    if name in names:
+        return name
+    folded = [
+        candidate for candidate in names if candidate.casefold() == name.casefold()
+    ]
+    if len(folded) == 1:
+        return folded[0]
+    if len(folded) > 1:
+        choices = ", ".join(sorted(folded))
+        raise ValueError(f"particle name {name!r} is case-ambiguous: {choices}")
+    raise ValueError(f"particle {name!r} is not an external state in {model_name}")
+
+
+# Whether Goldstone bosons are admitted as external legs (``goldstone_legs``).
+_GOLDSTONE_LEGS: ContextVar[bool] = ContextVar("goldstone_legs", default=False)
+
+
+@contextmanager
+def goldstone_legs() -> Iterator[None]:
+    """Admit the model's Goldstone bosons as external legs within the scope
+    (outside it they never are, ``is_external_model_particle``): the
+    amplitude with a Goldstone in place of a massive vector is the other side
+    of its Slavnov-Taylor identity, a gauge probe of the loop-induced engine
+    (``loops.v2.goldstone``), never a physical process."""
+
+    token = _GOLDSTONE_LEGS.set(True)
+    try:
+        yield
+    finally:
+        _GOLDSTONE_LEGS.reset(token)
+
+
+def goldstone_legs_admitted() -> bool:
+    """Whether the current scope admits Goldstone external legs
+    (``goldstone_legs``)."""
+
+    return _GOLDSTONE_LEGS.get()
 
 
 @dataclass(frozen=True)
@@ -53,36 +131,27 @@ class ModelParticleCatalog:
 
     @property
     def external_particles(self) -> tuple[CompiledParticleRecord, ...]:
+        goldstones = _GOLDSTONE_LEGS.get()
         return tuple(
             particle
             for particle in self.particles
-            if particle.spin > 0
-            and particle.ghost_number == 0
-            and not particle.goldstoneboson
-            and particle.propagating
-            and particle.auxiliary_kind is None
+            if is_external_model_particle(
+                spin=particle.spin,
+                ghost_number=particle.ghost_number,
+                goldstoneboson=particle.goldstoneboson and not goldstones,
+                propagating=particle.propagating,
+                auxiliary_kind=particle.auxiliary_kind,
+            )
         )
 
     def resolve(self, name: str, *, external: bool = True) -> CompiledParticleRecord:
         candidates = self.external_particles if external else self.particles
-        exact = next(
-            (particle for particle in candidates if particle.name == name), None
+        canonical = resolve_model_particle_name(
+            name,
+            tuple(particle.name for particle in candidates),
+            model_name=self.model_name,
         )
-        if exact is not None:
-            return exact
-        folded = [
-            particle
-            for particle in candidates
-            if particle.name.casefold() == name.casefold()
-        ]
-        if len(folded) == 1:
-            return folded[0]
-        if len(folded) > 1:
-            names = ", ".join(sorted(particle.name for particle in folded))
-            raise ValueError(f"particle name {name!r} is case-ambiguous: {names}")
-        raise ValueError(
-            f"particle {name!r} is not an external state in {self.model_name}"
-        )
+        return next(particle for particle in candidates if particle.name == canonical)
 
     def antiparticle(self, particle: CompiledParticleRecord) -> CompiledParticleRecord:
         try:
@@ -203,12 +272,7 @@ def expand_model_processes(
             raise ValueError("invalid collision format; expected 'initial > final'")
         initial_slots = _expanded_slots(initial_text, aliases, catalog)
         final_slots = _expanded_slots(final_text, aliases, catalog)
-        if len(initial_slots) != 2:
-            raise ValueError(
-                "pyAmpliCol processes require exactly two initial particles"
-            )
-        if not final_slots:
-            raise ValueError("pyAmpliCol processes require at least one final particle")
+        require_external_leg_counts(len(initial_slots), len(final_slots))
         finals: dict[tuple[int, ...], list[tuple[str, ...]]] = {}
         for final in _side_multisets(final_slots):
             key = () if charges is None else charges.total(final)
@@ -219,6 +283,23 @@ def expand_model_processes(
                 concrete = f"{' '.join(initial)} > {' '.join(final)}"
                 expanded.setdefault(concrete, None)
     return tuple(expanded)
+
+
+def require_external_leg_counts(initial: int, final: int) -> None:
+    """A process has one initial particle (a 1 -> n decay, n >= 2) or two (a
+    2 -> n scattering, n >= 1): the same rule for every process, whatever
+    its particles."""
+
+    if initial not in (1, 2):
+        raise ValueError(
+            "pyAmpliCol processes have one initial particle (a 1 -> n decay) or "
+            f"two (a 2 -> n scattering), not {initial}"
+        )
+    if final < 1 or initial + final < 3:
+        raise ValueError(
+            "pyAmpliCol processes need at least three external particles: a "
+            "decay at least two final particles, a scattering at least one"
+        )
 
 
 def _side_multisets(slots: Sequence[tuple[str, ...]]) -> Iterator[tuple[str, ...]]:
@@ -261,10 +342,7 @@ def build_model_process_ir(
         raise ValueError("invalid collision format; expected 'initial > final'")
     initial = tuple(catalog.resolve(token) for token in initial_text.split())
     final = tuple(catalog.resolve(token) for token in final_text.split())
-    if len(initial) != 2 or not final:
-        raise ValueError(
-            "process must have exactly two initial and at least one final particle"
-        )
+    require_external_leg_counts(len(initial), len(final))
     outgoing_initial = tuple(catalog.antiparticle(particle) for particle in initial)
     canonical = f"{' '.join(particle.name for particle in initial)} > " + " ".join(
         particle.name for particle in final
@@ -283,7 +361,7 @@ def build_model_process_ir(
             ),
             *(
                 _model_leg(
-                    label=index + 3,
+                    label=len(initial) + index + 1,
                     side="final",
                     particle=particle,
                     outgoing_particle=particle,
@@ -315,6 +393,21 @@ def _expanded_slots(
     aliases: Mapping[str, Sequence[str]],
     catalog: ModelParticleCatalog,
 ) -> list[tuple[str, ...]]:
+    for bracket in re.findall(r"\[([^\]]*)\]", text):
+        # Model processes have no anonymous brackets; one of non-particles
+        # is MG5_aMC NLO syntax ('[QCD]').
+        unresolved = []
+        for item in bracket.split():
+            try:
+                catalog.resolve(item)
+            except ValueError:
+                unresolved.append(item)
+        if unresolved:
+            raise ProcessRequestUnsupported(
+                "madloop-syntax",
+                f"the bracket [{bracket.strip()}] holds no particles of "
+                f"{catalog.model_name} ('[QCD]' style NLO syntax)",
+            )
     slots: list[tuple[str, ...]] = []
     for token in text.split():
         count, name = _repetition(token)
@@ -369,5 +462,8 @@ __all__ = [
     "ModelParticleCatalog",
     "build_model_process_ir",
     "expand_model_processes",
+    "goldstone_legs",
+    "goldstone_legs_admitted",
     "parse_multiparticle_definitions",
+    "require_external_leg_counts",
 ]

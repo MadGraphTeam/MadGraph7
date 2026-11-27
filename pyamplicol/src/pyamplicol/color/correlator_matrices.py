@@ -10,9 +10,14 @@ uses ``conjugate(a[left]) * entry * a[right]``.
 Only complete full-colour trace/open-line amplitude plans are accepted, even
 for LC/NLC output. Adjoint DDM sectors retain single-trace ordering records for
 current construction, but these are not their literal colour tensors.
-The approximation acts on the inserted metric at fixed physical amplitudes;
-it is not a strict expansion of their hidden colour weights. The Born matrix
-uses the inherited ordinary factors. The ordinary matrix's zero pattern
+The inherited LC/NLC approximation acts on the inserted metric at fixed
+physical amplitudes; it is not a strict expansion of their hidden colour
+weights. The Born matrix uses the inherited ordinary factors. The strict
+accuracies (``nc_expansion``) instead store every matrix entry as its exact
+Laurent terms, one entry per power p of N_c with the value of that term at
+N_c = 3; the runtime adds the N_c grades of the two amplitude groups it
+contracts (``generation.dag_grades``) to p and keeps the degrees of the
+matrix's expansion record (``color.nc_expansion``). The ordinary matrix's zero pattern
 is deliberately not consulted: a connection can turn a zero overlap into a
 nonzero one. Planning is direct and quadratic in the selected basis size, with
 each connected tensor reused across all requested matrix entries.
@@ -42,6 +47,7 @@ from .connections import (
     evaluate_color_nc_terms,
 )
 from .contraction_factors import exact_color_contraction_factor
+from .nc_expansion import NcExpansion, color_contraction_laurent
 from .plan_types import ColorAccuracy, GenericColorPlan, LCColorSector
 
 _COLOR_ROLE_REPRESENTATIONS = {
@@ -183,9 +189,12 @@ class ColorCorrelatorMatrixEntry:
     left_sector_id: int
     right_sector_id: int
     weight: ExactColorCoefficient
+    # The N_c power p of this term of a graded matrix (strict accuracies):
+    # ``weight`` is then c_p 3^p, the term's value at N_c = 3.
+    nc_power: int | None = None
 
     def to_json_dict(self) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "left_sector_id": self.left_sector_id,
             "right_sector_id": self.right_sector_id,
             "weight": {
@@ -199,6 +208,9 @@ class ColorCorrelatorMatrixEntry:
                 ],
             },
         }
+        if self.nc_power is not None:
+            result["nc_power"] = self.nc_power
+        return result
 
 
 @dataclass(frozen=True)
@@ -210,7 +222,10 @@ class ColorCorrelatorMatrix:
     entries: tuple[ColorCorrelatorMatrixEntry, ...]
     bra: tuple[ColorEmission, ...] = ()
     ket: tuple[ColorEmission, ...] = ()
-    color_accuracy: ColorAccuracy = "full"
+    color_accuracy: ColorAccuracy | str = "full"
+    # Formal-N_c expansion of a graded matrix: ``{"accuracy", "depth",
+    # "reference_degree"}`` with P = n_g + n_qqbar + r - s of the connection.
+    nc_expansion: dict[str, object] | None = None
 
     def to_json_dict(self) -> dict[str, object]:
         request = ColorCorrelator(self.id, self.bra, self.ket)
@@ -229,10 +244,15 @@ class ColorCorrelatorMatrix:
             "bra": request.to_json_dict()["bra"],
             "ket": request.to_json_dict()["ket"],
             "entries": [entry.to_json_dict() for entry in self.entries],
+            **(
+                {}
+                if self.nc_expansion is None
+                else {"nc_expansion": dict(self.nc_expansion)}
+            ),
         }
 
 
-def _selected_sectors(
+def selected_color_sectors(
     plan: GenericColorPlan, sector_ids: Sequence[int] | None
 ) -> tuple[LCColorSector, ...]:
     if not isinstance(plan, GenericColorPlan):
@@ -298,6 +318,7 @@ def build_color_correlator_matrices(
     *,
     sector_ids: Sequence[int] | None = None,
     color_accuracy: ColorAccuracy = "full",
+    nc_expansion: NcExpansion | None = None,
 ) -> tuple[ColorCorrelatorMatrix, ...]:
     """Build exact directed matrices, sharing graph images within this request.
 
@@ -306,18 +327,23 @@ def build_color_correlator_matrices(
     An empty request is a no-op and leaves the ordinary colour path untouched.
     ``color_accuracy`` selects inherited LC/NLC/full matrix rules; the supplied
     plan and physical partial amplitudes always remain complete full colour.
+    ``nc_expansion`` (strict or graded colour) instead keeps every Laurent
+    term of every entry, labelled by its power (module docstring); the
+    truncation then needs the amplitude grades and happens at runtime.
     """
 
     requests = tuple(correlators)
     if not requests:
         return ()
+    if nc_expansion is not None:
+        color_accuracy = "full"
     if color_accuracy not in ("lc", "nlc", "full"):
         raise ValueError("colour correlator accuracy must be lc, nlc or full")
     if any(not isinstance(request, ColorCorrelator) for request in requests):
         raise TypeError("colour correlators must be ColorCorrelator requests")
     if len({request.id for request in requests}) != len(requests):
         raise ValueError("colour correlator IDs must be unique")
-    sectors = _selected_sectors(color_plan, sector_ids)
+    sectors = selected_color_sectors(color_plan, sector_ids)
     ids = tuple(sector.id for sector in sectors)
     legs = process_color_legs(color_plan.process)
     terms = tuple(_sector_color_tensor(sector, legs) for sector in sectors)
@@ -355,6 +381,38 @@ def build_color_correlator_matrices(
         entries = []
         for left_index, left_sector in enumerate(sectors):
             for right_index, right_sector in enumerate(sectors):
+                if nc_expansion is not None:
+                    laurent = (
+                        {
+                            power: ExactColorCoefficient(value)
+                            for power, value in color_contraction_laurent(
+                                color_plan, left_sector, right_sector
+                            ).items()
+                        }
+                        if not request.order
+                        else contract_connected_tensor_nc_terms(
+                            images[request.bra][left_index],
+                            images[request.ket][right_index],
+                        )
+                    )
+                    for power, coefficient in sorted(laurent.items(), reverse=True):
+                        if power > leading_power:
+                            raise ValueError(
+                                f"colour correlator {request.id!r} reaches N_c "
+                                f"power {power} above its reference degree "
+                                f"{leading_power}"
+                            )
+                        weight = evaluate_color_nc_terms({power: coefficient})
+                        if weight:
+                            entries.append(
+                                ColorCorrelatorMatrixEntry(
+                                    left_sector.id,
+                                    right_sector.id,
+                                    weight,
+                                    nc_power=power,
+                                )
+                            )
+                    continue
                 if not request.order:
                     weight = ExactColorCoefficient(
                         exact_color_contraction_factor(
@@ -392,10 +450,79 @@ def build_color_correlator_matrices(
                 tuple(entries),
                 request.bra,
                 request.ket,
-                color_accuracy,
+                color_accuracy if nc_expansion is None else nc_expansion.accuracy,
+                (
+                    None
+                    if nc_expansion is None
+                    else {
+                        **nc_expansion.to_json_dict(),
+                        "reference_degree": leading_power,
+                    }
+                ),
             )
         )
     return tuple(result)
+
+
+def literal_correlator_matrices(
+    legs: Sequence[ColorLeg],
+    tensors: Sequence[ColorTensor],
+    correlators: Sequence[ColorCorrelator],
+) -> tuple[tuple[tuple[ExactColorCoefficient, ...], ...], ...]:
+    """Dense directed full-colour matrices of literal colour tensors.
+
+    Per correlator the matrix ``M[t][u] = <bra(t)|ket(u)>`` of the unit-weight
+    literal tensors ``tensors`` on ``legs`` (the amplitude basis of a
+    loop-induced process, m-lit LIT-OBS), every N_c Laurent term kept and
+    evaluated at N_c = 3 (full colour only). A colour vector ``a`` on the
+    tensors then has the correlated square ``a^dagger M a``; the order-zero
+    history is the tensors' colour metric. Each connected image is formed
+    once per tensor and emission sequence, shared by every correlator."""
+
+    requests = tuple(correlators)
+    if any(not isinstance(request, ColorCorrelator) for request in requests):
+        raise TypeError("colour correlators must be ColorCorrelator requests")
+    legs = tuple(legs)
+    terms = tuple(TensorTerm(ExactColorCoefficient(1), tensor) for tensor in tensors)
+    for term in terms:
+        _validate_tensor_legs(term.tensor, legs)
+    images: dict[tuple[ColorEmission, ...], tuple[ConnectedColorTensor, ...]] = {}
+
+    def image(emissions: tuple[ColorEmission, ...]) -> tuple[ConnectedColorTensor, ...]:
+        found = images.get(emissions)
+        if found is None:
+            connection = ColorConnection(legs, emissions)
+            found = images[emissions] = tuple(
+                apply_color_connection(
+                    term.tensor, connection, coefficient=term.coefficient
+                )
+                for term in terms
+            )
+        return found
+
+    out = []
+    for request in requests:
+        if (
+            ColorConnection(legs, request.bra).output_legs
+            != ColorConnection(legs, request.ket).output_legs
+        ):
+            raise ValueError(
+                f"colour correlator {request.id!r} has incompatible typed bra/ket "
+                "outputs"
+            )
+        bras, kets = image(request.bra), image(request.ket)
+        out.append(
+            tuple(
+                tuple(
+                    evaluate_color_nc_terms(
+                        contract_connected_tensor_nc_terms(bra, ket)
+                    )
+                    for ket in kets
+                )
+                for bra in bras
+            )
+        )
+    return tuple(out)
 
 
 def build_color_correlator_matrix(
@@ -404,9 +531,14 @@ def build_color_correlator_matrix(
     *,
     sector_ids: Sequence[int] | None = None,
     color_accuracy: ColorAccuracy = "full",
+    nc_expansion: NcExpansion | None = None,
 ) -> ColorCorrelatorMatrix:
     return build_color_correlator_matrices(
-        color_plan, (correlator,), sector_ids=sector_ids, color_accuracy=color_accuracy
+        color_plan,
+        (correlator,),
+        sector_ids=sector_ids,
+        color_accuracy=color_accuracy,
+        nc_expansion=nc_expansion,
     )[0]
 
 
@@ -416,6 +548,8 @@ __all__ = [
     "ColorCorrelatorMatrixEntry",
     "build_color_correlator_matrices",
     "build_color_correlator_matrix",
+    "literal_correlator_matrices",
     "process_color_legs",
     "sector_color_tensor",
+    "selected_color_sectors",
 ]

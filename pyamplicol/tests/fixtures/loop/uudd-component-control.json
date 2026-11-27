@@ -1,0 +1,180 @@
+{
+  "fixture": {
+    "process": "u u~ > d d~",
+    "born_orders": {
+      "QCD": 2,
+      "QED": 0
+    },
+    "loop_orders": {
+      "QCD": 4,
+      "QED": 0
+    },
+    "squared_orders": {
+      "QCD": 6,
+      "QED": 0
+    },
+    "parameters": {
+      "alpha_s": 0.118,
+      "mu": 1000.0,
+      "mt": 173.0,
+      "mb": 0.0
+    },
+    "renormalization_flavours": 5,
+    "loop_quark_flavours": 6,
+    "external_momenta": "positive-energy incoming legs 1,2; outgoing legs 3,4; E,px,py,pz in GeV",
+    "normalization": "initial spin/colour average, physical couplings, Cepsilon=(4pi)^epsilon/Gamma(1-epsilon)",
+    "points": [
+      [
+        [
+          500,
+          0,
+          0,
+          500
+        ],
+        [
+          500,
+          0,
+          0,
+          -500
+        ],
+        [
+          500,
+          300,
+          0,
+          400
+        ],
+        [
+          500,
+          -300,
+          0,
+          -400
+        ]
+      ],
+      [
+        [
+          650,
+          0,
+          0,
+          650
+        ],
+        [
+          650,
+          0,
+          0,
+          -650
+        ],
+        [
+          650,
+          600,
+          0,
+          250
+        ],
+        [
+          650,
+          -600,
+          0,
+          -250
+        ]
+      ],
+      [
+        [
+          500,
+          0,
+          0,
+          500
+        ],
+        [
+          500,
+          0,
+          0,
+          -500
+        ],
+        [
+          500,
+          0,
+          400,
+          -300
+        ],
+        [
+          500,
+          0,
+          -400,
+          300
+        ]
+      ]
+    ]
+  },
+  "scope": "Independent diagnostic component controls. Bare = unmodified full MadLoop minus generated CT contribution; not a performance reference.",
+  "instrumentation": "Generated SKIPLOOPEVAL switch with CT amplitude filtering only; original export and all Feynman rules unchanged; exact patches saved alongside binaries.",
+  "rows": [
+    {
+      "born": 0.8013367806451908,
+      "full": {
+        "finite": -0.19094989612755375,
+        "single_pole": -0.28421984016919466,
+        "double_pole": -0.08026310265110029
+      },
+      "bare": {
+        "finite": -0.19766330639287016,
+        "single_pole": -0.17887451793962555,
+        "double_pole": -0.08026310265110029
+      },
+      "uv": {
+        "finite": 0.0352046747013489,
+        "single_pole": -0.10534532222956909,
+        "double_pole": 0
+      },
+      "r2": {
+        "finite": -0.028491264436032497,
+        "single_pole": 0,
+        "double_pole": 0
+      }
+    },
+    {
+      "born": 0.5609010515412289,
+      "full": {
+        "finite": -0.023853409255464482,
+        "single_pole": -0.11789664093514597,
+        "double_pole": -0.05618069676112515
+      },
+      "bare": {
+        "finite": -0.028809943970086266,
+        "single_pole": -0.04415947643616926,
+        "double_pole": -0.05618069676112515
+      },
+      "uv": {
+        "finite": 0.024641748059105517,
+        "single_pole": -0.07373716449897671,
+        "double_pole": 0
+      },
+      "r2": {
+        "finite": -0.019685213344483737,
+        "single_pole": 0,
+        "double_pole": 0
+      }
+    },
+    {
+      "born": 0.6645231839496705,
+      "full": {
+        "finite": -0.03591472517138868,
+        "single_pole": -0.13961618494915073,
+        "double_pole": -0.06655964610091239
+      },
+      "bare": {
+        "finite": -0.04148194344018766,
+        "single_pole": -0.052256649441703135,
+        "double_pole": -0.06655964610091239
+      },
+      "uv": {
+        "finite": 0.029194120484045422,
+        "single_pole": -0.0873595355074476,
+        "double_pole": 0
+      },
+      "r2": {
+        "finite": -0.02362690221524645,
+        "single_pole": 0,
+        "double_pole": 0
+      }
+    }
+  ]
+}

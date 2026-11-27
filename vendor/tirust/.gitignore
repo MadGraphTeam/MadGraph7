@@ -1,0 +1,11 @@
+/target/
+/install/
+/*.o
+/*.mod
+/*.a
+/*.so
+/smoke
+/exported-symbols.txt
+/exported-unexpected.txt
+/tirust-native-libs.txt
+/tirust-link-before.txt

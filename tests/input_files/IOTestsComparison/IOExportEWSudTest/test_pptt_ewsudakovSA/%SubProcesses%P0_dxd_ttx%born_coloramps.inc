@@ -1,2 +1,1 @@
-      LOGICAL ICOLAMP(2,1,1)
-      DATA(ICOLAMP(I,1,1),I=1,2)/.FALSE.,.TRUE./
+../../_shared/IOExportEWSudTest%test_pptt_ewsudakovSA%%SubProcesses%P0_bbx_ttx%born_coloramps.inc

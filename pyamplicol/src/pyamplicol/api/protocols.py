@@ -23,13 +23,14 @@ from .results import (
     ProcessPhysics,
     ResolvedEvaluation,
 )
+from .virtual_results import ResolvedVirtualEvaluation, VirtualEvaluation
 
 ScalarInput = float | int | str | Decimal
 ScalarValue = complex | Decimal
 Momenta = Sequence[Sequence[Sequence[ScalarInput]]]
 ModelParameters = Mapping[
     str,
-    complex | float | int | list[float | int] | tuple[float | int, float | int],
+    complex | ScalarInput | list[ScalarInput] | tuple[ScalarInput, ScalarInput],
 ]
 
 
@@ -61,6 +62,11 @@ class RuntimeBackend(Protocol):
     remain structurally compatible. Built-in backends expose both, and
     :class:`pyamplicol.Runtime` fails closed when either identity is requested
     but unavailable.
+
+    Virtual arithmetic, scale, strategy and stability keywords are additive capabilities
+    checked by the facade, so existing tree backends need not accept them.
+    Saved virtual colour-history operations are also additive capabilities;
+    they return complex VirtualEvaluation records through grouped native calls.
     """
 
     @property
@@ -73,7 +79,7 @@ class RuntimeBackend(Protocol):
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
         precision: int = 16,
-    ) -> Sequence[ScalarValue]: ...
+    ) -> Sequence[ScalarValue] | VirtualEvaluation: ...
 
     def evaluate_resolved(
         self,
@@ -82,7 +88,7 @@ class RuntimeBackend(Protocol):
         helicities: Sequence[str] | None = None,
         color_flows: Sequence[str] | None = None,
         precision: int = 16,
-    ) -> ResolvedEvaluation: ...
+    ) -> ResolvedEvaluation | ResolvedVirtualEvaluation: ...
 
     def set_model_parameters(self, mapping: ModelParameters) -> None: ...
 

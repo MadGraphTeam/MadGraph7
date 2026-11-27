@@ -1,0 +1,520 @@
+# Two P-wave bound states: TIRust fixtures (Phase 1)
+
+One-loop QCD virtuals with two P-wave states, first target e⁺e⁻ → χ_c0 + h_c (`e+ e- > chic0(1|3P01) hc(1|1P11) [virt=QCD]`, model `loop_sm_onia-c_mass`, m_c = 1.55 GeV). The plan is in `references/PLAN.md` (two-P-wave plan, phases 0–5).
+
+## State (Phase 1)
+
+- The output generates, builds and runs (commit 417f251782).
+- The Born of the loop output equals the tree `standalone_fortran` output (5.9411540544807900·10⁻¹⁰ at the test point).
+- The virtual is reported unstable (return code 410): TIRust refuses part of the raised-power integrals (below).
+- The quadruple-precision path stops with a message (Phase 3).
+
+## Raised-power integrals
+
+The second-order dual term (∂²/∂ε₁∂ε₂) needs these integrals:
+- one line doubled (rank r+1, and the rank-r D₁₂ term);
+- one line tripled (rank r+2);
+- two lines doubled (rank r+2).
+
+`fixtures.py` dumps every such call with the inputs MadLoop passes: powers, masses², invariants, shifts and μ², as hex doubles. It records whether TIRust's capability check accepts the call, its status, and the binary64 array when the call is served. It covers both passes (CTModeRun 1, and 2 with the reversed loop).
+
+```
+fixtures.py OUTDIR OUT.json.gz 10.58:2 20:2
+```
+
+TIRust 5025e12 + gate + relation tiers, √s = 10.58 and 20 GeV, two points each, both passes: 225 raised-power calls per point and pass, of which 53 are refused.
+
+| Family | Lines, rank | Served | Refused |
+|---|---|---|---|
+| one line doubled | N = 2–5, rank 2–4 | 1104 | 56 with status 1 (N = 4 rank 3: 16; N = 5 rank 4: 40) |
+| one line tripled | N = 2–4, rank 4 | 272 | 0 |
+| two lines doubled | N = 3, 4, rank 4 | 0 | 368, by the capability check (`max_dotted_propagators = 1`) |
+
+Every one of the 8 (point, pass) records has the same pattern (46 capability refusals and 7 status refusals each).
+
+## Files (sent to TIRust on 2026-11-23)
+
+- `data/fixtures_ee_chic0_hc.json.gz` (1.9 MB): e⁺e⁻ → χ_c0 h_c, every raised-power call, as above.
+- `data/fixtures_gg_chic0_chic0_refused.json.gz` (23 kB): `g g > chic0(1|3P01) chic0(1|3P01) [virt=QCD]` at √s = 20 GeV, one point, both passes. Only the refused calls are kept, with `served_counts` per (n, rank, powers) for the others. That is 277 distinct inputs, from `fixtures.py OUTDIR OUT.json.gz 20:1` on TIRust d17085a with the bridge v2 (its double-precision raised powers are those of 5025e12).
+
+| g g → χ_c0 χ_c0, per pass | Served | Refused |
+|---|---|---|
+| one line doubled | 1608 | 32 with status 1 |
+| one line tripled | 519 | 1 with status 1 |
+| two lines doubled (N = 3–5, rank 3–5) | 0 | 634, by the capability check |
+
+## Acceptance of TIRust 59aee45 (two dotted propagators)
+
+TIRust 59aee45 (branch hs/pwave-two-dotted, on d17085a) with the bridge patch v3 (`madloop-tirust-gate-relation-tiers-low-words-extended-inputs-v3.patch`, c44e3351). Its poles-only patch is regenerated for the new jets. The scratch build is `pwave_fd/build.sh` with `REV=59aee45`, the vendor part of v3 as `BRIDGE_PATCH` and `FOLLOWUP=none`. `acceptance.py OUTDIR OUT.json E:N ...` runs both passes and the stability test (CTModeRun 1, 2 and −1, `MLStabThres` 1d99, since two-P-wave outputs have no quadruple precision yet). It prints the computed poles against `ONIA_IR_POLES`.
+
+**A MadLoop bug first.** The first run gave a 1/ε coefficient per Born of −1.46 at 10.58 GeV, against the predicted 0.71. It also depended on the order of the two states (`e+ e- > hc chic0` gave +1.96), although the UV part of the poles was exact (counterterms + UV poles of the loops = −4 C_F, the IR part of Z₂). The finite-difference check of `pwave_fd` for two states (`fd2_patch.py`, `pw2_fd_driver.f`) located the problem in the boxes. The polynomial routines were written for rank R+1, while `LOOPMAXCOEFS` was sized for R+2. `NCOEF_R(RANK+2)` read past the array, and every rank-3 loop group dropped its tripled and two-doubled terms. The exporter now uses R + npwave for both. That adds 51 rank-5 raised calls per point and pass, 276 in all.
+
+**e⁺e⁻ → χ_c0 h_c, after the fix** (7, 10.58, 20 and 30 GeV, two points each, seed 1):
+
+| | Result |
+|---|---|
+| refused raised calls | 0 of 276 per point and pass, return code 110 in each pass, 213 in the stability test |
+| fixtures (10.58 and 20 GeV, matched by inputs) | all 1376 calls served before bit-identical; all 424 refused before now served; 408 new rank-5 calls (N = 3, 4, 5) served |
+| 1/ε against the prediction | 9e-13 to 4e-10 in the stability test, 1.1e-9 at worst in one pass (30 GeV) |
+| 1/ε² | 0, as predicted |
+| the other order of the states | the same poles, and finite parts to 1e-9 |
+| MadLoop's accuracy estimate | ≤ 4e-8 |
+
+The 1/ε coefficient per Born is 0.72155466287 (7 GeV), 0.71167194524 (10.58), 0.68419551460 (20) and 0.67519653333 (30). The finite part per Born·α_s/2π, at the driver's default scale (`onia_loop_check.py`, μ = −1), is 21.960261 (7 GeV), 38.381345 (10.58), 52.97172 (20) and 66.40398 (30), the same at both points to 1e-8.
+
+**Other checks with this build:**
+- e⁺e⁻ → J/ψ χ_c0 and e⁺e⁻ → h_c η_c (one P wave and one S wave) give 1/ε = 0 to 1e-10, as predicted. These processes are IR finite.
+- The 16 P-wave checks of `pwave_fd/pw_check.py` are bit-identical to 5025e12 with the gate.
+- The 80-bit switch at the 24 points of `pwave_stability` (u ū and g g → χ_c0 g, all four modes) is bit-identical to d17085a with the bridge v2.
+- One-P-wave outputs are file-identical before and after the rank fix.
+
+**g g → χ_c0 χ_c0.** On 59aee45, the driver hangs in a unit-power hexagon (N = 6, rank 4), in TIRust's relation search (`DirectExecutor::affine_relation`). It is a TIRust regression, fixed in 8305f8b, which refuses that lane as d17085a did.
+
+The run on d5442e6 (8305f8b plus a test-only commit) with the bridge v4 (845c66de) is built like v3. The rank fix brings g g's two-state families to rank 6 (R = 4), so it has lanes that no earlier fixture had. At √s = 20 GeV, fixture point 0, per pass:
+
+| Calls | Served | Refused (status 1) |
+|---|---|---|
+| raised powers | 2900 (two doubled up to rank 6: 74, tripled at rank 6: 42) | 10 two doubled at rank 6: boxes (1,1,2,2) gggg, 2; pentagons (1,1,1,2,2) ggQgg, 8 |
+| unit powers | 1671 | 87 at rank 4: boxes QQQQ, 3; pentagons QQgQQ, 4; hexagons, 80 |
+
+The unit-power refusals were then taken to be lanes that TIRust serves in quadruple precision, but the replay in the next section shows that it refuses them in both precisions. The point is reported unstable (410, 413 in the stability test). The 1/ε² is −2.44 per Born, where −2 C_A = −6 is predicted, so the poles cannot be tested until every group is served. The 97 refused inputs are in `data/refused_gg_chic0chic0_d5442e6.txt` (sha256 221cabcc…), sent to TIRust with the results and with the request of 2026-11-24 to serve the 87 unit-power calls.
+
+## Quadruple precision (Phase 3a)
+
+Two-P-wave outputs now have a quadruple-precision path:
+- **Dual numbers.** `aloha/template_files/mp_dual2_variables.f` has both directions and the mixed derivative, and is written as the output's `mp_dual_variables.f`. One-P-wave outputs keep the one-direction module, and with it their extended-precision code.
+- **Routines.** The `MP_` copies of the two-state routines of `onia_loop.f` (weights, counterterm passes, the four-component coefficient construction, the raised-power families).
+- **Templates.** The extra arrays in the quadruple-precision call templates.
+
+`qp_check.py` runs CTModeRun 1, 4 and 5 with MLStabThres 1d99, and −1 with 1d-30, which sends every point to the rescue. Results are in `data/qp_ee_chic0_hc_d5442e6.json`.
+
+**e⁺e⁻ → χ_c0 h_c** (TIRust d5442e6 with the bridge v4, seed 1):
+
+| √s (GeV), point | QP 1/ε against the prediction | DP 1/ε against the prediction | finite part, QP against DP | rescue |
+|---|---|---|---|---|
+| 7, 0 | 1.1e-15 | 3.2e-12 | 2.4e-12 | 323 |
+| 10.58, 0 | 1.1e-14 | 2.8e-12 | 3.4e-13 | 323 |
+| 10.58, 1 | 1.7e-14 | 3.0e-12 | 1.1e-9 | 323 |
+| 30, 0 | 1.2e-14 | 1.7e-10 | 1.9e-11 | 323 |
+
+- **Loop directions.** CTModeRun 4 and 5 (the loop reversed) agree exactly in double precision, so MadLoop's estimate is 0.
+- **Finite part.** In QP both 10.58 GeV points give 38.381344559631 per Born·α_s/2π, so the 1.1e-9 at point 1 is the double-precision error.
+- **Cost.** A QP point takes about 180 s, against 3 s in DP. Stack samples (gdb, 30 samples) put 27 in the binary128 coefficient construction (`MP_UPDATE_WL_*`, `__multf3`, `__addtf3`) and 1 to 2 in TIRust.
+- **One-P-wave outputs.** They are unchanged: `g g > chic0`, `g g > chic0 g` (with its extended-precision code) and `e+ e- > Jpsi chic0`, generated from HEAD and from the change, have identical sources, apart from the declaration order of ALOHA routines, which varies from run to run.
+
+**g g → χ_c0 χ_c0 in quadruple precision.** TIRust 196bdcc with the bridge v5 (c8cb1ea6) serves the 10 raised rank-6 calls of the d5442e6 run. At √s = 20 GeV, point 0:
+- **Double precision.** Both passes still return 410. The 1/ε² is −1.6424 per Born, where −2 C_A = −6 is predicted.
+- **Quadruple precision.** Both passes (CTModeRun 4 and 5) return 420, with the same 1/ε² to 12 digits. Each takes 72 minutes.
+
+The same loop groups are missing in both precisions. `replay_calls.f90` replays the 97 calls refused in DP through both entries of 196bdcc (`data/qp_replay_gg_chic0_chic0_196bdcc.txt`):
+
+| Calls | QP and DP | TIRust's message (QP, 256 and 512 bits) |
+|---|---|---|
+| 10 raised, rank 6, two doubled (boxes, pentagons) | served | |
+| 3 unit-power boxes QQQQ, rank 4 | refused | singular Gram matrix; linearly dependent propagators without a massless member |
+| 4 unit-power pentagons QQgQQ, rank 4 | refused | the same |
+| 80 unit-power hexagons, rank 4 | refused | ill-conditioned or singular Gram matrix, or six-point coordinate system (conditioning 0) |
+
+The unit-power lanes have all-massive heavy-quark propagators that are linearly dependent at the two thresholds: the constituents carry P₁/2 and P₂/2. TIRust's quadruple-precision path refuses them like its double-precision one, so they are not a matter of MadLoop's precision. A refused QP hexagon cost about 75 s in the replay. Those attempts are not where the 72 minutes go, though: on eb363d6, where refusals are fast, the passes take as long (next section).
+
+**g g → χ_c0 χ_c0 on TIRust eb363d6** (bridge v6, local on 196bdcc, not pushed). eb363d6 raises a heavy line of a linearly dependent all-massive set, and reduces a hexagon whose points span three dimensions by its relations. The 97 records of `data/refused_gg_chic0chic0_d5442e6.txt` are all served in DP (`data/qp_replay_gg_chic0_chic0_eb363d6.txt`). In QP, with the binary64 records widened, 63 are served and 34 hexagons are refused ("ill-conditioned Gram matrix"): widened, those inputs are off the thresholds by binary64's rounding, and TIRust serves the exact kinematics in binary128. The replay takes 6 s, so refusals are fast now. e⁺e⁻ → χ_c0 h_c (DP at the four points, QP at 10.58 GeV) is bit-identical to d5442e6, and so are the 16 one-P-wave `pw_check.py` cases against 59aee45.
+
+At √s = 20 GeV, point 0, in DP (`data/qp_gg_chic0_chic0_eb363d6.json`):
+
+| | CTModeRun 1 | CTModeRun 2 | predicted |
+|---|---|---|---|
+| 1/ε² per Born | −5.99999999997 | −6.0000000001 | −6 |
+| 1/ε per Born | −9850 | −510349 | 23.232 |
+| return code | 410 | 410 | |
+
+The two finite parts differ by a factor of 13. With the unit-power calls served, MadLoop reaches the raised calls of those loop groups, and TIRust refuses 26 of the 3480 per pass (13 in a normal run, where a refusal ends its group). All 26 are two-doubled at rank 6 with both doubled lines heavy:
+- CTModeRun 1: 6 boxes QQQQ (1,1,2,2), 8 pentagons QQgQQ (1,1,1,2,2), 12 hexagons QQgQQg (1,1,1,2,2,1);
+- CTModeRun 2: the same on the reversed lines.
+
+TIRust refuses them in both precisions with "lightlike bubble [i, j] with massive lines, both differentiated (two jet variables)". Here [i, j] is the doubled pair: two heavy lines whose offsets differ by a lightlike momentum. The inputs are in `data/refused_gg_chic0chic0_eb363d6.txt` (both passes) and the replay in `data/qp_replay_gg_chic0_chic0_refused_eb363d6.txt`. These are the only refusals left at this point. They do not account for the whole 1/ε: the next section has them served, and 1/ε is still wrong.
+
+In quadruple precision (CTModeRun 4 and 5, the same file), both passes return 420 with 1/ε² = −5.999999999999992. CTModeRun 4 gives 1/ε = −9850.2576 and agrees with CTModeRun 1 to 1e-11 (finite part to 1e-12). CTModeRun 5 gives −510567.4, 4e-4 from CTModeRun 2. Each pass takes 73.5 minutes (4411 and 4419 s), against 72 on 196bdcc and 82 to 88 s in DP. A copy of the output with timers around the two QP TIRust entries splits CTModeRun 4 (4402 s in that run). The first QP TIRust call comes at 4239 s, since MadLoop builds all binary128 loop coefficients before reducing. The QP TIRust calls then take 161 s: 7.7 s for about 1660 unit-power calls and 153 s for about 3340 raised-power calls. So 96% of the pass is MadLoop's binary128 numerator.
+
+**g g → χ_c0 χ_c0 on TIRust 632ed10** (bridge v7 f453cd7a, local on eb363d6, not pushed). 632ed10 evaluates the equal-mass lightlike bubble with both heavy lines as jet variables in closed form. Its acceptance:
+- **Replays.** The 52 records of `data/refused_gg_chic0chic0_eb363d6.txt` are all served, in QP (widened) and DP. The 97 d5442e6 records give the same statuses and messages as on eb363d6.
+- **Other checks.** e⁺e⁻ → χ_c0 h_c (DP at the four points, QP at 10.58 GeV) and the 16 `pw_check.py` cases are bit-identical to eb363d6.
+- **g g.** At 20 GeV, point 0, `fixtures.py` finds no refusal: 3480 raised-power calls per pass, code 110.
+
+The virtual is still wrong (`data/qp_gg_chic0_chic0_632ed10.json`):
+
+| | CTModeRun 1 | CTModeRun 2 | predicted |
+|---|---|---|---|
+| 1/ε² per Born | −5.99999999997 | −6.0000000001 | −6 |
+| 1/ε per Born | +39355 | −517385 | 23.232 |
+
+The 1/ε² is bit-identical to eb363d6; the finite parts differ by a factor of 130. To split the 1/ε by loop size, a patch of the DP wrappers returns zero integrals for loops with a number of lines N outside `ONIA_NRANGE`, and each range is taken against the counterterm-only run (no loops). The table gives 1/ε per Born with TIRust's cache off (`TIRustGlobalCache` 0):
+
+| N | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|
+| CTModeRun 1 | +6.249 | +0.403 | +134.159 | +214.03 | +46218.5 |
+| CTModeRun 2 | +6.249 | +0.403 | +134.159 | −63.30 | −517439.5 |
+
+Up to N = 4 the two loop directions agree to 1e-12. With the cache off the ranges add up to the full result. With the cache on (the default), CTModeRun 1 changes to +519.6 at N = 5 and +38757.8 at N = 6, and the ranges no longer add up. CTModeRun 2 does not depend on the cache.
+
+`fixtures.py`, run once with the cache and once without, dumps every raised-power call with its inputs and binary64 array. The dumps (26 MB each) are not kept in the repository. Three problems show in them, all in TIRust:
+- **The cache changes results.** 11 calls of CTModeRun 1 get different arrays with the cache on, by 0.22 to 34 relative to their largest entry. All are pentagons and hexagons at rank 5 and 6 with a doubled heavy line.
+- **Results depend on earlier calls**, also with `cache_enabled=.false.`. `replay_arrays.f90` replays records through the DP entry and prints their arrays. In `data/pairs_gg_chic0_chic0_632ed10.txt`, record 13 (a QQgQgg hexagon, rank 6, powers (1,1,1,2,1,2)) gives an array 0.77 away from its result alone when record 9 (a ggQgQQ hexagon with the same powers) runs before it. In MadLoop, six of the eight calls sampled there return arrays O(1) away from the same inputs replayed alone.
+- **Results depend on the line order.** Records 5 and 7 are the same six lines (shifts, masses and powers) in the order of each pass: a QQQgQg hexagon, rank 5, powers (1,1,1,1,1,2). Replayed alone, they differ by 1.5, with either check-pass flag.
+
+Over the whole point, 97 calls of CTModeRun 1 differ by more than 1e-6 from the CTModeRun 2 call with the same set of lines, and 79 by more than 0.1. All have five or six lines, which matches the split by N. The scalar coefficient (rank 0, all four slots) agrees between the passes and between repeats for all 719 distinct integrals; only the higher tensor coefficients differ. The lists are in `data/state_gg_chic0_chic0_632ed10.json`. Reported to TIRust on 2026-11-24. On 08cca00 all three problems are gone (next paragraph).
+
+**g g → χ_c0 χ_c0 on TIRust 08cca00** (bridge v8 28f89b1f, poles-only patch cd6a21c1, on 632ed10; pushed as hs/pwave-two-dotted in huashengshao/TIRust#58, stacked on #56). 08cca00 fixes two defects of TIRust's direct engine that the dumps above showed:
+- **A missing term.** A partial fraction that holds a line raised by another set dropped that line's term at nonzero Taylor order. A hexagon takes the first set it holds, so the result followed the line order.
+- **Stale orders.** A lightlike bubble that holds one of several jet variables kept the other variables' orders from the previous call.
+
+At 20 GeV, point 0, in DP (`data/qp_gg_chic0_chic0_08cca00.json`):
+
+| | CTModeRun 1 | CTModeRun 2 | predicted |
+|---|---|---|---|
+| 1/ε² per Born | −5.99999999997 | −6.0000000001 | −6 |
+| 1/ε per Born | 23.23247964008 | 23.23247953233 | 23.23247950875 |
+| relative error of 1/ε | 5.7e-9 | 1.0e-9 | |
+| finite part per Born·α_s/2π | 259.45055952 | 259.45055414 | |
+
+Both passes return code 110 with no refusal. The finite parts agree to 2.1e-8. By loop size (1/ε per Born against the counterterm-only run, which gives −23.3653283640):
+
+| N | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|
+| CTModeRun 1 | +6.248957622 | +0.402553115 | +134.158987771 | −63.303770804 | −30.908919700 |
+| CTModeRun 2 | +6.248957622 | +0.402553115 | +134.158987770 | −63.303770806 | −30.908919805 |
+
+The numbers are the same with TIRust's cache on and off, and the ranges add up to the full result. On 632ed10, CTModeRun 2 already had the right N = 5 sum, and both passes were wrong at N = 6.
+
+The dumps of `fixtures.py` (with and without the cache) give:
+- **Cache.** The two dumps are identical for all 6960 raised-power calls.
+- **Passes.** Each CTModeRun 1 call was compared with the CTModeRun 2 call with the same set of lines. They agree to at most 1.2e-8, and none is above 1e-6 (97 on 632ed10).
+- **Changes from 632ed10.** Against its dump without the cache, 100 arrays changed: 56 in CTModeRun 1 and 44 in CTModeRun 2, by 8.6e-5 to 1.4e4 relative to their largest entry. All of them have five or six lines, with two raised lines or a doubled hexagon. The scalars agree, as before.
+
+`replay_arrays.f90` on `data/pairs_gg_chic0_chic0_632ed10.txt`:
+- All 32 records give the same array in sequence as alone.
+- Record 13 after record 9 equals record 13 alone.
+- The two passes of each pair agree to 3.2e-9 or better (records 5 and 7: 4.2e-14).
+
+The 97 and 52 replays are byte for byte those of 632ed10. e⁺e⁻ → χ_c0 h_c (DP at the four points, QP at 10.58 GeV) is bit-identical to 632ed10, and the 16 `pw_check.py` cases are bit-identical too. The lists are in `data/state_gg_chic0_chic0_08cca00.json`. Reported to TIRust on 2026-11-24.
+
+**g g → χ_c0 χ_c0 on 08cca00: more points, quadruple precision and the stability test.** `qp_check.py` ran at 8, 12, 20, 50 and 200 GeV, with its new option `--thres`, at the points of seed 1. These points have the same angles at every energy: cos θ of a χ_c0 is −0.371, −0.986, 0.420 and −0.604 for points 0 to 3. Point 1 is 9.7° from the beam. The runs:
+- CTModeRun 1 and 2 with MLStabThres 1d99;
+- CTModeRun −1 with MadLoop's default threshold, 1.0d-3.
+
+The data are in `data/more_gg_chic0_chic0_08cca00.json`.
+
+| √s (GeV), point | Born | 1/ε error, CTModeRun 1 / 2 | finite parts, 1 against 2 | code 1 / 2 / −1 |
+|---|---|---|---|---|
+| 8, 0 | 1.3e-8 | 5.6e-12 / 1.4e-11 | 1.9e-13 | 110 / 110 / 213 |
+| 8, 1 | 1.2e-6 | 4.4e-12 / 1.5e-11 | 2.7e-9 | 110 / 110 / 213 |
+| 12, 0 | 3.2e-9 | 1.4e-11 / 1.8e-11 | 2.5e-8 | 110 / 110 / 213 |
+| 12, 1 | 1.5e-5 | 5.6e-11 / 6.2e-11 | 1.9e-11 | 110 / 110 / 213 |
+| 20, 0 | 2.7e-10 | 5.7e-9 / 1.0e-9 | 2.1e-8 | 110 / 110 / 213 |
+| 20, 1 | 8.0e-5 | 0.78 / 0.78 (49 / 50 calls fail) | | 410 / 410 / 420 |
+| 20, 2 | 4.2e-10 | 1.1e-9 / 4.2e-11 | 1.1e-8 | 110 / 110 / 213 |
+| 20, 3 | 2.4e-9 | 9.7e-10 / 0.29 (0 / 12 calls fail) | 7.8e-4 | 110 / 410 / 423 |
+| 50, 0 | 5.2e-12 | 8.4e-6 / 1.4e-5 | 7.3e-6 | 110 / 110 / 213 |
+| 50, 1 | 3.3e-5 | 25 / 25 (49 / 50 calls fail) | | 410 / 410 / 420 |
+| 200, 0 | 2.0e-14 | 13 / 31 (no call fails) | 0.52 | 110 / 110 / 323 |
+| 200, 1 | 9.6e-8 | 0.62 / 0.87 (49 / 50 calls fail) | | 410 / 410 / 420 |
+
+The failing calls were counted with `fixtures.py` at the same points.
+
+**Served points.** Wherever no call fails, the poles are as predicted, except at 200 GeV, point 0 (below):
+- 1/ε² = −6 to 1e-10 (8.5e-8 at 50 GeV);
+- 1/ε to 6e-11 at 8 and 12 GeV, to 6e-9 at 20 GeV and to 1.4e-5 at 50 GeV.
+
+The stability test calls these points stable (213), with accuracy estimates from 6.5e-11 to 2.2e-5 (the largest at 50 GeV).
+
+**Point 1 from 20 GeV on.** TIRust accepts some raised-power calls and then returns status 1. These are 49 calls in CTModeRun 1 and 50 in CTModeRun 2, all with five or six lines and rank 5 or 6. The counts and the power patterns are the same at 20, 50 and 200 GeV. At 8 and 12 GeV the same angle is served.
+- **In MadLoop.** PW_REFUSED reports the point unstable (410). The rescue fails as well, since quadruple precision refuses the same calls (420).
+- **Replayed alone.** `replay_calls.f90` replays the 171 distinct inputs in `data/refused_gg_chic0chic0_08cca00.txt` (the CTModeRun 2 records carry the check-pass flag). All 171 fail in both precisions. TIRust's messages:
+  - 147: "dotted massless line k in a collinear pair of pentagon […]: its (D + 2)-dimensional term is not reduced";
+  - 24: "ill-conditioned Gram matrix for […]": conditioning 0 at 256 bits in 20 cases, and 7e-159 or 1e-34 at 512 bits in 4.
+
+**Point 3 at 20 GeV.** Twelve calls of the reversed pass fail with the first message. These are six-line integrals with line 2 or 3 doubled: rank 5, or rank 6 with line 4 doubled as well. The stability test sends the point to quadruple precision. There, 1/ε is right to 6.7e-15, and the finite part equals CTModeRun 1 to 2.2e-9. The return code is still 423 (unstable). Replayed in quadruple precision with the check-pass flag, the 12 calls fail too, so the reversed QP pass (CTModeRun 5) cannot confirm the result.
+
+**Point 0 at 200 GeV.** No call fails, but double precision is wrong:
+- 1/ε is −399.5 and −1002 against 32.97, and 1/ε² is −6.005 and −6.032;
+- both passes return 110.
+
+The raised-power tensors of the two passes agree to 5e-8 (none above 1e-6; `tensors.py` pairing as above), as they do at 20 and 50 GeV. So the difference between the passes does not come from those integrals. It comes from the unit-power integrals or from MadLoop's double-precision numerator. At this angle the Born falls from 2.7e-10 at 20 GeV to 5.2e-12 at 50 GeV and 2.0e-14 at 200 GeV, and the 1/ε error grows with it: 6e-9, 1e-5, then of order 1.
+
+The stability test sees the two passes disagree. Its quadruple-precision rescue gives:
+- 1/ε to 1.8e-11 and 1/ε² to 2e-12;
+- a finite part of 527.029 per Born·α_s/2π;
+- code 323.
+
+**Quadruple precision at 20 GeV, point 0.** CTModeRun 4 and 5 agree to all printed digits:
+- 1/ε = 23.23247950875515, 1.4e-14 from the prediction, and 1/ε² = −6;
+- a finite part of 259.4505590323. This is the CTModeRun 1 value to 1.9e-9 and the CTModeRun 2 value to 2.1e-8.
+
+The passes took 4452 s and 4476 s. The forced rescue (MLStabThres 1d-30) gives the same numbers, with code 323, in 4873 s. A rescue at the other points took 4730 to 4940 s.
+
+**Summary.** At the default threshold, MadLoop's return code flags every wrong result on 08cca00. The points with failing calls are 410 or 420, and the stability test catches the 200 GeV loss and rescues it. What TIRust still lacks, at forward angles from 20 GeV:
+- the (D + 2)-dimensional term of a dotted massless line in a collinear pair of a pentagon;
+- the degenerate Gram cases.
+
+Reported to TIRust on 2026-11-24, with the 171 inputs.
+
+## g g → ³P₂[8] ³P₁[8] g at 20 GeV (TIRust 4f1b06c + bridge v9)
+
+`g g > Jpsi(1|3P28) Jpsi(1|3P18) g [virt=QCD]`, √s = 20 GeV, seed-1 point, CTModeRun 1. The output has 786 Born amplitudes, 50862 loops and 480 heptagon loop calls, with MAXRANK 7 (base 5 + 2). The point stops after about 80 min with "No dp loop library can deal with this integral": MadLoop's `DETECT_TIRUST` admits N ≤ 6 and rank ≤ 6, so the first heptagon ends the run. This section covers the loops before that stop.
+
+**Capture.** The capture shim (`tools/tirust_capture`, kind 6 for the raised-power entry, `TIRUST_TRACE_FAILED_ONLY=1`) recorded 27868 DP calls before the stop. The bridge refused 1232 of them, all inside its domain: five or six lines, rank 4 or 5. There are 516 distinct inputs, in `data/refused_ggg_3p28_3p18_20gev_4f1b06c.txt.gz` (sha256 775966130e4905da…). The records use the format above, and `zcat … | ./replay` replays them.
+
+| Lines | Rank | Powers | Calls |
+|---|---|---|---|
+| 5 | 4 | one doubled | 306 |
+| 5 | 5 | one doubled | 432 |
+| 5 | 5 | two doubled | 14 |
+| 6 | 4 | unit | 64 |
+| 6 | 5 | one doubled | 416 |
+
+**Replay.** `replay_calls.f90` on 4f1b06c + v9 (`data/replay_ggg_3p28_3p18_20gev_4f1b06c.txt.gz`). DP refuses all 516; QP serves 14 (unit-power hexagons, rank 4) and refuses 502:
+- 448: "pentagon Gram matrix for […] decided only by the supplied invariants' mismatch … with the shifts" (512 bits; the mismatch is of order 1e-16, the binary64 rounding of the inputs);
+- 36: "dotted massless line k in a collinear pair of pentagon […]: its (D + 2)-dimensional term is not reduced";
+- 18 unit-power hexagons, rank 4: "ill-conditioned Gram matrix" (conditioning 0 in 12) or "singular Gram matrix".
+
+So, apart from the heptagons, the point would still be unstable (410) on 4f1b06c + v9. Sent to TIRust on 2026-11-25; the rerun waits for its green light.
+
+## g g → ³P₂[8] ³P₁[8] g at 20 GeV (TIRust bb62307 + bridge v11)
+
+The same output and point as the previous section, rerun on 2026-11-25 on TIRust bb62307 and the bridge part of v11 (poles-only, oneloop cdbc912; v12 differs from v11 only in the smoke test). For this run the output's `MadLoopCommons.f` admits N ≤ 7 and rank ≤ 7 in `DETECT_TIRUST`. The template keeps N, rank ≤ 6 until the bridge pin moves.
+
+**The point now runs through.** MadLoop still flags it unstable, because TIRust refuses some pentagons and hexagons (below). *Correction (2026-11-26):* this section first said that no seven-point call is refused. That is wrong: the bridge's Fortran module refuses every seven-point and every rank-7 evaluation before it calls TIRust, and the capture shim does not see those (next section). So this run also lacks all 480 heptagon loop calls.
+
+| CTModeRun | c1 | c2 | finite | code | time |
+|---|---|---|---|---|---|
+| 1 | −18.596233944192 | −7.480511323961 | 219.286 | 410 | 5014 s |
+| 2 | −18.596233945513 | −7.480511323961 | 173.485 | 410 | 5799 s |
+| prediction | −21.020880707395 | −9 | | | |
+
+All in units of Born × α_s/(2π); Born = 1.4778648803e-08. The two loop directions agree to 7e-11 on c1 and 1e-14 on c2, and differ by 21% on the finite part. TIRust's own time was 207 s (CTModeRun 1) and 362 s (CTModeRun 2).
+
+**Reading.** Three effects can contribute to the c1 and c2 mismatch, and none of their shares has been measured.
+- **The module's guard** (added 2026-11-26, see the next section) drops every heptagon loop and every loop with a rank-7 raised-power term.
+- **Refused loops contribute nothing.** `TIR_interface` returns `RES = 0`, and `ONIA_PW_DOUBLED` gives up the loop's raised-power terms at the first refusal, so their pole parts are missing.
+- **Some served values are wrong.** TIRust found that bb62307 served pentagons with a doubled massless line between two on-shell legs without their (D − 4) term. Per TIRust, their single pole can change too, not only the finite part. The term is proportional to the pentagon's B, so it vanishes for the flat pentagons of 2 → 2 processes, but not for this 2 → 3 process. For the same reason, the finite part is not quotable on bb62307.
+- **v13.** TIRust 488cb58 (bridge v13) adds the term. It refuses the cases it cannot yet correct, among them, per TIRust, heptagons where the Coulomb partial fractions triple a gluon line next to an on-shell heavy quark.
+
+**The prediction's terms** (`appendix_b.py terms`, CTModeRun 1, 6936 s; c1 as above), per Born:
+- T1 (monopole × monopole) −18.3060919898;
+- T2 (P → S, per P-wave state) −1.4326326220 and −1.3408266339;
+- T3 (dipole × dipole) f1 0.3561347885, f2 −0.2974642503.
+
+They sum to the prediction. The two contractions of the dipole-dipole term, Z_G and Z_V, are real up to imaginary parts of 6e-17 and 6e-15.
+
+**Capture** (`TIRUST_TRACE_FAILED_ONLY=1`). In each direction, 64196 DP calls (no QP calls) and 728 refused:
+
+| Lines | Rank | Powers | Calls |
+|---|---|---|---|
+| 5 | 4 | one doubled | 48 |
+| 5 | 5 | one doubled | 276 |
+| 6 | 5 | unit | 12 |
+| 6 | 5 | one doubled | 240 |
+| 6 | 6 | one doubled | 152 |
+
+The distinct inputs are 331 (CTModeRun 1) and 332 (CTModeRun 2, the check pass), in `data/refused_ggg_3p28_3p18_20gev_bb62307_ct1.txt.gz` (sha256 ed2003cc8c12b554…) and `_ct2.txt.gz` (e3cce94fb468705b…).
+
+**Replay** on bb62307 + v11 (`data/replay_ggg_3p28_3p18_20gev_bb62307_ct{1,2}.txt.gz`). QP and DP refuse all of them:
+- 313 and 314: "dotted massless line k in a collinear pair of pentagon […]: its (D + 2)-dimensional term is not reduced". By (lines, rank): (5,4) 18, (5,5) 111/112, (6,5) 102, (6,6) 82.
+- 18 and 18, all six lines at rank 5: "ill-conditioned Gram matrix". In each direction, 6 have unit powers (4-point sub-Grams, conditioning ~1e-35) and 12 have a doubled line (3-point sub-Grams, conditioning 0 or 6e-78).
+
+The rank-4 unit-power hexagons of the previous section are served now. Both sets were sent to TIRust on 2026-11-25. Its next revision (bridge v13) keeps the dropped (D − 4) terms for one doubled line: in its scratch build that serves the collinear-pair calls and the 6 unit-power hexagons of CTModeRun 1. The 12 doubled-line hexagons need the two-variable form of that correction.
+
+## g g → ³P₂[8] ³P₁[8] g at 20 GeV (TIRust 142610e + bridge v14)
+
+The same output and point, rerun on 2026-11-26 on TIRust 142610e and the bridge part of v14 (poles-only, oneloop cdbc912). `DETECT_TIRUST` is widened as in the previous section, and the two loop directions ran in parallel.
+
+| CTModeRun | c1 | c2 | finite | code | time |
+|---|---|---|---|---|---|
+| 1 | −17.585041167334 | −8.033370231611 | 116.389273374 | 410 | 5622 s |
+| 2 | −17.585041169105 | −8.033370231609 | 116.389273359 | 410 | 5650 s |
+| prediction | −21.020880707395 | −9 | | | |
+
+All in units of Born × α_s/(2π); the Born (1.4778648803e-08) and the prediction's terms are those of the previous section. The two loop directions agree to 1e-10 on c1, 2e-13 on c2 and 1.3e-10 on the finite part. TIRust's own time was 300 s (CTModeRun 1) and 315 s (CTModeRun 2).
+
+**Capture.** In each direction 67506 DP calls reach TIRust, and it serves all of them.
+
+**Why the point is still 410.** In CTModeRun 1 the output reports 410 with accuracy 1 only when a loop integral fails. An instrumented copy of the output finds the failures. It labels every early return of the DP wrappers in `TIRUST_interface.f`, and prints a line for every failed loop in `TIR_interface.f` and `ONIA_PW_DOUBLED`. Its CTModeRun 1 pass (5218 s) reproduces the result above to all digits and finds 768 failures. All of them fail at the status of the module's evaluation:
+
+| Lines | Rank | Powers | Calls |
+|---|---|---|---|
+| 7 | 5 | unit | 480 |
+| 5 | 7 | one tripled | 48 |
+| 6 | 7 | one tripled | 32 |
+| 6 | 7 | two doubled | 208 |
+
+The bridge's Fortran module (`mtirust.f90`, `valid_shapes`) still refuses N > 6 or rank > 6 with `TIRUST_UNSUPPORTED` ("TIRust bridge v1 qualifies n=1..6 and rank=0..6"), before it calls `ml_tirust_evaluate_dp` or `ml_tirust_evaluate_dp_powers`. The bridge's own domain and both capability queries (`ml_tirust_supports`, `ml_tirust_supports_powers`) admit N, rank ≤ 7. So MadLoop's pre-checks pass and the calls fail afterwards. The v11 module has the same guard.
+
+Each failure drops its whole loop (`RES = 0`). This run therefore lacks every heptagon loop and the 288 loops with a rank-7 raised-power term, and its poles are no test of the integrals. Reported to TIRust on 2026-11-26.
+
+**For later runs.** `tools/tirust_capture` wraps the C entry points, so it does not see refusals inside the Fortran module. "fail 0" in its summary does not mean that every integral was computed. The instrumented output does catch these refusals.
+
+## g g → ³P₂[8] ³P₁[8] g at 20 GeV (TIRust 142610e + bridge v15)
+
+The same output and point, rerun on 2026-11-26 on TIRust 142610e and the bridge part of v15 (poles-only, oneloop cdbc912). v15 differs from v14 only in the Fortran module: `valid_shapes` accepts N, rank ≤ 7. Both directions ran in parallel, with the instrumented output of the previous section and failed-call capture.
+
+| CTModeRun | c1 | c2 | finite | code | time |
+|---|---|---|---|---|---|
+| 1 | −21.012183234058 | −8.996632538801 | 113.325865051 | 410 | 5887 s |
+| 2 | −21.016312841494 | −9.000561602820 | 113.331865163 | 410 | 5966 s |
+| prediction | −21.020880707395 | −9 | | | |
+
+All in units of Born × α_s/(2π); the Born (1.4778648803e-08) and the prediction's terms are those of the bb62307 section. Against the prediction:
+- c1 is off by 4.1e-4 (CTModeRun 1) and 2.2e-4 (CTModeRun 2);
+- c2 by 3.7e-4 and 6.2e-5.
+
+The two loop directions differ by 2.0e-4 on c1, 4.4e-4 on c2 and 5.3e-5 on the finite part. TIRust's own time was 997 s and 1111 s.
+
+**Capture.** In each direction 73074 DP calls reach TIRust. It refuses 12 in CTModeRun 1 and 6 in CTModeRun 2, and the instrumented output reports exactly these failures and no others. All are rank 7 with two doubled lines:
+
+| CTModeRun | Lines | Calls | Distinct |
+|---|---|---|---|
+| 1 | 6 | 8 | 4 |
+| 1 | 7 | 4 | 2 |
+| 2 | 6 | 4 | 2 |
+| 2 | 7 | 2 | 1 |
+
+The distinct inputs are in `data/refused_ggg_3p28_3p18_20gev_142610e_v15_ct1.txt.gz` (sha256 480edd93ead6c33e…) and `_ct2.txt.gz` (090efd40c4169c85…).
+
+**Replay** on 142610e + v15 (`data/replay_ggg_3p28_3p18_20gev_142610e_v15_ct{1,2}.txt.gz`; `replay_calls.f90` now takes seven lines). QP (256 bits) and DP refuse all nine with "ill-conditioned Gram matrix":
+- in the hexagons, 4-point sub-Grams, conditioning 1.0e-35 and 1.2e-34;
+- in the heptagons, 3-point sub-Grams, conditioning 2.7e-32, 5.8e-78 and 0.
+
+**Reading.** Each refused call drops its loop, so CTModeRun 1 lacks 12 loops and CTModeRun 2 lacks 6. The direction with fewer missing loops is closer to the prediction on both poles. That fits the remaining 2e-4 to 4e-4 being these loops, but it is no proof until TIRust serves them. The finite part is not quotable yet for the same reason. Sent to TIRust on 2026-11-26.
+
+**TIRust's diagnosis** (2026-11-26, no fix yet). The messages above come from TIRust's earlier tiers. At 256 and 512 bits the call is finally refused by the pentagon-pinch gate (issue #40): "Gram matrix decided only by the supplied invariants' mismatch".
+- The Gram-free (Denner–Dittmaier) pentagon reduction stops at rank 5, so a rank-7 pentagon gets ranks 6 and 7 from the Gram recursion.
+- The gate amplifies the about 1e-16 mismatch between the binary64 shifts and the snapped invariants by κ², with κ = 3.5e3 to 5.0e3. That gives 1.3e-9 to 3.9e-9, above its 1.2e-10 floor.
+- At rank 5 that power is zero, which is why the v11-class calls are served.
+
+With the gate bypassed (TIRust's local debug build), all nine are served at 256 and 512 bits. Their contraction identities hold to 1e-13 or better. Rotating the shifts in binary64 moves the frame-independent contractions by at most 2.6e-14.
+
+TIRust's user is to choose between two fixes: loosen the gate to the measured growth, or extend the Gram-free reduction to rank 7.
+
+## g g → ³P₂[8] ³P₁[8] g at 20 GeV (TIRust da7902b + bridge v16)
+
+The same output and point, rerun on 2026-11-26 on TIRust da7902b and the bridge part of v16 (poles-only patch ff768d68…, oneloop cdbc912). da7902b is on hs/seven-point-powers, a merge of main into 142610e. In plans with raised powers its pentagons take the Gram-free reduction up to rank 7, and the UV remainders of the dropped (D − 4) terms are kept at ranks 6 and 7. It was pushed later as huashengshao/TIRust#71, whose head 9912b38 merges main into da7902b. These runs use da7902b. Both directions ran in parallel, with the instrumented output and failed-call capture.
+
+| CTModeRun | c1 | c2 | finite | code | time |
+|---|---|---|---|---|---|
+| 1 | −21.020880706908 | −9.000000000001 | 113.324403808 | 110 | 8076 s |
+| 2 | −21.020880708183 | −8.999999999999 | 113.324403772 | 110 | 8391 s |
+| prediction | −21.020880707395 | −9 | | | |
+
+All in units of Born × α_s/(2π); the Born (1.4778648803e-08) and the prediction's terms are those of the bb62307 section. Against the prediction:
+- c1 is off by 2.3e-11 (CTModeRun 1) and 3.7e-11 (CTModeRun 2);
+- c2 by 7.1e-14 and 1.6e-13.
+
+The two loop directions agree to 6.1e-11 on c1 and 3.2e-10 on the finite part.
+
+**Capture.** In each direction 73074 DP calls reach TIRust, and it serves all of them. The instrumented output prints no failure line, and the driver prints no warning. So every loop is computed, the heptagons and the rank-7 raised-power terms included.
+
+**Replay** of the nine v15 refusals on da7902b + v16 (`data/replay_ggg_3p28_3p18_20gev_da7902b_v16_ct{1,2}.txt.gz`). The DP entry serves all nine. The QP entry still refuses them with "ill-conditioned Gram matrix", but `replay_calls.f90` feeds it binary64 records widened to binary128. Their Coulomb and planar dependencies then hold only to about 1e-16, so the replay says nothing about MadLoop's own QP calls, whose binary128 inputs hold them to about 1e-34. TIRust checked only the DP entry.
+
+**Reading.** The 2e-4 to 4e-4 left on the poles on v15 was the 12 and 6 missing loops: with them served, both poles are as predicted, in both loop directions. Against v15 the finite part moved by 1.3e-5 (CTModeRun 1) and 6.6e-5 (CTModeRun 2). The finite part, 113.3244038 per Born × α_s/(2π), is quotable from this run on.
+
+**Time.** Each pass took 8.1 ks and 8.4 ks, against 5.9 ks and 6.0 ks on v15; TIRust's own time was 1483 s and 1521 s (v15: 997 s and 1111 s). The host was fully loaded during this run (load about 387 on 384 cores), so neither difference measures the code. Sent to TIRust on 2026-11-26.
+
+## g g → χ_c0 χ_c0 rerun on TIRust da7902b + bridge v16
+
+TIRust's v16 also changes some rank-6 hexagons with two doubled lines. Its replays of our earlier records show the changes as corrections of up to 2.3e-9 in the 6960-call set and 1.0e-7 in the forward-point set. So the accepted results of the benchmark (`docs/benchmarkfolder/data/raw/two_pwave`, TIRust 4f1b06c + v9) were rerun on 2026-11-26. The output was regenerated from the current branch and linked against v16. The points are the seed-1 points of the benchmark, with the benchmark's modes: CTModeRun 1 and 2 with MLStabThres 1d99, −1 with 1.0d-3, and 4 at the forward point (point 1). Results and comparison are in `data/rerun_gg_chic0_chic0_da7902b_v16.json`.
+
+| √s (GeV), points | 1/ε moved | finite part moved | codes |
+|---|---|---|---|
+| 8, 12: 0, 1; 20: 0–3 | ≤ 2.9e-10 | ≤ 2.2e-9 | unchanged (110 / 110 / 213) |
+| 50: 0 | ≤ 2.1e-9 | ≤ 2.8e-9 | unchanged (110 / 110 / 213) |
+| 50: 1 (forward), DP | 2.8e-6 to 4.2e-5 | ≤ 2.5e-7 | unchanged (110 / 110 / 213) |
+| 200: 0, 1, DP (modes 1, 2) | 2e-8 to 1.5e-2 | 1e-9 to 8.5e-2 | unchanged (110 / 110) |
+| 200: 0, 1, stability test (−1) | ≤ 6.5e-16 | ≤ 6.5e-16 | unchanged (323) |
+| 20, 50, 200: 1, QP (mode 4) | ≤ 9.6e-16 | ≤ 1.0e-15 | unchanged (120) |
+
+Relative to the benchmark values; the predictions moved by at most 4e-11.
+- **The stability test's results stay within their accuracy estimates.** Its finite parts (CTModeRun −1) moved by at most 1.4e-9 up to 50 GeV point 0, and by 1.2e-7 at 50 GeV point 1, against an estimate of 6.3e-6 there. The rescued 200 GeV points (323) and the QP runs (120) are unchanged to 1e-15.
+- **The larger moves are where DP was already lost.** At 200 GeV, DP misses 1/ε by 0.7 to 31 relative, and the stability test catches both points. At 50 GeV point 1, DP misses 1/ε by 5e-4 to 8e-4: the pole per Born, 0.2027, is what is left of a large cancellation.
+- **Replays** of the 171, 97 and 52 refused-call records: DP serves all of them, as on 4f1b06c. The 97 and 52 give the same statuses and messages as on 4f1b06c. Of the 171 forward-point records, the binary128 entry (widened binary64 inputs) now serves 147 that 4f1b06c refused, and 24 remain refused.
+
+**50 GeV, point 1.** Three copies of the new output, linked against v9 (4f1b06c), v15 (142610e) and v16, were run in DP at points 0 and 1:
+- with v9 the new output gives the benchmark values to 1e-15, so the changes in MadLoop since the benchmark (colour-flow basis, pole predictor) do not move them;
+- v15 moves 1/ε by at most 4.3e-13 from v9;
+- v16 moves it from v15 by 2.8e-6 (CTModeRun 1) and 4.2e-5 (CTModeRun 2) at point 1, and by 3.1e-10 and 2.1e-9 at point 0.
+
+So the shift is v16's. Against the QP value (mode 4, 1.8e-12 from the prediction), v16 is not closer: 1/ε is off by 7.84e-4 and 5.74e-4 (v15: 7.81e-4 and 5.32e-4), and the finite part by 6.69e-6 and 8.57e-6 (v15: 6.69e-6 and 8.33e-6).
+
+`fixtures.py --unit` dumped all 5238 TIRust calls of each pass (1758 unit-power, 3480 raised-power) on the three versions. The inputs are identical call by call, and no status changes. Each difference is the largest change over the array, relative to its largest entry:
+- **v16 against v15.** The unit-power calls are bit-identical. Of the raised-power calls, only 5 in CTModeRun 2 at point 1 moved by more than 1e-8: rank-6 hexagons QgQggQ with two doubled lines, powers 1,2,1,1,2,1 and 1,2,1,2,1,1 (8.9e-8 and 7.3e-8, twice each), and 1,1,2,2,1,1 (1.4e-8). Everywhere else at both points they moved by at most 6.1e-11.
+- **v15 against v9.** A unit-power hexagon gQQgQg (4.3e-8) and two rank-5 calls with the same lines (1.7e-8 and 3.2e-8) changed. They are equal on v15 and v16.
+- **The poles of these integrals barely move.** The changes are in the finite slot; the pole slots move by at most 9.0e-12 (CTModeRun 2) and 2.5e-12 (CTModeRun 1), in rank-6 pentagons and hexagons with two doubled lines or a tripled one. The v9 → v15 changes are finite-slot only (pole slots 1e-15), and the DP 1/ε did not move with them.
+
+So pole-slot changes of 1e-12 to 1e-11 move the DP 1/ε at this point by 1e-6 to 1e-5: an amplification of about 1e6. The 8 calls (6 distinct) that moved by more than 1e-8 are in `data/moved_gg_chic0chic0_50gev_da7902b_v16.txt` (replay records; CTModeRun 2 has the check-pass flag; sha256 5e37e112dda3e33c…). Their arrays on the three versions are in `_v16.json.gz` (93f8444ffc1c033c…). Through `replay_calls.f90` on v16, DP serves all 8, and the binary128 entry refuses the widened records ("ill-conditioned Gram matrix"). Sent to TIRust on 2026-11-26.
+
+**TIRust's verdict** (2026-11-26). It computed 256-bit references of the 8 records in the bridge's settings (binary64 inputs as supplied, converged against 512 bits to 1e-67), checked them by exact contraction identities, and scored the three arrays slot by slot against them:
+
+| calls | powers, rank | v9 / v15: IR1, IR2, finite | v16: IR1, IR2, finite | identities of the reference |
+|---|---|---|---|---|
+| 3716, 3751 | 1,2,1,1,2,1; 6 | 9.1e-12, 1.4e-11, 8.9e-8 | 1.6e-13, 6.3e-15, 1.9e-13 | 8.8e-14 |
+| 3717, 3752 | 1,2,1,2,1,1; 6 | 8.1e-12, 6.6e-12, 7.3e-8 | 1.7e-13, 1.2e-15, 1.5e-13 | 2.6e-14 |
+| 2871 | 1,1,2,2,1,1; 6 | 3.6e-14, 2.8e-10, 1.4e-8 | 5.1e-14, 9.8e-16, 2.5e-11 | 2.0e-11 |
+| 2864 | unit; 4 | v9 finite 4.3e-8 | 1.5e-14 finite (= v15) | 1.8e-10 |
+| 2867 / 2868 | 1,1,2,1,1,1 / 1,2,1,1,1,1; 5 | v9 finite 1.6e-8 / 3.2e-8 | 9.0e-11 / 2.7e-14 (= v15) | 1.0e-10 / 2.0e-11 |
+
+The UV slots are zero in all three versions.
+- **The v16 changes are corrections.** The rank-6 hexagons with two doubled lines had their IR poles off by 7e-12 to 3e-10 and their finite parts by 1e-8 to 9e-8 on v9 and v15; on v16 they are at rounding level.
+- **So are the v9 → v15 changes** of the unit-power and rank-5 calls.
+- **The input floor.** For the unit-power and rank-5 calls and for 2871, the identities hold only to 2e-11 to 2e-10 even at 256 bits. That is the mismatch between our binary64 shifts and the snapped invariants, and no method does better on those inputs.
+
+**Reading.** The 2.8e-6 and 4.2e-5 moves of the DP 1/ε at 50 GeV point 1 are v16 removing pole errors of about 1e-11, amplified by the point's cancellation of about 1e6. The DP miss of 5e-4 to 8e-4 against QP is a separate, larger effect, about 30 times the correction. TIRust's reading, not checked here: the same cancellation acting on the binary64 inputs' floor (about 1e-10 per call). That fits v16 not bringing DP closer to QP. The QP results (mode 4) are unchanged and match the prediction.
+
+## A P-wave singlet with a P-wave octet: u u~ → χ_c0 + ³P₀[8] (TIRust da7902b + bridge v16)
+
+`u u~ > chic0(1|3P01) Jpsi(1|3P08) [virt=QCD]`, QCD only: 14 Born and 482 loop diagrams, on 2026-11-26. All three parts of the single pole contribute:
+- the massive soft terms of the quarks and of the octet state's monopole;
+- the P → S term of each state;
+- the dipole-dipole term.
+
+`qp_check.py` ran at the seed-1 points (CTModeRun 1 and 2 with MLStabThres 1d99, −1 with 1.0d-3), and CTModeRun 4 at 20 GeV, point 0. The data are in `data/singlet_octet_uu_chic0_3p08_da7902b_v16.json`. Per Born × α_s/(2π):
+
+| √s (GeV), point | Born | 1/ε error, CTModeRun 1 / 2 / −1 | 1/ε² error (−2 C_F) | finite part, 1 against 2 | code −1, accuracy |
+|---|---|---|---|---|---|
+| 8, 0 | 1.5e-10 | 2.7e-12 / 3.4e-12 / 3.0e-12 | 7.2e-13 | 8.0e-13 | 213, 1.9e-11 |
+| 8, 1 | 8.1e-12 | 3.7e-9 / 2.6e-8 / 1.5e-8 | 2.6e-9 | 6.9e-9 | 213, 2.1e-8 |
+| 20, 0 | 3.3e-11 | 3.1e-8 / 2.2e-8 / 2.6e-8 | 4.1e-13 | 2.7e-8 | 213, 8.8e-8 |
+| 20, 1 | 5.9e-14 | 3.5e-8 / 7.0e-8 / 5.2e-8 | 1.4e-8 | 3.7e-8 | 213, 1.1e-7 |
+| 50, 0 | 1.1e-12 | 9.2e-6 / 5.9e-5 / 3.4e-5 | 9.2e-12 | 4.8e-6 | 213, 1.9e-5 |
+
+- **Quadruple precision** (CTModeRun 4, 20 GeV, point 0, code 120, 355 s): 1/ε is 4.3e-14 from the prediction and 1/ε² is −2 C_F to 4e-15. Its finite part, 77.751715619891, is the DP value of CTModeRun 1 to 3.0e-9, of CTModeRun 2 to 3.0e-8 and of the stability test to 1.7e-8. The stability test's estimate there, 8.8e-8, is above its true error.
+- **Double precision** loses digits with the energy: the 1/ε error grows from 3e-12 (8 GeV, point 0) to at most 7e-8 at 20 GeV and 6e-5 at 50 GeV. It does not follow the Born: the smallest one, 5.9e-14 at 20 GeV point 1, has a smaller error than the 50 GeV point with 1.1e-12. No call is refused, and the stability test calls every point stable, with estimates that track the errors.
+
+The parts of the prediction (`appendix_b.py terms`, in the order of eq. (B.2)):
+
+| √s (GeV), point | soft terms (lines 1–4) | P → S, χ_c0 / ³P₀[8] | dipole-dipole f₁ + f₂ | 1/ε, computed (CTModeRun 1) |
+|---|---|---|---|---|
+| 8, 0 | −5.640287 | −0.073159 / −0.590482 | −6.751121 + 7.330003 | −5.725046 |
+| 8, 1 | −6.944439 | −0.233836 / −1.887353 | −43.568125 + 49.214088 | −3.419665 |
+| 20, 0 | −0.371543 | −0.581147 / −0.675843 | −2.574276 + 2.631754 | −1.571056 |
+| 20, 1 | −6.296162 | −47.172190 / −54.858704 | −523.173341 + 542.906597 | −88.593796 |
+
+The imaginary parts of the dipole-dipole kernels are zero to rounding: 8e-15 to 6e-10 per Born, against parts of up to 540. With the ggg run (two octets) and g g → χ_c0 χ_c0 (two singlets), the predicted pole is now checked for every colour assignment of two P-wave states.
+
+## g g → χ_c1 χ_b0: the Born against the tree output, and the virtual (TIRust da7902b + bridge v16)
+
+`g g > chic1(1|3P11) chib0(1|3P01) [virt=QCD]` has two P-wave states of different flavours, one of them with J = 1: 36 Born and 1336 loop diagrams, run on 2026-11-26. Its tree value is the acceptance reference of `test_quarkonium_standalone` (`test_cmd.py`), 3.1322751724804800e-16 at the check point of `check_sa.f` (√s = 1 TeV).
+
+**Masses.** The two outputs give each bound state its mass differently:
+- the tree output (`sm_onia-c_mass`) takes the model's physical masses, 3.51 and 9.86, with the constituent masses MC = 1.55 and MB = 4.7, so M ≠ m₁ + m₂;
+- the loop layer always uses M = m₁ + m₂ (`pmass.inc`: `ABS(MDL_MC)+ABS(MDL_MC)`).
+
+The tree value depends on MC and MB. With MC = 1.755 and MB = 4.93, both outputs have M = m₁ + m₂ = 3.51 and 9.86, and the tree gives 1.8698583325418731e-16 at the same point. The loop output gets that point in full precision, with these masses set in its param_card.
+
+**Born.** The loop output's Born is 1.8698583325418731e-16, bit for bit the tree value.
+
+**Virtual** with the default masses (M = 3.1, 9.4), at the seed-1 points of 20 GeV, CTModeRun 1 and 2 (MLStabThres 1d99), code 110. Per Born × α_s/(2π):
+
+| point | 1/ε | prediction | 1/ε error, 1 / 2 | 1/ε² error | finite part (CTModeRun 1) | 1 against 2 |
+|---|---|---|---|---|---|---|
+| 0 | −15.616433619007 | −15.616433619011 | 2.8e-13 / 7.8e-13 | 1.9e-13 | 77.201675021187 | 5.8e-13 |
+| 1 | −14.593014764684 | −14.593014764679 | 3.1e-13 / 3.7e-13 | 2.3e-13 | 74.085086355840 | 1.8e-12 |
+
+At the 1 TeV tree point, DP loses the pole (1/ε −234.65 against −4.69, 1/ε² −5.9995): as for g g → χ_c0 χ_c0 at 200 GeV, the cancellation exceeds double precision there. That run had the stability test off (MLStabThres 1d99), which is why it returned 110. The data are in `data/born_gg_chic1_chib0_da7902b_v16.json`.

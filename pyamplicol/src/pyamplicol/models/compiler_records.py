@@ -117,9 +117,11 @@ def _particle_record(item: Mapping[str, object]) -> CompiledParticleRecord:
     )
 
 
-def _exact_float_expression(value: float) -> str:
+def _exact_float_expression(
+    value: float, what: str = "particle electric charge"
+) -> str:
     if not math.isfinite(value):
-        raise ValueError("particle electric charge must be finite")
+        raise ValueError(f"{what} must be finite")
     numerator, denominator = value.as_integer_ratio()
     if denominator == 1:
         return str(numerator)
@@ -277,8 +279,13 @@ def _replace_evaluator_constants(expression: _sym.Expression) -> _sym.Expression
 
 
 def _numeric_expression(value: tuple[float, float]) -> _sym.Expression:
-    real, imaginary = value
-    return _sym.E(repr(real)) + _sym.E(repr(imaginary)) * _sym.E("1𝑖")  # noqa: RUF001
+    # A value-only parameter (ZERO, CKM entries, colour factors) is the exact
+    # rational of its binary64 value: a Float coefficient would make every
+    # coupling it enters inexact (Symbolica 3.0.2 keeps 1.0 * x a Float).
+    real, imaginary = (
+        _exact_float_expression(part, "a model parameter value") for part in value
+    )
+    return _sym.E(real) + _sym.E(imaginary) * _sym.E("1𝑖")  # noqa: RUF001
 
 
 def _sequence(value: object) -> list[object]:

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import os
 import shutil
 import tomllib
@@ -1150,6 +1151,74 @@ def test_external_sm_mass_overrides_refresh_sources_and_derived_masses(
 
     assert abs(changed - baseline) > max(1.0e-14, abs(baseline) * 1.0e-8)
     assert restored == pytest.approx(baseline, rel=1.0e-12, abs=1.0e-15)
+
+
+def _two_body_point(
+    root_s: float, m3: float, m4: float, cos: float, rapidity: float
+) -> tuple[tuple[float, float, float, float], ...]:
+    """Massless beams, (m3, m4) final state at sqrt(s) and cos(theta), boosted
+    along z (light-cone components, on shell in binary64)."""
+
+    e3 = (root_s**2 + m3**2 - m4**2) / (2.0 * root_s)
+    p = math.sqrt(e3**2 - m3**2)
+    sin = math.sqrt(1.0 - cos**2)
+    rest = (
+        (root_s / 2, 0.0, 0.0, root_s / 2),
+        (root_s / 2, 0.0, 0.0, -root_s / 2),
+        (e3, p * sin, 0.0, p * cos),
+        (root_s - e3, -p * sin, 0.0, -p * cos),
+    )
+    point = []
+    for (energy, x, y, z), mass in zip(rest, (0.0, 0.0, m3, m4), strict=True):
+        transverse = mass**2 + x**2 + y**2
+        plus, minus = (
+            (energy + z, transverse / (energy + z))
+            if z >= 0.0
+            else (transverse / (energy - z), energy - z)
+        )
+        plus, minus = plus * math.exp(rapidity), minus * math.exp(-rapidity)
+        point.append(((plus + minus) / 2, x, y, (plus - minus) / 2))
+    return tuple(point)
+
+
+def test_external_sm_derived_w_mass_follows_the_electroweak_inputs(
+    tmp_path: Path,
+) -> None:
+    """In the G_mu-scheme UFO MW is derived from aEWM1, Gf and MZ and has no
+    runtime slot. After ``set_model_parameters`` the W wavefunctions and
+    propagators use the refreshed MW (lsimon125, PR #29), so u d~ > w+ h on the
+    refreshed mass shell is invariant under boosts along z; with the
+    artifact-default MW it changed by 5e-5."""
+
+    if importlib.util.find_spec("pyamplicol._rusticol") is None:
+        pytest.skip("the Rusticol extension has not been built")
+
+    artifact = tmp_path / "external-sm-derived-w-mass"
+    Generator(
+        RunConfig(
+            action="generate",
+            model=ModelConfig(cache=False),
+            color=ColorConfig(accuracy="lc"),
+            evaluator=EvaluatorConfig(execution_mode="compiled"),
+        )
+    ).generate(
+        "u d~ > w+ h",
+        artifact,
+        model=ModelSource.from_path(EXTERNAL_SM_SOURCES["json"]),
+    )
+    runtime = Runtime.load(artifact)
+    aewm1, gf, mz, mh = 132.1001485837534, 1.1663788e-5, 91.188, 125.0
+    runtime.set_model_parameters({"aEWM1": aewm1, "Gf": gf})
+    # The model's MW = sqrt(MZ^2/2 + sqrt(MZ^4/4 - pi aEW MZ^2 / (sqrt(2) Gf))).
+    mw = math.sqrt(
+        mz**2 / 2
+        + math.sqrt(mz**4 / 4 - math.pi * mz**2 / (aewm1 * math.sqrt(2.0) * gf))
+    )
+    assert abs(mw - 80.4190000176632) > 1.0e-2
+    rest = runtime.evaluate((_two_body_point(500.0, mw, mh, 0.3, 0.0),))[0].real
+    for rapidity in (0.5, -1.0):
+        boosted = runtime.evaluate((_two_body_point(500.0, mw, mh, 0.3, rapidity),))
+        assert boosted[0].real == pytest.approx(rest, rel=1.0e-12, abs=0.0)
 
 
 def test_runtime_rejects_external_mass_class_changes_atomically(

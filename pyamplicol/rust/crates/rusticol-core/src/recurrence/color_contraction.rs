@@ -24,7 +24,6 @@ const ENTRY_BYTES: usize = 36;
 const EXACT_FACTOR_BYTES: usize = 64;
 // The subgroup order must fit the codec's u32 local-group count.
 const MAX_FACTOR_RANK: u32 = u32::BITS - 1;
-const MAX_SYMMETRIC_GROUP_DEGREE: u32 = 10;
 // A batching target, not a resource limit: a single large lane and explicitly
 // requested workspace growth may exceed it.
 const TARGET_SYMMETRIC_GROUP_LANE_WORKSPACE_BYTES: usize = 512 * 1024 * 1024;
@@ -525,6 +524,175 @@ impl RuntimeSymmetricGroupColorContraction {
                 }
             }
         }
+    }
+}
+
+impl RuntimeSymmetricGroupColorContraction {
+    /// Workspace for [`Self::reduce_lane_pairs`] over `part_count` amplitude
+    /// parts and `output_count` pair sets.
+    pub(crate) fn pair_workspace(
+        &self,
+        part_count: usize,
+        output_count: usize,
+        lane_capacity: usize,
+    ) -> RusticolResult<RuntimeSymmetricGroupPairWorkspace> {
+        if part_count == 0 || output_count == 0 || lane_capacity == 0 {
+            return Err(RusticolError::invalid_argument(
+                "symmetric-group pair workspace requires parts, outputs and lanes",
+            ));
+        }
+        let complex_len = |groups: usize| {
+            groups
+                .checked_mul(part_count)
+                .and_then(|value| value.checked_mul(lane_capacity))
+                .ok_or_else(|| malformed("symmetric-group pair workspace size overflows usize"))
+        };
+        let transformed_groups = self
+            .channel_count
+            .checked_mul(self.group_order)
+            .ok_or_else(|| malformed("symmetric-group pair workspace size overflows usize"))?;
+        let reduced_len = output_count
+            .checked_mul(lane_capacity)
+            .ok_or_else(|| malformed("symmetric-group pair workspace size overflows usize"))?;
+        Ok(RuntimeSymmetricGroupPairWorkspace {
+            part_count,
+            output_count,
+            lane_capacity,
+            gathered: vec![(0.0, 0.0); complex_len(self.local_group_count)?],
+            transformed: vec![(0.0, 0.0); complex_len(transformed_groups)?],
+            reduced: vec![0.0; reduced_len],
+            fft: self.fft_plan.workspace(lane_capacity)?,
+        })
+    }
+
+    /// Reduce `sum_{(a,b) in pairs[o]} B(A_a, A_b)` into output `o` per lane.
+    ///
+    /// `B` is the real-bilinear form whose diagonal is [`Self::reduce_lanes`]:
+    /// every residual entry and Fourier kernel is evaluated with its left
+    /// amplitude from part `a` and its right amplitude from part `b`. Swap
+    /// symmetric pair sets therefore yield the symmetric interference. The
+    /// amplitude accessor receives a part, a local-group index and a lane.
+    pub(crate) fn reduce_lane_pairs(
+        &self,
+        workspace: &mut RuntimeSymmetricGroupPairWorkspace,
+        lane_count: usize,
+        pairs: &[&[(u32, u32)]],
+        mut amplitude: impl FnMut(usize, usize, usize) -> RusticolResult<SymmetricGroupComplex64>,
+    ) -> RusticolResult<()> {
+        if lane_count == 0
+            || lane_count > workspace.lane_capacity
+            || pairs.len() != workspace.output_count
+        {
+            return Err(RusticolError::invalid_argument(
+                "symmetric-group pair reduction exceeds its workspace",
+            ));
+        }
+        let parts = workspace.part_count;
+        if pairs
+            .iter()
+            .flat_map(|pairs| pairs.iter())
+            .any(|&(left, right)| left as usize >= parts || right as usize >= parts)
+        {
+            return Err(RusticolError::invalid_argument(
+                "symmetric-group pair references an absent amplitude part",
+            ));
+        }
+        let gathered_stride = self.local_group_count * lane_count;
+        let channel_stride = self.group_order * lane_count;
+        let transformed_stride = self.channel_count * channel_stride;
+        for part in 0..parts {
+            for group in 0..self.local_group_count {
+                let start = part * gathered_stride + group * lane_count;
+                for lane in 0..lane_count {
+                    workspace.gathered[start + lane] = amplitude(part, group, lane)?;
+                }
+            }
+            for channel in 0..self.channel_count {
+                let source = part * gathered_stride + channel * channel_stride;
+                let target = part * transformed_stride + channel * channel_stride;
+                self.fft_plan.forward_lanes(
+                    lane_count,
+                    &workspace.gathered[source..source + channel_stride],
+                    &mut workspace.transformed[target..target + channel_stride],
+                    &mut workspace.fft,
+                )?;
+            }
+        }
+        workspace.reduced[..pairs.len() * lane_count].fill(0.0);
+        let normalization = 1.0 / self.group_order as f64;
+        for (output, output_pairs) in pairs.iter().enumerate() {
+            let reduced = &mut workspace.reduced[output * lane_count..(output + 1) * lane_count];
+            for &(left_part, right_part) in output_pairs.iter() {
+                let left_gathered = left_part as usize * gathered_stride;
+                let right_gathered = right_part as usize * gathered_stride;
+                for entry in self.residual_entries.iter() {
+                    let left = left_gathered + entry.left_group_index as usize * lane_count;
+                    let right = right_gathered + entry.right_group_index as usize * lane_count;
+                    for lane in 0..lane_count {
+                        let left_value = workspace.gathered[left + lane];
+                        let right_value = workspace.gathered[right + lane];
+                        let product_re = left_value
+                            .0
+                            .mul_add(right_value.0, left_value.1 * right_value.1);
+                        let product_im = left_value
+                            .1
+                            .mul_add(right_value.0, -left_value.0 * right_value.1);
+                        reduced[lane] += entry
+                            .coefficient_re
+                            .mul_add(product_re, -entry.coefficient_im * product_im);
+                    }
+                }
+                let left_transformed = left_part as usize * transformed_stride;
+                let right_transformed = right_part as usize * transformed_stride;
+                for kernel in self.kernels.iter() {
+                    let left =
+                        left_transformed + kernel.left_channel_index as usize * channel_stride;
+                    let right =
+                        right_transformed + kernel.right_channel_index as usize * channel_stride;
+                    for block in self.fft_plan.blocks() {
+                        let dimension = block.dimension();
+                        let offset = block.coefficient_offset();
+                        contract_general_cross_block(
+                            &workspace.transformed[left..left + channel_stride],
+                            &workspace.transformed[right..right + channel_stride],
+                            &kernel.fourier_coefficients
+                                [offset..offset + block.coefficient_count()],
+                            dimension,
+                            offset,
+                            lane_count,
+                            lane_count,
+                            dimension as f64 * normalization * kernel.pair_scale,
+                            reduced,
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Mutable storage of [`RuntimeSymmetricGroupColorContraction::reduce_lane_pairs`].
+#[derive(Debug)]
+pub(crate) struct RuntimeSymmetricGroupPairWorkspace {
+    part_count: usize,
+    output_count: usize,
+    lane_capacity: usize,
+    gathered: Vec<SymmetricGroupComplex64>,
+    transformed: Vec<SymmetricGroupComplex64>,
+    reduced: Vec<f64>,
+    fft: SymmetricGroupFftWorkspace,
+}
+
+impl RuntimeSymmetricGroupPairWorkspace {
+    /// Reduced lanes of one output after [`RuntimeSymmetricGroupColorContraction::reduce_lane_pairs`].
+    pub(crate) fn reduced(&self, output: usize, lane_count: usize) -> RusticolResult<&[f64]> {
+        if output >= self.output_count || lane_count == 0 || lane_count > self.lane_capacity {
+            return Err(RusticolError::invalid_argument(
+                "symmetric-group pair output is outside its workspace",
+            ));
+        }
+        Ok(&self.reduced[output * lane_count..(output + 1) * lane_count])
     }
 }
 
@@ -2029,7 +2197,7 @@ fn validate_repeated_group_identities(
         let sector_id = sector_by_group[first as usize];
         for (component_id, group_id) in group_ids.iter().copied().enumerate() {
             if sector_by_group[group_id as usize] != sector_id
-                || component_by_group[group_id as usize] != component_id as u32
+                || !crate::narrow::is_index(component_by_group[group_id as usize], component_id)
             {
                 return Err(malformed(
                     "repeated group identities are not local-color-major/component-minor",
@@ -2093,10 +2261,13 @@ fn decode_factorization(
                     "symmetric-group Fourier factorization requires convolution-kernel storage",
                 ));
             }
-            if !(2..=MAX_SYMMETRIC_GROUP_DEGREE).contains(&factor_rank) {
-                return Err(malformed(format!(
-                    "symmetric-group Fourier degree must be in [2, {MAX_SYMMETRIC_GROUP_DEGREE}]"
-                )));
+            // No degree cap: the FFT plan built for the payload admits the
+            // degree (its group order in the plan's reorder storage, the
+            // same u32 width as the codec's local-group count).
+            if factor_rank < 2 {
+                return Err(malformed(
+                    "symmetric-group Fourier degree must be at least 2",
+                ));
             }
             FactorizedColorContractionKind::SymmetricGroupFourier
         }
@@ -2245,7 +2416,12 @@ fn validate_symmetric_group_convolution(
 
     let mut offset = 0usize;
     for left_channel in 0..channel_count {
-        let left_identity = (left_channel * group_order) as u32;
+        let left_identity = left_channel
+            .checked_mul(group_order)
+            .and_then(|identity| u32::try_from(identity).ok())
+            .ok_or_else(|| {
+                malformed("symmetric-group channel identity exceeds the u32 local-group ids")
+            })?;
         for right_channel in left_channel..channel_count {
             let right_start = right_channel * group_order;
             let expected_symmetry = if left_channel == right_channel {
@@ -2291,7 +2467,7 @@ fn validate_symmetric_group_convolution(
     let mut residual_offset = 0usize;
     for left in 0..local_group_count {
         for right in left..local_group_count {
-            if right < eligible_group_count as u32 {
+            if (right as usize) < eligible_group_count {
                 continue;
             }
             let entry = residual_entries[residual_offset];
@@ -2664,8 +2840,14 @@ impl<'a> Reader<'a> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// Two-component repeated Klein-four Walsh contraction for runtime tests.
+    pub(crate) fn klein_four_walsh_fixture() -> RecurrenceColorContraction {
+        decode_recurrence_color_contraction_v3(&TestWire::repeated_k4_multicoset().encode())
+            .unwrap()
+    }
 
     #[derive(Clone)]
     struct TestWire {

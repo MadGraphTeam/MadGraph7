@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cache, cached_property
 from hashlib import sha256
 from threading import Lock
 from typing import Any
 
-_UFO_CANONICAL_NAMESPACE = "UFO::{}::"
+# A process-global ``UFO::`` head: the namespace ``UFO`` itself, not a name
+# ending in ``UFO`` (a model namespace such as ``model_HC_NLO_X0_UFO::``, from
+# a UFO directory named ``*_UFO``) nor a nested ``...::UFO::`` namespace.
+UFO_HEAD = re.compile(r"(?<![\w:])UFO::(?:\{\}::)?")
 # Symbolica's process-wide symbol table cannot handle concurrent S(...) calls.
 _SYMBOL_CONSTRUCTION_LOCK = Lock()
 _SYMBOL_CACHE: dict[tuple[str, bool], Any] = {}
@@ -32,7 +35,13 @@ def _symbol(qualified_name: str, *, is_real: bool = False) -> Any:
 
 
 def _safe_namespace_part(value: object) -> str:
-    text = str(value).strip()
+    return _safe_text_part(str(value).strip())
+
+
+# Pure string maps, memoized: the model compiler names a kernel component
+# symbol per kernel, side and index (about 10^5 lookups per model compile).
+@cache
+def _safe_text_part(text: str) -> str:
     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", text):
         return text
     readable = re.sub(r"[^A-Za-z0-9_]+", "_", text).strip("_") or "unnamed"
@@ -43,9 +52,23 @@ def _safe_namespace_part(value: object) -> str:
 
 
 def _safe_symbol_path(value: object) -> str:
-    return "::".join(
-        _safe_namespace_part(part) for part in str(value).split("::") if part
-    )
+    return _safe_text_path(str(value))
+
+
+@cache
+def _safe_text_path(text: str) -> str:
+    return "::".join(_safe_text_part(part.strip()) for part in text.split("::") if part)
+
+
+@cache
+def _kernel_symbol(
+    namespace: str, kind: int, side: str, marker: str, index: int
+) -> Any:
+    """A kernel's input component (``marker`` empty) or momentum
+    (``"momentum_"``) symbol of a model namespace: about 10^6 lookups per
+    model compile, each one name (``ModelSymbolRegistry.symbol``)."""
+
+    return _symbol(f"{namespace}::compiler::kernel_{kind}_{side}_{marker}{index}")
 
 
 @dataclass(frozen=True)
@@ -69,11 +92,7 @@ class ModelSymbolRegistry:
 
         from symbolica import E
 
-        namespaced = str(source).replace(
-            _UFO_CANONICAL_NAMESPACE,
-            f"{self.namespace}::",
-        )
-        namespaced = namespaced.replace("UFO::", f"{self.namespace}::")
+        namespaced = UFO_HEAD.sub(f"{self.namespace}::", str(source))
         return E(namespaced)
 
     def expression_string(self, source: str) -> str:
@@ -83,12 +102,10 @@ class ModelSymbolRegistry:
         return self.qualified_name(f"compiler::kernel_{int(kind)}_{side}")
 
     def kernel_component(self, kind: int, side: str, index: int) -> Any:
-        return self.symbol(f"compiler::kernel_{int(kind)}_{side}_{int(index)}")
+        return _kernel_symbol(self.namespace, int(kind), side, "", int(index))
 
     def kernel_momentum(self, kind: int, side: str, index: int) -> Any:
-        return self.symbol(
-            f"compiler::kernel_{int(kind)}_{side}_momentum_{int(index)}"
-        )
+        return _kernel_symbol(self.namespace, int(kind), side, "momentum_", int(index))
 
     def contact_leg_tensor_name(self, kind: int, leg: int) -> str:
         return self.qualified_name(
@@ -116,6 +133,25 @@ class SymbolRegistry:
 
     def real_symbol(self, name: str) -> Any:
         return _symbol(self.qualified_name(name), is_real=True)
+
+    def qualified(self, *names: str, **attributes: Any) -> Any:
+        """Return heads named exactly as given, outside this namespace.
+
+        This serves established external and loop namespaces such as ``UFO::``,
+        ``symbolica::`` and the loop helpers' own. Construction still shares
+        the process-wide lock, and plain or real heads share the cache. Like
+        ``S``, one name gives one head and several names give a tuple.
+        """
+
+        if set(attributes) <= {"is_real"}:
+            is_real = bool(attributes.get("is_real", False))
+            heads = tuple(_symbol(name, is_real=is_real) for name in names)
+        else:
+            from symbolica import S
+
+            with _SYMBOL_CONSTRUCTION_LOCK:
+                heads = tuple(S(name, **attributes) for name in names)
+        return heads[0] if len(heads) == 1 else heads
 
     def parameter(self, name: str) -> Any:
         return self.symbol(f"param::{name}")

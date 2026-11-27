@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
+from types import MappingProxyType
 from typing import Any
 
 from ..models._physics_ir import ContractionIR, PropagatorIR
@@ -37,6 +40,35 @@ from .stage_types import (
     GenericStageOutputSlot,
     _RuntimeParameterizedModel,
 )
+
+# Exact expressions of stored binary64 weights, set by ``exact_weights``.
+_EXACT_WEIGHTS: ContextVar[Mapping[complex, Any]] = ContextVar(
+    "stage_exact_weights", default=MappingProxyType({})
+)
+
+
+@contextmanager
+def exact_weights(weights: Mapping[complex, Any]) -> Iterator[None]:
+    """Build stage expressions with exact values of stored binary64 weights.
+
+    The DAG stores colour weights and evaluation factors as binary64. Inside
+    this context a weight equal to a key of ``weights`` is built as the mapped
+    exact expression (e.g. the U(1)-subtraction weight 1/N_c), so evaluations
+    beyond binary64 are not capped by its rounding. The override is local to
+    the context (thread-safe and re-entrant); binary64 values are unchanged
+    when the key is the double nearest the expression.
+    """
+
+    token = _EXACT_WEIGHTS.set(MappingProxyType({**_EXACT_WEIGHTS.get(), **weights}))
+    try:
+        yield
+    finally:
+        _EXACT_WEIGHTS.reset(token)
+
+
+def _weight_expression(value: complex) -> Any:
+    exact = _EXACT_WEIGHTS.get().get(value)
+    return _exact_complex_expression(value) if exact is None else exact
 
 
 def _compile_current_stage_blueprint(
@@ -444,7 +476,7 @@ def _interaction_contribution(
     color_weight = _coupling(interaction.get("color_weight"))
     if color_weight == (1.0, 0.0):
         return components
-    weight = _exact_complex_expression(complex(*color_weight))
+    weight = _weight_expression(complex(*color_weight))
     return tuple(weight * component for component in components)
 
 
@@ -527,7 +559,7 @@ def _compact_interaction_contribution(
         if evaluation_factor == 1.0 + 0.0j:
             canonical_components = components
         else:
-            exact_factor = _exact_complex_expression(evaluation_factor)
+            exact_factor = _weight_expression(evaluation_factor)
             canonical_components = tuple(
                 component / exact_factor for component in components
             )
@@ -536,9 +568,7 @@ def _compact_interaction_contribution(
     color_weight = complex(*interaction.color_weight)
     if color_weight == evaluation_factor == 1.0 + 0.0j:
         return canonical_components
-    weight = _exact_complex_expression(color_weight) * _exact_complex_expression(
-        evaluation_factor
-    )
+    weight = _weight_expression(color_weight) * _weight_expression(evaluation_factor)
     return tuple(weight * component for component in canonical_components)
 
 
@@ -698,7 +728,7 @@ def _apply_amplitude_color_weight(
 ) -> Any:
     if color_weight == (1.0, 0.0):
         return expression
-    return _exact_complex_expression(complex(*color_weight)) * expression
+    return _weight_expression(complex(*color_weight)) * expression
 
 
 def _interaction_item_id(

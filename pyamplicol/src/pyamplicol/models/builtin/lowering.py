@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 
 from .._physics_ir import PropagatorIR
@@ -16,6 +17,7 @@ from ..expressions import (
     _expr_fermion_propagator_dirac,
     _expr_fermion_propagator_weyl,
     _expr_minkowski_dot,
+    _imaginary_unit_for,
     _minkowski_square_expression,
     _number,
 )
@@ -38,6 +40,7 @@ from .expressions import (
     _quark_vector_weyl_data,
     _tensor_gluon_to_gluon_data,
     _two_gluon_to_tensor_data,
+    u1_subtraction_weight,
 )
 from .symbols import symbols
 
@@ -46,9 +49,21 @@ def _as_dirac_current(
     current: tuple[Any, ...],
     chirality: int,
 ) -> tuple[Any, ...]:
+    """A Weyl fermion-pair input in the Dirac basis of the pair kernels.
+
+    A propagated (or external) chirality -1 spinor occupies the lower half
+    of the built-in Dirac spinor, the half the left-handed coupling of the
+    Dirac pair kernel reads (its Weyl kernel pairs chirality -1 fermions
+    with chirality +1 antifermions through the same coupling). The output
+    embedding ``_embed_weyl_current_in_dirac`` places a vertex current, whose
+    spinor index the gamma matrix has flipped, the other way round. Only a
+    pair that joins a massive and a massless fermion meets this: the top and
+    the b in the W current (t b~ > u d~ came out wrong).
+    """
+
     if len(current) == 4:
         return current
-    return _embed_weyl_current_in_dirac(current, chirality)
+    return _embed_weyl_current_in_dirac(current, -chirality)
 
 
 class BuiltinSMLoweringMixin:
@@ -288,7 +303,7 @@ class BuiltinSMLoweringMixin:
                 kernel="fermion_pair_to_vector",
                 input_roles=("fermion", "antifermion"),
                 output_role="vector",
-                coupling_mode="vertex",
+                coupling_mode="fixed",
             )
         if kind in {12, 13, 14, 15}:
             vector_role_map: dict[int, tuple[str, tuple[str, str], str, str]] = {
@@ -466,6 +481,38 @@ class BuiltinSMLoweringMixin:
                 input_order=input_order,
             )
 
+        # The electroweak gauge and scalar kernels with two same-dimension
+        # inputs: three-vector currents and the vector-pair tensor are
+        # antisymmetric, the vector-pair and scalar-pair scalar currents
+        # symmetric under input exchange. The model table lists both
+        # orientations of each vertex (the antisymmetric ones with opposite
+        # couplings), which a recurrence parent pair must receive once.
+        exchange_factors = {
+            12: (-1.0, 0.0),
+            13: (-1.0, 0.0),
+            17: (1.0, 0.0),
+            20: (1.0, 0.0),
+        }
+        exchange_factor = exchange_factors.get(kind)
+        if exchange_factor is not None:
+            return replace(
+                super().vertex_evaluation_equivalence(kind),
+                input_exchange_factor=exchange_factor,
+            )
+
+        electroweak_tensor_orientations = {
+            14: ((0, 1), (1.0, 0.0)),
+            15: ((1, 0), (-1.0, 0.0)),
+        }
+        relation = electroweak_tensor_orientations.get(kind)
+        if relation is not None:
+            input_order, factor = relation
+            return VertexEvaluationEquivalence(
+                class_id="builtin-sm:electroweak-tensor-vector-to-vector",
+                factor=factor,
+                input_order=input_order,
+            )
+
         return super().vertex_evaluation_equivalence(kind)
 
     def vertex_component_expression(
@@ -621,7 +668,16 @@ class BuiltinSMLoweringMixin:
                 antifermion_chirality=left_chirality,
             )
         if kind == 8:
-            qcd_coupling = (coupling[0], coupling[0])
+            # A structural constant, not a model parameter: the vertex's
+            # coupling is the U(1)-subtraction weight (``definitions``), entered
+            # exactly in symbolic vertices (``u1_subtraction_weight``).
+            if tuple(coupling) != (1.0 / 3.0, 0.0):
+                raise ValueError(
+                    "the QCD U(1)-subtraction current takes the weight 1/3, got "
+                    f"{tuple(coupling)!r}"
+                )
+            weight = u1_subtraction_weight(*left, *right)
+            qcd_coupling = (weight, weight)
             fermion = tuple(left)
             antifermion = tuple(right)
             if len(fermion) == 4 or len(antifermion) == 4:
@@ -737,9 +793,13 @@ class BuiltinSMLoweringMixin:
         current_momentum = tuple(momentum)
         if not metadata.applies_propagator:
             return components
+        # The phases are exact in symbolic currents, as in the fermion
+        # propagators: a Python 1j would round an exact rational coefficient of
+        # the current (the U(1)-subtraction weight 1/3) to binary64.
+        imaginary = _imaginary_unit_for((*components, *current_momentum))
         if metadata.kind == "vector" and metadata.gauge == "feynman":
             denominator = _minkowski_square_expression(current_momentum)
-            prefactor = -1j / denominator
+            prefactor = -imaginary / denominator
             return tuple(component * prefactor for component in components)
         if metadata.kind == "vector" and metadata.gauge == "unitary":
             mass = self.mass(particle_id)
@@ -747,9 +807,9 @@ class BuiltinSMLoweringMixin:
             denominator = (
                 _minkowski_square_expression(current_momentum)
                 - mass * mass
-                + 1j * mass * width
+                + imaginary * mass * width
             )
-            prefactor = -1j / denominator
+            prefactor = -imaginary / denominator
             longitudinal = _expr_minkowski_dot(components, current_momentum) / (
                 mass * mass
             )
@@ -789,9 +849,9 @@ class BuiltinSMLoweringMixin:
             denominator = (
                 _minkowski_square_expression(current_momentum)
                 - mass * mass
-                + 1j * mass * width
+                + imaginary * mass * width
             )
-            prefactor = 1j / denominator
+            prefactor = imaginary / denominator
             return tuple(component * prefactor for component in components)
         raise ValueError(
             f"propagator kind {metadata.kind!r} in gauge {metadata.gauge!r} "

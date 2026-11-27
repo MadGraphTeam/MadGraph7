@@ -20,6 +20,12 @@ appropriate Symbolica use license. Attribution, upstream terms, and the scope
 of pyAmpliCol's redistribution permission are recorded in
 `licenses/Symbolica.txt`.
 
+The native libraries statically link the Symbolica Rust crates `symbolica`,
+`numerica` and `graphica` from the revision pinned in `Cargo.toml` and
+`Cargo.lock`; `licenses/Symbolica.txt` reproduces that revision's complete
+license, and `numerica` and `graphica` state their own MIT License
+(`licenses/rust/numerica-3.1.0/`, `licenses/rust/graphica-3.0.1/`).
+
 Release artifacts must record the exact Symbolica package, Rust crate,
 serialization ABI, and source revision used to build them.
 
@@ -37,24 +43,116 @@ shipped in pyAmpliCol release artifacts.
 ## SymJIT
 
 SymJIT is a separate Rust dependency used by Symbolica's JIT functionality.
-The official `siravan/symjit-crate` 2.25.0 source pinned at
-`f1c193d301897149de6609f706297b0c97a4f018` is distributed under the MIT
-License, not the Symbolica proprietary license. Its copyright notice and
-complete MIT License are reproduced in `licenses/SymJIT.txt`.
+The published `symjit` 2.28.3 crate pinned in `Cargo.lock` is distributed
+under the MIT License, not the Symbolica proprietary license. Its copyright
+notice and complete MIT License are reproduced in `licenses/SymJIT.txt`.
 The generic unsafe raw P-kernel plane-descriptor callable was merged upstream
 in `siravan/symjit-crate#1`; it does not alter generated kernels.
 
-## Native Runtime Feature Boundary
+## Native Libraries
 
-`Cargo.lock` records optional Symbolica, Rug/GMP, and Malachite dependencies
-used by developer-only arbitrary-precision Rust checks. The distributed
-`pyamplicol._rusticol` extension and `librusticol_capi.a` select the f64-only
-Rusticol closure and link SymJIT directly; they do not link Symbolica, Rug/GMP,
-or Malachite. Higher-precision Python evaluation loads the separately installed
-Symbolica Python package lazily and remains subject to Symbolica's terms.
+The distributed `pyamplicol._rusticol` extension and the C SDK archive
+`librusticol_capi.a` statically link pyAmpliCol's own Rust crates (0BSD) with
+their Rust dependencies: Symbolica's Rust crates, Rug and its `gmp-mpfr-sys`
+bindings, SymJIT, NinjaRS, oneloopmaster, TIRust, GammaLoop's FeynKit, Spenso,
+Idenso and linnet crates, and published crates.io crates.
+Higher-precision Python evaluation additionally loads the separately installed
+Symbolica Python package, which remains subject to Symbolica's terms.
 
-The native build and installed-wheel tests verify that the f64 C API archive
-does not depend on Python or the arbitrary-precision Symbolica runtime.
+The license files of every linked crates.io crate are reproduced under
+`licenses/rust/<crate>-<version>/`; a crate published without a license file
+has a `LICENSE-NOTE` there; `tools/release/rust_licence_inventory.py` checks
+this against the crates linked on every release target. The crates
+distributed under the Mozilla Public License 2.0 (`colored`, `option-ext`,
+`smartstring`) are used unmodified; their sources are published on crates.io.
+
+### GMP, MPFR and MPC
+
+The GNU Multiple Precision Arithmetic Library (GMP) 6.3.0, the GNU MPFR
+Library 4.2.2 and the GNU MPC library 1.4.1, and the Rust crates `rug` 1.30.0
+and `gmp-mpfr-sys` 1.7.1 that wrap them, are distributed under the GNU Lesser
+General Public License version 3 or later (GMP alternatively under the GNU
+General Public License version 2 or later). Their license texts, the GNU
+General Public License version 3 that the Lesser General Public License
+incorporates, and the libraries' own `COPYING` files are in
+`licenses/rust/gmp-mpfr-sys-1.7.1/` and `licenses/rust/rug-1.30.0/`.
+
+The binary wheels link GMP, MPFR and MPC statically, like every other build
+of pyAmpliCol: the libraries, with the Rust crates `rug` and `gmp-mpfr-sys`
+that wrap them, are part of the Python extension (`pyamplicol/_rusticol*.so`)
+and of the C SDK archive (`pyamplicol/_sdk/lib/librusticol_capi.a`, shipped
+xz-compressed), and so of every program or library linked against that
+archive (`rusticol-config --libs`). They are compiled by `gmp-mpfr-sys` 1.7.1
+from the unmodified sources it bundles
+(<https://crates.io/crates/gmp-mpfr-sys/1.7.1>; directories `gmp-6.3.0-c`,
+`mpfr-4.2.2-c` and `mpc-1.4.1-c`, also at <https://gmplib.org/>,
+<https://www.mpfr.org/> and <https://www.multiprecision.org/mpc/>) with that
+crate's configure options.
+
+Relinking with modified versions of the libraries or the crates is offered
+under section 4(d)(0) of the GNU Lesser General Public License version 3:
+pyAmpliCol's source distribution is the complete Corresponding Application
+Code (every Rust and Python source, `Cargo.toml`, `Cargo.lock` and the build
+backend), and the Minimal Corresponding Source of the libraries and the two
+crates is published on crates.io (the `gmp-mpfr-sys` and `rug` crates) at the
+versions locked in `Cargo.lock`. To produce a modified combined work,
+replace the crates in the unpacked source distribution (for example with a
+`[patch.crates-io]` entry in its `Cargo.toml` that names the modified crates,
+then `cargo update -p rug -p gmp-mpfr-sys`) and rebuild and install from it
+(`python -m pip install .` in that directory, as in "To build from the source
+distribution published on PyPI" in `docs/user/installation.md`).
+
+## NinjaRS
+
+NinjaRS (<https://github.com/alphal00p/ninjars>), the one-loop integrand
+reduction library, is linked from the revision pinned in
+`rust/loop-reduction/Cargo.toml` and `Cargo.lock`. It is distributed under the
+BSD Zero Clause License since its relicensing commit `36e30a49` (formerly
+GPL-3.0-or-later; relicensed with the agreement of all its authors). Its
+license is reproduced in `licenses/NinjaRS.txt`.
+
+## oneloopmaster
+
+oneloopmaster (<https://github.com/alphal00p/oneloopmaster>, Rust crate
+`oneloop`) supplies the one-loop scalar integrals and is linked from the
+revision pinned in `rust/loop-reduction/Cargo.toml` and `Cargo.lock`. It is
+distributed under the BSD Zero Clause License since its relicensing commit
+`37d9a9b3` (formerly a provisional MIT identifier); the grant covers the whole
+project, including the pinned revision. oneloopmaster is a Rust/Symbolica
+transcription of OneLOop by Andreas van Hameren, who gave his permission for
+its distribution and relicensing. `licenses/oneloopmaster.txt` reproduces the
+license and the OneLOop credits its README asks for.
+
+## TIRust
+
+TIRust (<https://github.com/huashengshao/TIRust>, formerly
+`huashengshao/iregi-rust`; Rust crates `iregi-rust` and `iregi-masters`), the
+one-loop tensor-integral reduction library, is linked from the revision pinned
+in `rust/loop-reduction/Cargo.toml` and `Cargo.lock` (the cargo feature `tir`,
+on by default). It is distributed under the BSD Zero Clause License; its
+license covers the project's own code, including the scalar masters generated
+from oneloopmaster's expressions (a transcription of OneLOop by Andreas van
+Hameren, distributed and relicensed with his permission). The third-party
+content its license lists is not part of the two linked crates.
+`licenses/TIRust.txt` reproduces the license of the pinned revision.
+
+## GammaLoop Crates (FeynKit)
+
+FeynKit and its sibling crates from GammaLoop
+(<https://github.com/alphal00p/gammaloop>) are linked from the revision pinned
+in `rust/loop-reduction/Cargo.toml` and `Cargo.lock` (the fork
+ValentinHirschi/gammaloop `ea3faaae`: alphal00p/gammaloop `d1904bf2` with
+Spenso's `conj` moved to Numerica 3.1's numeric trait). At that revision the
+FeynKit crates and Spenso declare `MIT OR Apache-2.0`, linnet declares MIT,
+and Idenso, spenso-hep-lib, symbolica-utils and the workspace-hack crate
+declare no license and fall under GammaLoop's top-level license, which places
+no usage restrictions (`licenses/GammaLoop.txt`). linnet depends on
+`dot-parser` 0.5.1 by Martin Vassor, which GammaLoop vendors and which declares
+GPL-2.0-or-later (`licenses/rust/dot-parser-0.5.1/`). linnet's
+`crates/linnet/src/parser/subgraph_free.rs` is adapted from dot-parser 0.5.1's
+`src/subgraph_free.rs` (Martin Vassor, GPL-2.0-or-later); its notice is the same
+dot-parser license text. The crate list and license texts are in
+`licenses/GammaLoop-crates.txt`.
 
 ## UFO Model Loader
 

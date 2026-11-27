@@ -2,7 +2,11 @@
 C       
       use %(proc_prefix)sPOLYNOMIAL_CONSTANTS
       USE ALOHA_OBJECT
-      IMPLICIT NONE
+## if(OniaPwave) {
+C     the dual wavefunctions, amplitudes and loop momenta (polynomial.f)
+      USE %(proc_prefix)sPW_DUAL, ONLY: MPPWW, MPPWAMP, MPPWAMPL, MPPWPL
+## }
+%(terminal_ieee_use)s      IMPLICIT NONE
 C  
 C CONSTANTS
 C  
@@ -31,16 +35,33 @@ C     These are constants related to the split orders
 C  
 C ARGUMENTS
 C
+## if(OniaPwave) {
+C     A P-wave bound state: dual momenta, wavefunctions, amplitudes and
+C     coefficients of the loop vertices (onia_loop.f)
+      TYPE(MP_DUAL) P(0:3,NEXTERNAL)
+## } else {
      %(real_mp_format)s P(0:3,NEXTERNAL)
+## }
       INTEGER NHEL(NEXTERNAL), IC(NEXTERNAL)
 	  INTEGER H
 C
 C LOCAL VARIABLES
 C
-	  INTEGER I,J,K
+%(terminal_ieee_declarations)s	  INTEGER I,J,K
 	  INTEGER FLAVOR(NEXTERNAL)
 	  DATA FLAVOR /NEXTERNAL*1/
+## if(OniaPwave) {
+      TYPE(MP_DUAL) COEFS(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+	  %(complex_mp_format)s COEFS0(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+	  %(complex_mp_format)s COEFS1(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+## if(OniaPwave2) {
+	  %(complex_mp_format)s COEFS2(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+	  %(complex_mp_format)s COEFS3(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
+## }
+	  %(complex_mp_format)s TWL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE)
+## } else {
 	  %(complex_mp_format)s COEFS(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)	  
+## }
 C  
 C GLOBAL VARIABLES
 C 
@@ -57,6 +78,19 @@ C
 	  LOGICAL UVCT_REQ_SO_DONE,MP_UVCT_REQ_SO_DONE,CT_REQ_SO_DONE,MP_CT_REQ_SO_DONE,LOOP_REQ_SO_DONE,MP_LOOP_REQ_SO_DONE,CTCALL_REQ_SO_DONE,FILTER_SO
 	  common/%(proc_prefix)sSO_REQS/UVCT_REQ_SO_DONE,MP_UVCT_REQ_SO_DONE,CT_REQ_SO_DONE,MP_CT_REQ_SO_DONE,LOOP_REQ_SO_DONE,MP_LOOP_REQ_SO_DONE,CTCALL_REQ_SO_DONE,FILTER_SO
 
+## if(OniaPwave) {
+C     the loop wavefunctions WL (value) and DWL (derivative)
+	  %(complex_mp_format)s WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  %(complex_mp_format)s PLC(0:3,-1:NLOOPWAVEFUNCS)
+	  common/%(proc_prefix)sMP_WL/WL,PLC
+	  %(complex_mp_format)s DWL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  common/%(proc_prefix)sMP_PW_DWL/DWL
+## if(OniaPwave2) {
+	  %(complex_mp_format)s DWL2(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  %(complex_mp_format)s D2WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
+	  common/%(proc_prefix)sMP_PW_DWL2/DWL2,D2WL
+## }
+## } else {
 ## if(not LoopInduced) {
 	  %(complex_mp_format)s AMP(NBORNAMPS)
 	  common/%(proc_prefix)sMP_AMPS/AMP
@@ -74,6 +108,7 @@ C
       %(complex_mp_format)s AMPL(3,NLOOPAMPS)
 ## } 
 	  common/%(proc_prefix)sMP_AMPL/AMPL
+## }
 
 C
 C ----------
