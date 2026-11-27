@@ -757,12 +757,29 @@ number you set explicitly always wins.</p>
 <p>The sections <code class="docutils literal notranslate"><span class="pre">[multiparticles]</span></code>, <code class="docutils literal notranslate"><span class="pre">[cuts]</span></code> and <code class="docutils literal notranslate"><span class="pre">[histograms]</span></code> are lists rather than
 fixed parameters. Their entries are described below.</p>
 </section>
+<section id="hidden-option-groups">
+<h2>Hidden option groups<a class="headerlink" href="#hidden-option-groups" title="Link to this heading">¶</a></h2>
+<p>To keep the card short, some option groups are left out of it by default: <code class="docutils literal notranslate"><span class="pre">[gridpack]</span></code>,
+<code class="docutils literal notranslate"><span class="pre">[cluster]</span></code> (with <code class="docutils literal notranslate"><span class="pre">[cluster_train]</span></code> and <code class="docutils literal notranslate"><span class="pre">[cluster_deploy]</span></code>),
+<code class="docutils literal notranslate"><span class="pre">[vegas]</span></code>, <code class="docutils literal notranslate"><span class="pre">[custom_functions]</span></code>, <code class="docutils literal notranslate"><span class="pre">[surrogate]</span></code>, <code class="docutils literal notranslate"><span class="pre">[amplicol]</span></code> (shown for an output with
+<code class="docutils literal notranslate"><span class="pre">[amplicol]</span></code> processes), <code class="docutils literal notranslate"><span class="pre">[merging]</span></code> (shown for a merged sample) and every <code class="docutils literal notranslate"><span class="pre">[madnis]</span></code> option but <code class="docutils literal notranslate"><span class="pre">enable</span></code> and <code class="docutils literal notranslate"><span class="pre">train_batches</span></code>
+(the group <code class="docutils literal notranslate"><span class="pre">madnis</span></code>). The second line of the card lists the hidden groups. They keep their
+default values, and</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">update</span> <span class="pre">&lt;group&gt;</span></code> at the launch prompt, e.g. <code class="docutils literal notranslate"><span class="pre">update</span> <span class="pre">vegas</span></code> or <code class="docutils literal notranslate"><span class="pre">update</span> <span class="pre">madnis</span></code>, adds a
+group to the card, where it stays from then on (the card lists it as a revealed option group);
+<code class="docutils literal notranslate"><span class="pre">update</span> <span class="pre">to_full</span></code> adds all of them, together with the hidden parameters of the other sections;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">set</span></code> works on a hidden parameter as on any other: the card then shows its line alone, in
+its section, and so do the entries of a hidden group added to the card by hand;</p></li>
+<li><p>a card without the group lines at its top, e.g. one written by hand, shows the groups it has
+entries of.</p></li>
+</ul>
+<p>The <code class="docutils literal notranslate"><span class="pre">[cluster]</span></code> sections are shown whole once cluster mode is enabled or one of their
+settings differs from its default, and <code class="docutils literal notranslate"><span class="pre">[custom_functions]</span></code> once a function has parameters.</p>
+</section>
 <section id="run">
 <h2>[run]<a class="headerlink" href="#run" title="Link to this heading">¶</a></h2>
 <dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">run_name</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;run&quot;</span></code>)</dt><dd><p>Name of the run. Events are written to <code class="docutils literal notranslate"><span class="pre">Events/&lt;run_name&gt;_NN</span></code>, where <code class="docutils literal notranslate"><span class="pre">NN</span></code> counts up
-from 01.</p>
-</dd>
 <dt><code class="docutils literal notranslate"><span class="pre">seed</span></code> (<code class="docutils literal notranslate"><span class="pre">-1</span></code>)</dt><dd><p>Random seed. The same seed reproduces a run exactly. <code class="docutils literal notranslate"><span class="pre">-1</span></code> draws a new seed for each
 run. The seed that was used is recorded in the output.</p>
 </dd>
@@ -796,33 +813,20 @@ run warns when an event deviates by more than <code class="docutils literal notr
 <code class="docutils literal notranslate"><span class="pre">precision_check_threshold</span></code>) or is not finite, in which case <code class="docutils literal notranslate"><span class="pre">all64</span></code> or <code class="docutils literal notranslate"><span class="pre">color32</span></code>
 is the safer choice for that process.</p>
 </dd>
+<dt><code class="docutils literal notranslate"><span class="pre">validation</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code>)</dt><dd><p>FPTYPE to check the generated weights against, after the run: the events are
+reweighted to the matrix elements compiled at that precision, and the number of
+significant digits they share with the weights is reported. <code class="docutils literal notranslate"><span class="pre">d</span></code> (all64) checks
+every event; <code class="docutils literal notranslate"><span class="pre">d:1000</span></code> checks 1000 of them, evenly spaced through the sample.
+<code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code> is off. It needs MadtRex, and is not run for a cluster run or a gridpack.</p>
+</dd>
 <dt><code class="docutils literal notranslate"><span class="pre">cpu_thread_pool_size</span></code> (<code class="docutils literal notranslate"><span class="pre">-1</span></code>), <code class="docutils literal notranslate"><span class="pre">gpu_thread_pool_size</span></code> (<code class="docutils literal notranslate"><span class="pre">1</span></code>), <code class="docutils literal notranslate"><span class="pre">combine_thread_pool_size</span></code> (<code class="docutils literal notranslate"><span class="pre">-1</span></code>)</dt><dd><p>Number of threads for each <code class="docutils literal notranslate"><span class="pre">cpu</span></code> device, each GPU device and for combining the
 channel results. <code class="docutils literal notranslate"><span class="pre">-1</span></code> chooses based on the number of CPUs.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">output_format</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;lhe_npy&quot;</span></code>)</dt><dd><p>Format of the event file. <code class="docutils literal notranslate"><span class="pre">compact_npy</span></code> and <code class="docutils literal notranslate"><span class="pre">lhe_npy</span></code> write <code class="docutils literal notranslate"><span class="pre">events.npy</span></code> together
-with a <code class="docutils literal notranslate"><span class="pre">header.lhe</span></code> that carries the run and param card and the cross-section
-information. <code class="docutils literal notranslate"><span class="pre">lhe</span></code> writes a compressed LHE file directly. Tools that read LHE files,
-such as the shower programs, need <code class="docutils literal notranslate"><span class="pre">lhe</span></code>. The launch question switches to it when you
-select one of them.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">weighted_histograms</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Fill the <a class="reference internal" href="#run-card-histograms"><span class="std std-ref">histograms</span></a> with weighted events during the
-integration. This costs one observable evaluation per phase-space point.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">postprocessing_histograms</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>Fill the histograms with the final events, including their scale and PDF weights.
-Plots and the HwU file are made from these.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">make_plots</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>Plot the histograms into <code class="docutils literal notranslate"><span class="pre">Events/&lt;run&gt;/plots</span></code>. This needs <code class="docutils literal notranslate"><span class="pre">matplotlib</span></code>. Without it
-the numbers are still written to <code class="docutils literal notranslate"><span class="pre">info.json</span></code>.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">write_hwu</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Also write the histograms as <code class="docutils literal notranslate"><span class="pre">MADatLO.HwU</span></code>. This is the format MG5_aMC writes as
-<code class="docutils literal notranslate"><span class="pre">MADatNLO.HwU</span></code> for NLO runs, with the same conventions: the cross section per bin
-(not divided by the bin width, unlike the plots), and the same scale-variation
-columns. <code class="docutils literal notranslate"><span class="pre">madgraph/various/histograms.py</span></code> reads both files together.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">verbosity</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>)</dt><dd><p>Amount of console output: <code class="docutils literal notranslate"><span class="pre">silent</span></code>, <code class="docutils literal notranslate"><span class="pre">pretty</span></code> or <code class="docutils literal notranslate"><span class="pre">log</span></code>. <code class="docutils literal notranslate"><span class="pre">auto</span></code> is <code class="docutils literal notranslate"><span class="pre">pretty</span></code> in
 a terminal and <code class="docutils literal notranslate"><span class="pre">log</span></code> otherwise.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">dummy_matrix_element</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Skip the matrix element evaluation. This is meant for testing the phase-space sampling.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">dummy_matrix_element</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Skip the matrix element evaluation. This is meant for testing the phase-space sampling.
+Hidden: written to the card only once changed.</p>
 </dd>
 </dl>
 </section>
@@ -869,8 +873,9 @@ environment variable.</p>
 <h2>[cluster]<a class="headerlink" href="#cluster" title="Link to this heading">¶</a></h2>
 <p>Cluster mode trains the subprocesses and generates the events in parallel batch jobs.
 It is off by default, and then this section, <code class="docutils literal notranslate"><span class="pre">[cluster_train]</span></code> and <code class="docutils literal notranslate"><span class="pre">[cluster_deploy]</span></code>
-are left out of the card until <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">cluster.enable</span> <span class="pre">true</span></code> (or one of their settings differs
-from the site default in <code class="docutils literal notranslate"><span class="pre">input/default_run_card_mg7.toml</span></code>, where their defaults come from). See <a class="reference internal" href="cluster.html"><span class="doc">Cluster mode</span></a> for how it works.</p>
+are a hidden option group, left out of the card until <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">cluster.enable</span> <span class="pre">true</span></code>,
+<code class="docutils literal notranslate"><span class="pre">update</span> <span class="pre">cluster</span></code>, or one of their settings differs from the site default in
+<code class="docutils literal notranslate"><span class="pre">input/default_run_card_mg7.toml</span></code>, where their defaults come from. See <a class="reference internal" href="cluster.html"><span class="doc">Cluster mode</span></a> for how it works.</p>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">enable</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Run on a batch system. Independent of the <code class="docutils literal notranslate"><span class="pre">run_mode</span></code> of the MadGraph configuration.</p>
 </dd>
@@ -919,6 +924,33 @@ in the <code class="docutils literal notranslate"><span class="pre">[cluster_tra
 <code class="docutils literal notranslate"><span class="pre">run.device</span> <span class="pre">=</span> <span class="pre">[&quot;cuda&quot;]</span></code> in <code class="docutils literal notranslate"><span class="pre">[cluster_train]</span></code> and <code class="docutils literal notranslate"><span class="pre">run.device</span> <span class="pre">=</span> <span class="pre">[&quot;cpu&quot;]</span></code> in
 <code class="docutils literal notranslate"><span class="pre">[cluster_deploy]</span></code> to train on GPUs and generate on CPUs. See <a class="reference internal" href="cluster.html"><span class="doc">Cluster mode</span></a>.</p>
 </section>
+<section id="output">
+<h2>[output]<a class="headerlink" href="#output" title="Link to this heading">¶</a></h2>
+<p>The files of a run: the event file format, its compression, and the name of the run folder.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">run_name</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;run&quot;</span></code>)</dt><dd><p>Name of the run. Events are written to <code class="docutils literal notranslate"><span class="pre">Events/&lt;run_name&gt;_NN</span></code>, where <code class="docutils literal notranslate"><span class="pre">NN</span></code> counts up
+from 01.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">output_format</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;lhe_npy&quot;</span></code>)</dt><dd><p>Format of the event file. <code class="docutils literal notranslate"><span class="pre">compact_npy</span></code> and <code class="docutils literal notranslate"><span class="pre">lhe_npy</span></code> write <code class="docutils literal notranslate"><span class="pre">events.npy</span></code> together
+with a <code class="docutils literal notranslate"><span class="pre">header.lhe</span></code> that carries the run and param card and the cross-section
+information. <code class="docutils literal notranslate"><span class="pre">lhe</span></code> writes a compressed LHE file directly. Tools that read LHE files,
+such as the shower programs, need <code class="docutils literal notranslate"><span class="pre">lhe</span></code>. The launch question switches to it when you
+select one of them.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">use_pigz</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>)</dt><dd><p>gzip the LHE output with pigz when it is installed. <code class="docutils literal notranslate"><span class="pre">auto</span></code> detects it; <code class="docutils literal notranslate"><span class="pre">false</span></code> uses gzip.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">lhe_compression</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;auto&quot;</span></code>)</dt><dd><p>Where the LHE output is gzipped. <code class="docutils literal notranslate"><span class="pre">auto</span></code> uses a GPU when madspace was built with nvCOMP,
+otherwise the CPU. <code class="docutils literal notranslate"><span class="pre">cpu</span></code> always uses pigz or gzip.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">lhe_gzip_algorithm</span></code> (<code class="docutils literal notranslate"><span class="pre">5</span></code>)</dt><dd><p>nvCOMP gzip algorithm for the GPU compression: <code class="docutils literal notranslate"><span class="pre">0</span></code> is the fastest and <code class="docutils literal notranslate"><span class="pre">5</span></code> gives the
+smallest output.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">time_of_flight</span></code> (<code class="docutils literal notranslate"><span class="pre">-1.0</span></code>)</dt><dd><p>Threshold in mm below which the invariant livetime is not written. <code class="docutils literal notranslate"><span class="pre">-1</span></code> disables the
+step. The step is a post-processing of the LHE file of MadEvent, so enabling it switches
+<code class="docutils literal notranslate"><span class="pre">output_format</span></code> to <code class="docutils literal notranslate"><span class="pre">&quot;lhe&quot;</span></code>.</p>
+</dd>
+</dl>
+</section>
 <section id="beam">
 <h2>[beam]<a class="headerlink" href="#beam" title="Link to this heading">¶</a></h2>
 <dl class="simple">
@@ -938,30 +970,11 @@ download a set that is not installed. The default is the 5-flavor NNPDF 4.0 LO s
 which has 100 error members for the PDF variations. With different sets on the two
 beams the PDF member variations of <code class="docutils literal notranslate"><span class="pre">[systematics]</span></code> are dropped.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">fixed_ren_scale</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>), <code class="docutils literal notranslate"><span class="pre">fixed_fact_scale</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Use the fixed values below instead of the dynamical scale choice. The two switches act
-on the renormalization and the factorization scale separately.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">ren_scale</span></code> (<code class="docutils literal notranslate"><span class="pre">91.188</span></code>), <code class="docutils literal notranslate"><span class="pre">fact_scale1</span></code> (<code class="docutils literal notranslate"><span class="pre">91.188</span></code>), <code class="docutils literal notranslate"><span class="pre">fact_scale2</span></code> (<code class="docutils literal notranslate"><span class="pre">91.188</span></code>)</dt><dd><p>Fixed scales in GeV. They are only used when the matching switch is on.
-<code class="docutils literal notranslate"><span class="pre">fact_scale1</span></code> and <code class="docutils literal notranslate"><span class="pre">fact_scale2</span></code> are the factorization scales of the two beams.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">dynamical_scale_choice</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;half_transverse_mass&quot;</span></code>)</dt><dd><p>Scale used when it is not fixed. <code class="docutils literal notranslate"><span class="pre">transverse_energy</span></code> is the sum of the transverse
-energies of the final-state particles. <code class="docutils literal notranslate"><span class="pre">transverse_mass</span></code> is the sum of their
-transverse masses, <span class="math notranslate nohighlight">\(H_T\)</span>. <code class="docutils literal notranslate"><span class="pre">half_transverse_mass</span></code> is <span class="math notranslate nohighlight">\(H_T/2\)</span>.
-<code class="docutils literal notranslate"><span class="pre">partonic_energy</span></code> is the partonic center-of-mass energy. <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">dynamical_scale_choice</span>
-<span class="pre">HT/4</span></code> is a shortcut that sets this parameter and <code class="docutils literal notranslate"><span class="pre">scale_factor</span></code> to give
-<span class="math notranslate nohighlight">\(H_T/4\)</span>. <code class="docutils literal notranslate"><span class="pre">ckkwl</span></code> is the clustering scale of the diagram, without the
-<span class="math notranslate nohighlight">\(\alpha_s\)</span> and PDF reweighting of MLM merging: MadEvent’s default <code class="docutils literal notranslate"><span class="pre">-1</span></code> for a
-CKKW-L merged sample, where Pythia8 does that reweighting. An <code class="docutils literal notranslate"><span class="pre">[amplicol]</span></code> event is
-clustered along the planar diagrams of its leading-colour flow, which differ from the
-diagrams a madmatrix event is clustered along. Under <code class="docutils literal notranslate"><span class="pre">mlm</span></code> and <code class="docutils literal notranslate"><span class="pre">ckkwl</span></code> the scales
-are those of the clustering: the fixed scales and <code class="docutils literal notranslate"><span class="pre">scale_factor</span></code> are ignored.
-For madmatrix, <code class="docutils literal notranslate"><span class="pre">ckkwl</span></code> scores clusterings with the hidden <code class="docutils literal notranslate"><span class="pre">clustering_measure</span></code>, so
-the scales of jet events differ slightly from MadEvent’s <code class="docutils literal notranslate"><span class="pre">-1</span></code>: higher with the default
-<code class="docutils literal notranslate"><span class="pre">&quot;fxfx&quot;</span></code>, lower with <code class="docutils literal notranslate"><span class="pre">&quot;madevent&quot;</span></code>. The merged cross section barely changes, since Pythia8
-redoes the <span class="math notranslate nohighlight">\(\alpha_s\)</span> reweighting.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">scale_factor</span></code> (<code class="docutils literal notranslate"><span class="pre">1.0</span></code>)</dt><dd><p>Factor applied to the dynamical scale. Fixed scales are not affected. With the default
-choice, <code class="docutils literal notranslate"><span class="pre">scale_factor</span> <span class="pre">=</span> <span class="pre">0.5</span></code> gives <span class="math notranslate nohighlight">\(H_T/4\)</span>.</p>
+<dt><code class="docutils literal notranslate"><span class="pre">me_frame</span></code> (<code class="docutils literal notranslate"><span class="pre">[]</span></code>)</dt><dd><p>External particles whose momenta define the rest frame the matrix element is
+evaluated in, for a matrix element that is not Lorentz invariant (a polarised one).
+<code class="docutils literal notranslate"><span class="pre">[]</span></code> applies no boost, <code class="docutils literal notranslate"><span class="pre">[1,</span> <span class="pre">2]</span></code> is the partonic centre of mass. A polarised
+process gets the default of MadEvent and <a class="reference external" href="mailto:aMC&#37;&#52;&#48;NLO">aMC<span>&#64;</span>NLO</a>, set in the process definition.
+Hidden: written to the card only once it differs from <code class="docutils literal notranslate"><span class="pre">[]</span></code>.</p>
 </dd>
 </dl>
 </section>
@@ -1020,24 +1033,8 @@ set, and <code class="docutils literal notranslate"><span class="pre">&quot;&lt;
 recomputed later. In LHE files they go into an <code class="docutils literal notranslate"><span class="pre">&lt;mgrwt&gt;</span></code> block.</p>
 </dd>
 </dl>
-</section>
-<section id="postprocessing">
-<h2>[postprocessing]<a class="headerlink" href="#postprocessing" title="Link to this heading">¶</a></h2>
-<p>This section drives the older post-processing steps of MadEvent. They work on the LHE
-file, so enabling one switches <code class="docutils literal notranslate"><span class="pre">output_format</span></code> to <code class="docutils literal notranslate"><span class="pre">&quot;lhe&quot;</span></code>.</p>
-<dl class="simple">
-<dt><code class="docutils literal notranslate"><span class="pre">time_of_flight</span></code> (<code class="docutils literal notranslate"><span class="pre">-1.0</span></code>)</dt><dd><p>Threshold in mm below which the invariant livetime is not written. <code class="docutils literal notranslate"><span class="pre">-1</span></code> disables the
-step.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">systematics</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Recompute the uncertainties with <code class="docutils literal notranslate"><span class="pre">systematics.py</span></code> after the run. This only runs if
-<code class="docutils literal notranslate"><span class="pre">enable</span></code> in <code class="docutils literal notranslate"><span class="pre">[systematics]</span></code> is false, since the native computation replaces it.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">systematics_mur</span></code> (<code class="docutils literal notranslate"><span class="pre">[0.5,</span> <span class="pre">1.0,</span> <span class="pre">2.0]</span></code>), <code class="docutils literal notranslate"><span class="pre">systematics_muf</span></code> (<code class="docutils literal notranslate"><span class="pre">[0.5,</span> <span class="pre">1.0,</span> <span class="pre">2.0]</span></code>), <code class="docutils literal notranslate"><span class="pre">systematics_pdf</span></code> (<code class="docutils literal notranslate"><span class="pre">[&quot;errorset&quot;]</span></code>)</dt><dd><p>Scale factors and PDF variations for <code class="docutils literal notranslate"><span class="pre">systematics.py</span></code>.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">systematics_str_options</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;&quot;</span></code>)</dt><dd><p>Extra command-line options passed to <code class="docutils literal notranslate"><span class="pre">systematics.py</span></code>, for example
-<code class="docutils literal notranslate"><span class="pre">&quot;--together=mur,muf&quot;</span></code>.</p>
-</dd>
-</dl>
+<p>The scale and PDF variations of <code class="docutils literal notranslate"><span class="pre">systematics.py</span></code> are computed by <code class="docutils literal notranslate"><span class="pre">[systematics]</span></code>
+instead.</p>
 </section>
 <section id="vegas">
 <h2>[vegas]<a class="headerlink" href="#vegas" title="Link to this heading">¶</a></h2>
@@ -1062,6 +1059,9 @@ Larger batches give a better grid at a proportionally higher cost.</p>
 </section>
 <section id="phasespace">
 <h2>[phasespace]<a class="headerlink" href="#phasespace" title="Link to this heading">¶</a></h2>
+<p>Only <code class="docutils literal notranslate"><span class="pre">merge_subprocesses</span></code> and <code class="docutils literal notranslate"><span class="pre">sde_strategy</span></code> are written to the card by default. The other
+entries are hidden: they keep their defaults, and are written to the card only once
+changed (<code class="docutils literal notranslate"><span class="pre">set</span></code> takes them as any other).</p>
 <dl class="simple">
 <dt><code class="docutils literal notranslate"><span class="pre">mode</span></code> (<code class="docutils literal notranslate"><span class="pre">&quot;multichannel&quot;</span></code>)</dt><dd><p>Strategy for the phase space. <code class="docutils literal notranslate"><span class="pre">multichannel</span></code> uses one channel per diagram. <code class="docutils literal notranslate"><span class="pre">flat</span></code>
 uses a single channel described by <code class="docutils literal notranslate"><span class="pre">flat_mode</span></code>. <code class="docutils literal notranslate"><span class="pre">both</span></code> surveys the multichannel
@@ -1111,14 +1111,27 @@ By default it is skipped when the run is certain to use VEGAS: <code class="docu
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">invariant_power</span></code> (<code class="docutils literal notranslate"><span class="pre">0.7</span></code>)</dt><dd><p>Exponent <span class="math notranslate nohighlight">\(p\)</span> of the <span class="math notranslate nohighlight">\(1/s^p\)</span> sampling of time-like invariants.</p>
 </dd>
-<dt><code class="docutils literal notranslate"><span class="pre">bw_cutoff</span></code> (<code class="docutils literal notranslate"><span class="pre">15</span></code>)</dt><dd><p>Breit-Wigner propagators are sampled within this many widths of the mass. The same
-window applies to propagators excluded with <code class="docutils literal notranslate"><span class="pre">$</span></code>.</p>
-</dd>
-<dt><code class="docutils literal notranslate"><span class="pre">cut_decays</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Apply the cuts to the decay products of on-shell particles. As in MadEvent, they are
-left uncut by default.</p>
-</dd>
 <dt><code class="docutils literal notranslate"><span class="pre">adaptive_symmetry_sampling</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>Learn the probabilities of the permutations of identical particles instead of using
 equal ones.</p>
+</dd>
+</dl>
+</section>
+<section id="merging">
+<h2>[merging]<a class="headerlink" href="#merging" title="Link to this heading">¶</a></h2>
+<p>MLM and CKKW-L merging. The section is shown in the card once the sample is merged: an MLM
+sample (<code class="docutils literal notranslate"><span class="pre">dynamical_scale_choice</span> <span class="pre">=</span> <span class="pre">&quot;mlm&quot;</span></code> with <code class="docutils literal notranslate"><span class="pre">xqcut</span> <span class="pre">&gt;</span> <span class="pre">0</span></code>) or a CKKW-L one (<code class="docutils literal notranslate"><span class="pre">ktdurham</span></code>
+or <code class="docutils literal notranslate"><span class="pre">ptlund</span></code> set). Otherwise it is hidden.</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">jet_radius</span></code> (<code class="docutils literal notranslate"><span class="pre">1.0</span></code>)</dt><dd><p>Jet radius of the MLM clustering measure, used with <code class="docutils literal notranslate"><span class="pre">dynamical_scale_choice</span> <span class="pre">=</span> <span class="pre">&quot;mlm&quot;</span></code>.
+Hidden: written to the card only once changed.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">xqcut</span></code> (<code class="docutils literal notranslate"><span class="pre">0.0</span></code>)</dt><dd><p>MLM merging cut on the <span class="math notranslate nohighlight">\(k_T\)</span> of the matrix-element jets, in GeV, with
+<code class="docutils literal notranslate"><span class="pre">dynamical_scale_choice</span> <span class="pre">=</span> <span class="pre">&quot;mlm&quot;</span></code>: an emission below it is left to the parton
+shower, so the event is dropped. <code class="docutils literal notranslate"><span class="pre">0</span></code> disables it.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">auto_ptj_mjj</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>With a merging cut in place, raise the jet <span class="math notranslate nohighlight">\(p_T\)</span> and pair-mass cuts to <code class="docutils literal notranslate"><span class="pre">xqcut</span></code>,
+which the jets are bounded by anyway, and drop the jet <span class="math notranslate nohighlight">\(\Delta R\)</span> cuts that
+<code class="docutils literal notranslate"><span class="pre">xqcut</span></code> supersedes. As in MadEvent’s <code class="docutils literal notranslate"><span class="pre">auto_ptj_mjj</span></code>.</p>
 </dd>
 <dt><code class="docutils literal notranslate"><span class="pre">ktdurham</span></code> (<code class="docutils literal notranslate"><span class="pre">0.0</span></code>)</dt><dd><p>CKKW-L merging with Pythia8: the smallest Durham <span class="math notranslate nohighlight">\(k_T\)</span> an event may have, taken
 over the <span class="math notranslate nohighlight">\(p_T\)</span> of each merging parton (hadron colliders only) and the
@@ -1304,9 +1317,37 @@ minima, the scattering angle. This only improves efficiency. The result is the s
 <p>Use <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">no_parton_cut</span></code> to remove all cuts. <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">&lt;selection&gt;-&lt;observable&gt;.min</span> <span class="pre">&lt;value&gt;</span></code>
 changes a single bound. Processes without initial-state particles, such as decays, start
 without cuts.</p>
+<dl class="simple" id="run-card-histograms">
+<dt><code class="docutils literal notranslate"><span class="pre">max_jet_flavor</span></code> (<code class="docutils literal notranslate"><span class="pre">4</span></code>)</dt><dd><p>Heaviest quark flavour the jet cuts and the MLM back-clustering treat as a jet: the
+<code class="docutils literal notranslate"><span class="pre">jet</span></code> multiparticle follows it (<code class="docutils literal notranslate"><span class="pre">5</span></code> in a 5-flavour model, where the b is a jet).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">bw_cutoff</span></code> (<code class="docutils literal notranslate"><span class="pre">15</span></code>)</dt><dd><p>Breit-Wigner propagators are sampled within this many widths of the mass. The same
+window applies to propagators excluded with <code class="docutils literal notranslate"><span class="pre">$</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">cut_decays</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Apply the cuts to the decay products of on-shell particles. As in MadEvent, they are
+left uncut by default.</p>
+</dd>
+</dl>
 </section>
 <section id="histograms">
-<span id="run-card-histograms"></span><h2>[histograms]<a class="headerlink" href="#histograms" title="Link to this heading">¶</a></h2>
+<h2>[histograms]<a class="headerlink" href="#histograms" title="Link to this heading">¶</a></h2>
+<p>Output settings of the plots first, then the observables:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">weighted_histograms</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Fill the <a class="reference internal" href="#run-card-histograms"><span class="std std-ref">histograms</span></a> with weighted events during the
+integration. This costs one observable evaluation per phase-space point.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">postprocessing_histograms</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>Fill the histograms with the final events, including their scale and PDF weights.
+Plots and the HwU file are made from these.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">make_plots</span></code> (<code class="docutils literal notranslate"><span class="pre">true</span></code>)</dt><dd><p>Plot the histograms into <code class="docutils literal notranslate"><span class="pre">Events/&lt;run&gt;/plots</span></code>. This needs <code class="docutils literal notranslate"><span class="pre">matplotlib</span></code>. Without it
+the numbers are still written to <code class="docutils literal notranslate"><span class="pre">info.json</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">write_hwu</span></code> (<code class="docutils literal notranslate"><span class="pre">false</span></code>)</dt><dd><p>Also write the histograms as <code class="docutils literal notranslate"><span class="pre">MADatLO.HwU</span></code>. This is the format MG5_aMC writes as
+<code class="docutils literal notranslate"><span class="pre">MADatNLO.HwU</span></code> for NLO runs, with the same conventions: the cross section per bin
+(not divided by the bin width, unlike the plots), and the same scale-variation
+columns. <code class="docutils literal notranslate"><span class="pre">madgraph/various/histograms.py</span></code> reads both files together.</p>
+</dd>
+</dl>
 <p>Histograms of observables, filled during the run and written to <code class="docutils literal notranslate"><span class="pre">Events/&lt;run&gt;/info.json</span></code>.
 They use the same observable names as the cuts. Each entry needs a range and a number of
 bins:</p>
@@ -1322,8 +1363,8 @@ the absolute value of the weights. A fully unweighted sample is a spike at 1, an
 negative weights (from an interference) a spike at -1.</p>
 <p><code class="docutils literal notranslate"><span class="pre">output</span></code> writes a default set of histograms for the final state of your process. <code class="docutils literal notranslate"><span class="pre">set</span>
 <span class="pre">histograms</span> <span class="pre">OFF</span></code> at the launch question removes them and <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">histograms</span> <span class="pre">default</span></code>
-restores them. The parameters <code class="docutils literal notranslate"><span class="pre">weighted_histograms</span></code>, <code class="docutils literal notranslate"><span class="pre">postprocessing_histograms</span></code>,
-<code class="docutils literal notranslate"><span class="pre">make_plots</span></code> and <code class="docutils literal notranslate"><span class="pre">write_hwu</span></code> in <code class="docutils literal notranslate"><span class="pre">[run]</span></code> control what is done with them.</p>
+restores them. The settings above, <code class="docutils literal notranslate"><span class="pre">weighted_histograms</span></code>, <code class="docutils literal notranslate"><span class="pre">postprocessing_histograms</span></code>,
+<code class="docutils literal notranslate"><span class="pre">make_plots</span></code> and <code class="docutils literal notranslate"><span class="pre">write_hwu</span></code>, control what is done with them.</p>
 </section>
 <section id="madnis">
 <h2>[madnis]<a class="headerlink" href="#madnis" title="Link to this heading">¶</a></h2>
@@ -1504,15 +1545,17 @@ outputs, softmaxes and Jacobians, stays in double precision.</p>
             <ul>
 <li><a class="reference internal" href="#">Run card</a><ul>
 <li><a class="reference internal" href="#editing-the-run-card">Editing the run card</a></li>
+<li><a class="reference internal" href="#hidden-option-groups">Hidden option groups</a></li>
 <li><a class="reference internal" href="#run">[run]</a></li>
 <li><a class="reference internal" href="#gridpack">[gridpack]</a></li>
 <li><a class="reference internal" href="#cluster">[cluster]</a></li>
+<li><a class="reference internal" href="#output">[output]</a></li>
 <li><a class="reference internal" href="#beam">[beam]</a></li>
 <li><a class="reference internal" href="#generation">[generation]</a></li>
 <li><a class="reference internal" href="#systematics">[systematics]</a></li>
-<li><a class="reference internal" href="#postprocessing">[postprocessing]</a></li>
 <li><a class="reference internal" href="#vegas">[vegas]</a></li>
 <li><a class="reference internal" href="#phasespace">[phasespace]</a></li>
+<li><a class="reference internal" href="#merging">[merging]</a></li>
 <li><a class="reference internal" href="#custom-functions">[custom_functions]</a></li>
 <li><a class="reference internal" href="#surrogate">[surrogate]</a></li>
 <li><a class="reference internal" href="#amplicol">[amplicol]</a></li>

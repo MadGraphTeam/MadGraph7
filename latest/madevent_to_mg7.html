@@ -760,7 +760,7 @@ translated, because it needs a group of your own.</p>
 <p><code class="docutils literal notranslate"><span class="pre">fixed_fac_scale</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed_fac_scale1</span></code>, <code class="docutils literal notranslate"><span class="pre">fixed_fac_scale2</span></code> and <code class="docutils literal notranslate"><span class="pre">maxjetflavor</span></code> are
 translated as in the tables below, and so are the numbers of <code class="docutils literal notranslate"><span class="pre">dynamical_scale_choice</span></code>
 (<code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">dynamical_scale_choice</span> <span class="pre">3</span></code>) and <code class="docutils literal notranslate"><span class="pre">sde_strategy</span></code>. MG7 has one
-<code class="docutils literal notranslate"><span class="pre">beam.fixed_fact_scale</span></code> for both beams, so different <code class="docutils literal notranslate"><span class="pre">fixed_fac_scale1</span></code> and
+<code class="docutils literal notranslate"><span class="pre">scale.fixed_fact_scale</span></code> for both beams, so different <code class="docutils literal notranslate"><span class="pre">fixed_fac_scale1</span></code> and
 <code class="docutils literal notranslate"><span class="pre">fixed_fac_scale2</span></code> are reported once the launch question closes.</p>
 <p>All other settings must use their new names.</p>
 </section>
@@ -822,29 +822,29 @@ as <code class="docutils literal notranslate"><span class="pre">beam.upc_flux</s
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">fixed_ren_scale</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">beam.fixed_ren_scale</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">scale.fixed_ren_scale</span></code></p></td>
 <td></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">fixed_fac_scale</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">beam.fixed_fact_scale</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">scale.fixed_fact_scale</span></code></p></td>
 <td><p>A single switch for both beams.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">scale</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">beam.ren_scale</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">scale.ren_scale</span></code></p></td>
 <td></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">dsqrt_q2fact1</span></code>, <code class="docutils literal notranslate"><span class="pre">dsqrt_q2fact2</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">beam.fact_scale1</span></code>, <code class="docutils literal notranslate"><span class="pre">beam.fact_scale2</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">scale.fact_scale1</span></code>, <code class="docutils literal notranslate"><span class="pre">scale.fact_scale2</span></code></p></td>
 <td></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">dynamical_scale_choice</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">beam.dynamical_scale_choice</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">scale.dynamical_scale_choice</span></code></p></td>
 <td><p>A name instead of a number. <code class="docutils literal notranslate"><span class="pre">1</span></code> is <code class="docutils literal notranslate"><span class="pre">&quot;transverse_energy&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">2</span></code> is
 <code class="docutils literal notranslate"><span class="pre">&quot;transverse_mass&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">3</span></code> is <code class="docutils literal notranslate"><span class="pre">&quot;half_transverse_mass&quot;</span></code> and <code class="docutils literal notranslate"><span class="pre">4</span></code> is
 <code class="docutils literal notranslate"><span class="pre">&quot;partonic_energy&quot;</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">scalefact</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">beam.scale_factor</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">scale.scale_factor</span></code></p></td>
 <td><p>Applies to the dynamical scale only.</p></td>
 </tr>
 </tbody>
@@ -880,7 +880,7 @@ instead. Otherwise the MG7 default is <code class="docutils literal notranslate"
 <td><p><code class="docutils literal notranslate"><span class="pre">-1</span></code> instead of <code class="docutils literal notranslate"><span class="pre">0</span></code> for a random seed.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">run_tag</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">run.run_name</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">output.run_name</span></code></p></td>
 <td><p>Similar, but the run directory is <code class="docutils literal notranslate"><span class="pre">Events/&lt;run_name&gt;_NN</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">gridpack</span></code></p></td>
@@ -888,11 +888,11 @@ instead. Otherwise the MG7 default is <code class="docutils literal notranslate"
 <td><p>See <code class="docutils literal notranslate"><span class="pre">[gridpack]</span></code> for further options.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">bwcutoff</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">phasespace.bw_cutoff</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">cuts.bw_cutoff</span></code></p></td>
 <td></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">cut_decays</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">phasespace.cut_decays</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">cuts.cut_decays</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">false</span></code> by default in both.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">SDE_strategy</span></code></p></td>
@@ -910,7 +910,7 @@ up to the charm quark and the gluon. Add <code class="docutils literal notransla
 <code class="docutils literal notranslate"><span class="pre">systematics.mur</span></code>, <code class="docutils literal notranslate"><span class="pre">muf</span></code> and <code class="docutils literal notranslate"><span class="pre">pdf</span></code>.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">time_of_flight</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">postprocessing.time_of_flight</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">output.time_of_flight</span></code></p></td>
 <td></td>
 </tr>
 </tbody>
@@ -927,7 +927,7 @@ no counterpart. The integration and the hardware are configured in <code class="
 multiplicities (for example <code class="docutils literal notranslate"><span class="pre">p</span> <span class="pre">p</span> <span class="pre">&gt;</span> <span class="pre">w+</span></code> with <code class="docutils literal notranslate"><span class="pre">add</span> <span class="pre">process</span> <span class="pre">p</span> <span class="pre">p</span> <span class="pre">&gt;</span> <span class="pre">w+</span> <span class="pre">j</span></code>): the scale choice
 <code class="docutils literal notranslate"><span class="pre">&quot;mlm&quot;</span></code>, a merging cut <code class="docutils literal notranslate"><span class="pre">xqcut</span> <span class="pre">=</span> <span class="pre">30</span></code> GeV and no jet <code class="docutils literal notranslate"><span class="pre">delta_r</span></code> cuts. The shower then does
 the jet matching (<code class="docutils literal notranslate"><span class="pre">ickkw</span> <span class="pre">=</span> <span class="pre">1</span></code>, <code class="docutils literal notranslate"><span class="pre">JetMatching:qCut</span> <span class="pre">=</span> <span class="pre">1.5</span> <span class="pre">xqcut</span></code>, and
-<code class="docutils literal notranslate"><span class="pre">JetMatching:coneRadius</span></code> equal to <code class="docutils literal notranslate"><span class="pre">beam.jet_radius</span></code>). It is not set up for an output
+<code class="docutils literal notranslate"><span class="pre">JetMatching:coneRadius</span></code> equal to <code class="docutils literal notranslate"><span class="pre">merging.jet_radius</span></code>). It is not set up for an output
 with <code class="docutils literal notranslate"><span class="pre">[amplicol]</span></code> subprocesses.</p>
 <p>By default MG7 reads the scales off the clustering in its own way. To cluster the events as
 MadEvent does, type <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">mlm</span> <span class="pre">madevent</span></code> in the launch question. It turns MLM merging on and
@@ -954,20 +954,20 @@ converted the same way. <code class="docutils literal notranslate"><span class="
 </thead>
 <tbody>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">ickkw</span> <span class="pre">=</span> <span class="pre">1</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">beam.dynamical_scale_choice</span> <span class="pre">=</span> <span class="pre">&quot;mlm&quot;</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">scale.dynamical_scale_choice</span> <span class="pre">=</span> <span class="pre">&quot;mlm&quot;</span></code></p></td>
 <td><p>The events are clustered back and their scales set as in MadEvent. Merging is
 on when <code class="docutils literal notranslate"><span class="pre">xqcut</span></code> is positive as well.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">xqcut</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">phasespace.xqcut</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">merging.xqcut</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">0</span></code> disables the merging cut.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">auto_ptj_mjj</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">phasespace.auto_ptj_mjj</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">merging.auto_ptj_mjj</span></code></p></td>
 <td><p><code class="docutils literal notranslate"><span class="pre">true</span></code> by default in both.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">maxjetflavor</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">beam.max_jet_flavor</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">cuts.max_jet_flavor</span></code></p></td>
 <td><p>The heaviest quark that the clustering treats as a jet.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">pdfwgt</span></code></p></td>
@@ -975,7 +975,7 @@ on when <code class="docutils literal notranslate"><span class="pre">xqcut</span
 <td><p>Hidden in both.</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">d</span></code></p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">beam.jet_radius</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">merging.jet_radius</span></code></p></td>
 <td><p>The jet radius <span class="math notranslate nohighlight">\(D\)</span> of the clustering measure, 1 by default. Hidden in both.
 The shower matches the jets with the same value.</p></td>
 </tr>

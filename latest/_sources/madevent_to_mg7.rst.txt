@@ -31,7 +31,7 @@ translated, because it needs a group of your own.
 ``fixed_fac_scale``, ``fixed_fac_scale1``, ``fixed_fac_scale2`` and ``maxjetflavor`` are
 translated as in the tables below, and so are the numbers of ``dynamical_scale_choice``
 (``set dynamical_scale_choice 3``) and ``sde_strategy``. MG7 has one
-``beam.fixed_fact_scale`` for both beams, so different ``fixed_fac_scale1`` and
+``scale.fixed_fact_scale`` for both beams, so different ``fixed_fac_scale1`` and
 ``fixed_fac_scale2`` are reported once the launch question closes.
 
 All other settings must use their new names.
@@ -75,24 +75,24 @@ Scales
       - ``run_card.toml``
       - Notes
     * - ``fixed_ren_scale``
-      - ``beam.fixed_ren_scale``
+      - ``scale.fixed_ren_scale``
       -
     * - ``fixed_fac_scale``
-      - ``beam.fixed_fact_scale``
+      - ``scale.fixed_fact_scale``
       - A single switch for both beams.
     * - ``scale``
-      - ``beam.ren_scale``
+      - ``scale.ren_scale``
       -
     * - ``dsqrt_q2fact1``, ``dsqrt_q2fact2``
-      - ``beam.fact_scale1``, ``beam.fact_scale2``
+      - ``scale.fact_scale1``, ``scale.fact_scale2``
       -
     * - ``dynamical_scale_choice``
-      - ``beam.dynamical_scale_choice``
+      - ``scale.dynamical_scale_choice``
       - A name instead of a number. ``1`` is ``"transverse_energy"``, ``2`` is
         ``"transverse_mass"``, ``3`` is ``"half_transverse_mass"`` and ``4`` is
         ``"partonic_energy"``.
     * - ``scalefact``
-      - ``beam.scale_factor``
+      - ``scale.scale_factor``
       - Applies to the dynamical scale only.
 
 The MadEvent default ``dynamical_scale_choice = -1`` follows the clustering of the diagram,
@@ -117,16 +117,16 @@ Generation and phase space
       - ``run.seed``
       - ``-1`` instead of ``0`` for a random seed.
     * - ``run_tag``
-      - ``run.run_name``
+      - ``output.run_name``
       - Similar, but the run directory is ``Events/<run_name>_NN``.
     * - ``gridpack``
       - ``gridpack.save_gridpack``
       - See ``[gridpack]`` for further options.
     * - ``bwcutoff``
-      - ``phasespace.bw_cutoff``
+      - ``cuts.bw_cutoff``
       -
     * - ``cut_decays``
-      - ``phasespace.cut_decays``
+      - ``cuts.cut_decays``
       - ``false`` by default in both.
     * - ``SDE_strategy``
       - ``phasespace.sde_strategy``
@@ -140,7 +140,7 @@ Generation and phase space
       - The scale and PDF variations are computed natively. Choose them with
         ``systematics.mur``, ``muf`` and ``pdf``.
     * - ``time_of_flight``
-      - ``postprocessing.time_of_flight``
+      - ``output.time_of_flight``
       -
 
 Technical settings for the MadEvent run engine, such as ``vector_size``, ``nb_warp``,
@@ -155,7 +155,7 @@ As MadEvent, MG7 sets up MLM merging by itself when the process has several jet
 multiplicities (for example ``p p > w+`` with ``add process p p > w+ j``): the scale choice
 ``"mlm"``, a merging cut ``xqcut = 30`` GeV and no jet ``delta_r`` cuts. The shower then does
 the jet matching (``ickkw = 1``, ``JetMatching:qCut = 1.5 xqcut``, and
-``JetMatching:coneRadius`` equal to ``beam.jet_radius``). It is not set up for an output
+``JetMatching:coneRadius`` equal to ``merging.jet_radius``). It is not set up for an output
 with ``[amplicol]`` subprocesses.
 
 By default MG7 reads the scales off the clustering in its own way. To cluster the events as
@@ -177,23 +177,23 @@ converted the same way. ``set mlm mg7`` puts MG7's defaults back.
       - ``run_card.toml``
       - Notes
     * - ``ickkw = 1``
-      - ``beam.dynamical_scale_choice = "mlm"``
+      - ``scale.dynamical_scale_choice = "mlm"``
       - The events are clustered back and their scales set as in MadEvent. Merging is
         on when ``xqcut`` is positive as well.
     * - ``xqcut``
-      - ``phasespace.xqcut``
+      - ``merging.xqcut``
       - ``0`` disables the merging cut.
     * - ``auto_ptj_mjj``
-      - ``phasespace.auto_ptj_mjj``
+      - ``merging.auto_ptj_mjj``
       - ``true`` by default in both.
     * - ``maxjetflavor``
-      - ``beam.max_jet_flavor``
+      - ``cuts.max_jet_flavor``
       - The heaviest quark that the clustering treats as a jet.
     * - ``pdfwgt``
       - ``beam.pdf_reweighting``
       - Hidden in both.
     * - ``d``
-      - ``beam.jet_radius``
+      - ``merging.jet_radius``
       - The jet radius :math:`D` of the clustering measure, 1 by default. Hidden in both.
         The shower matches the jets with the same value.
     * - ``sys_alpsfact``

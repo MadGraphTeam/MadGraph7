@@ -739,7 +739,7 @@
 subprocess after the other. In cluster mode, the subprocesses are trained in parallel on a
 batch system, and the events are generated in parallel as well. It is built on
 <a class="reference internal" href="gridpacks.html"><span class="doc">Gridpacks</span></a>, and steered by the <code class="docutils literal notranslate"><span class="pre">[cluster]</span></code> section of the <a class="reference internal" href="run_card.html"><span class="doc">run card</span></a>. It is off by default, and the cluster sections are then left out of
-<code class="docutils literal notranslate"><span class="pre">Cards/run_card.toml</span></code>: <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">cluster.enable</span> <span class="pre">true</span></code> at the launch prompt adds them. The cluster
+<code class="docutils literal notranslate"><span class="pre">Cards/run_card.toml</span></code>: <code class="docutils literal notranslate"><span class="pre">set</span> <span class="pre">cluster.enable</span> <span class="pre">true</span></code> (or <code class="docutils literal notranslate"><span class="pre">update</span> <span class="pre">cluster</span></code>) at the launch prompt adds them. The cluster
 setup of a site, like its batch system and queues, goes into the cluster sections of
 <code class="docutils literal notranslate"><span class="pre">input/default_run_card_mg7.toml</span></code>: a run card without these sections takes their values
 whenever it is loaded, so they also hold for processes created before.</p>
@@ -775,8 +775,8 @@ each with another seed, on the devices set in <code class="docutils literal notr
 to <code class="docutils literal notranslate"><span class="pre">Events/&lt;run_name&gt;_NN</span></code>, in the <code class="docutils literal notranslate"><span class="pre">output_format</span></code> of the run card. The cross
 section is the mean of the cross sections of the jobs weighted with their number of
 events, which is what the concatenated events measure, and its error follows from the
-independence of the jobs. The legacy post-processing of the <code class="docutils literal notranslate"><span class="pre">[postprocessing]</span></code>
-section is run on the result.</p></li>
+independence of the jobs. The LHE post-processing of the <code class="docutils literal notranslate"><span class="pre">[output]</span></code>
+section (<code class="docutils literal notranslate"><span class="pre">time_of_flight</span></code>) is run on the result.</p></li>
 </ol>
 <p>With <code class="docutils literal notranslate"><span class="pre">mode</span> <span class="pre">=</span> <span class="pre">&quot;gridpack_only&quot;</span></code>, the run stops after the merging and the merged
 gridpack is written to <code class="docutils literal notranslate"><span class="pre">Events/&lt;run_name&gt;_NN/gridpack</span></code>. It is a normal gridpack, see
