@@ -133,6 +133,10 @@ def _run_madspin(command_file):
     paths of the file are relative to it, so that the banner MadSpin writes
     names no directory of this run); raise on failure."""
     import MadSpin.interface_madspin as interface_madspin
+    import madgraph
+    # which MadGraph runs this: the one shipped with a gridpack, normally
+    logger.info('MadSpin runs with the MadGraph Python in %s',
+                os.path.dirname(os.path.dirname(os.path.abspath(madgraph.__file__))))
     previous = os.getcwd()
     os.chdir(os.path.dirname(os.path.abspath(command_file)))
     try:
