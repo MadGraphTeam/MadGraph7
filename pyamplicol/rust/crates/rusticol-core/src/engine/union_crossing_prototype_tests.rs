@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: 0BSD
+
 //! WP-B crossing prototype (test only). A template program evaluated at
 //! caller-signed momenta `q[r] = sigma_r * p[pi_r]` must equal the crossed
 //! member's own program. The hook below appends an assignment with an explicit,

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: 0BSD
+
 //! Cross-side relabelling (`rusticol.flavour-union-relabelling.v2`): a template slot
 //! symmetry may map a crossable slot to the opposite side with the same all-outgoing
 //! flavour. The relabelled assignment is crossed and describes the same member event.

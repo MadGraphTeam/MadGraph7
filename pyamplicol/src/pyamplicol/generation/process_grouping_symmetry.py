@@ -51,6 +51,7 @@ from collections.abc import Collection, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from itertools import permutations
 
+from .._internal.physics.symbols import symbols as symbol_registry
 from ..models.base import Model
 from ..models.contracts import CompiledModelIR
 from .process_grouping import GroupingProcess, LegMapping, ParticleTable
@@ -136,9 +137,9 @@ _BUILTIN_C_EVEN_HEADS = frozenset(
         "quark_gluon_weyl_current",
         "qcd_u1_subtraction_current",
         "three_gluon_current",
-        "pyamplicol::two_gluon_to_tensor",
-        "pyamplicol::tensor_gluon_to_gluon",
-        "pyamplicol::gluon_tensor_to_gluon",
+        symbol_registry.qualified_name("two_gluon_to_tensor"),
+        symbol_registry.qualified_name("tensor_gluon_to_gluon"),
+        symbol_registry.qualified_name("gluon_tensor_to_gluon"),
         "three_vector_current",
         "two_vector_to_tensor",
         "two_vector_to_scalar",
