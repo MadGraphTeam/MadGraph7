@@ -15,14 +15,14 @@
   "lib": "9",
   "npoints": 10,
   "status": "ok",
-  "finite": -6.753597065940425,
-  "single": 7.12322531777658e-16,
+  "finite": -6.753597065940426,
+  "single": 7.123225317776582e-16,
   "double": 0.0,
   "max_deviation": 4.803089071415067e-14,
   "max_pole_deviation": 4.803089071415067e-14,
   "stable": 10,
-  "time_ms": 0.2444355,
-  "accuracy": 7.5028e-13,
+  "time_ms": 0.30707100000000004,
+  "accuracy": 8.3619e-11,
   "return_codes": [
    213
   ]
@@ -43,14 +43,14 @@
   "lib": "9",
   "npoints": 10,
   "status": "ok",
-  "finite": -5.146058743173568,
+  "finite": -5.146058743173569,
   "single": 3.202785976150157e-15,
   "double": 0.0,
   "max_deviation": 2.442308374335503e-07,
   "max_pole_deviation": 2.8849114787230046e-14,
   "stable": 10,
-  "time_ms": 0.45540200000000003,
-  "accuracy": 1.4054e-13,
+  "time_ms": 0.5450929999999999,
+  "accuracy": 3.5327e-12,
   "return_codes": [
    213
   ],
@@ -98,14 +98,14 @@
   "lib": "9",
   "npoints": 10,
   "status": "ok",
-  "finite": -10.666666666666663,
-  "single": 7.237326193692753e-16,
+  "finite": -10.666666666666666,
+  "single": 7.237326193692754e-16,
   "double": 0.0,
-  "max_deviation": 1.7369582864862632e-14,
-  "max_pole_deviation": 1.7369582864862632e-14,
+  "max_deviation": 1.7369582864862635e-14,
+  "max_pole_deviation": 1.7369582864862635e-14,
   "stable": 10,
-  "time_ms": 0.055221,
-  "accuracy": 5.2923e-15,
+  "time_ms": 0.0504405,
+  "accuracy": 3.5402e-13,
   "return_codes": [
    213
   ]
@@ -126,16 +126,16 @@
   "lib": "9",
   "npoints": 10,
   "status": "ok",
-  "finite": -12.736418511432348,
-  "single": -6.126730430008937,
+  "finite": 24.536421098040233,
+  "single": -1.6297799560328953e-15,
   "double": 0.0,
-  "max_deviation": 6.126730430008951,
-  "max_pole_deviation": 6.126730430008951,
-  "stable": 0,
-  "time_ms": 632.37345,
-  "accuracy": 1.0,
+  "max_deviation": 5.252961793767625e-08,
+  "max_pole_deviation": 1.6638631372057734e-13,
+  "stable": 10,
+  "time_ms": 10.782630000000001,
+  "accuracy": 3.7252e-08,
   "return_codes": [
-   420
+   213
   ]
  },
  {
@@ -214,12 +214,12 @@
   "status": "ok",
   "finite": 14.05080953569361,
   "single": -9.0,
-  "double": -6.000000000000002,
+  "double": -6.000000000000001,
   "max_deviation": 3.5349501104064984e-13,
   "max_pole_deviation": 3.517186542012496e-13,
   "stable": 10,
-  "time_ms": 0.9962134999999999,
-  "accuracy": 1.3792e-11,
+  "time_ms": 1.4825415,
+  "accuracy": 2.1434e-10,
   "return_codes": [
    213
   ]
@@ -246,8 +246,8 @@
   "max_deviation": 1.5276668818842154e-13,
   "max_pole_deviation": 1.438849039914203e-13,
   "stable": 10,
-  "time_ms": 1.004044,
-  "accuracy": 2.7605e-13,
+  "time_ms": 2.2015884999999997,
+  "accuracy": 9.3244e-11,
   "return_codes": [
    213
   ]
@@ -264,14 +264,14 @@
   "lib": "9",
   "npoints": 10,
   "status": "ok",
-  "finite": 75.45188508159772,
-  "single": -14.456880076926076,
-  "double": -9.000000000000002,
+  "finite": 75.45188508159774,
+  "single": -14.456880076926073,
+  "double": -9.0,
   "max_deviation": null,
-  "max_pole_deviation": 1.2434497875801753e-12,
+  "max_pole_deviation": 1.1652900866465643e-12,
   "stable": 10,
-  "time_ms": 54.513665,
-  "accuracy": 6.665e-14,
+  "time_ms": 65.672265,
+  "accuracy": 6.0612e-11,
   "return_codes": [
    213
   ],
@@ -315,14 +315,14 @@
   "lib": "9",
   "npoints": 10,
   "status": "ok",
-  "finite": 57.80341252736828,
-  "single": -13.798216362728146,
-  "double": -9.00000000000001,
+  "finite": 57.803412527368295,
+  "single": -13.798216362728141,
+  "double": -9.000000000000007,
   "max_deviation": null,
-  "max_pole_deviation": 1.3269385590319871e-11,
+  "max_pole_deviation": 1.3198331316743861e-11,
   "stable": 10,
-  "time_ms": 92.476735,
-  "accuracy": 2.1732e-09,
+  "time_ms": 119.87339999999999,
+  "accuracy": 2.1728e-09,
   "return_codes": [
    213
   ],
@@ -367,13 +367,13 @@
   "npoints": 10,
   "status": "ok",
   "finite": -4.188339576062138,
-  "single": -18.476465477282307,
-  "double": -8.999999999999993,
+  "single": -18.47646547728231,
+  "double": -8.99999999999999,
   "max_deviation": null,
-  "max_pole_deviation": 2.616928895804449e-11,
+  "max_pole_deviation": 2.617994709908089e-11,
   "stable": 10,
-  "time_ms": 95.48664,
-  "accuracy": 7.2061e-11,
+  "time_ms": 194.50234999999998,
+  "accuracy": 6.6786e-09,
   "return_codes": [
    213
   ],
@@ -421,14 +421,14 @@
   "lib": "9",
   "npoints": 10,
   "status": "ok",
-  "finite": 2.492805868119144,
-  "single": -4.0,
-  "double": -2.6666666666666665,
+  "finite": 2.4928058681191434,
+  "single": -3.999999999999999,
+  "double": -2.666666666666666,
   "max_deviation": 3.019806626980426e-14,
-  "max_pole_deviation": 2.4868995751603507e-14,
+  "max_pole_deviation": 2.398081733190338e-14,
   "stable": 10,
-  "time_ms": 0.0513155,
-  "accuracy": 5.6984e-14,
+  "time_ms": 0.0519745,
+  "accuracy": 9.7333e-12,
   "return_codes": [
    213
   ]
@@ -455,7 +455,7 @@
   "max_deviation": 1.0900717464608735e-08,
   "max_pole_deviation": 2.3989699116100383e-12,
   "stable": 10,
-  "time_ms": 0.206456,
+  "time_ms": 0.275071,
   "accuracy": 5.0024e-08,
   "return_codes": [
    213

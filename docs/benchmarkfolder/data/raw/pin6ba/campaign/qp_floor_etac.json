@@ -1,0 +1,217 @@
+{
+ "note": "The floor of quadruple precision in e+ e- -> J/psi chi_cJ (and J/psi eta_c)\nwith heavy b and t quarks (10 and 100 TeV) instead of their exclusion: their\ncounterterms and loop groups cancel, and MadLoop rounds every loop group to\ndouble precision before it adds them.\n\n    qp_floor.py OUTDIR OUT.json J|etac [--masses 1e4:1e5,1e3:1e3,...] [--exact]\n\nOUTDIR is a generated output with the b and t quarks in the loops (e.g.\ne+ e- > Jpsi(1|3S11) chic2(1|3P21) / z QED=2 [virt=QCD]; psi_chic.py excludes\nthem, with / t t~ b b~, and so has no such floor), patched in place (pass a\ncopy):\n- MP_TIRUST_LOOP (TIRUST_interface.f) adds the quadruple-precision value of\n  each loop group, before its rounding to double precision, to QF_SUM, and\n  its modulus to QF_ABS;\n- MP_COMPUTE_LOOP_COEFS keeps the quadruple-precision counterterm sum QF_CT;\n- loop_matrix.f prints, after MadLoop's sum in CTModeRun 4, a line\n  QPFLOOR ANS(1,0) QF_CT+QF_SUM sum|parts| sum|groups| QF_CT QF_SUM.\n\nFor each (m_b, m_t) of --masses (GeV), the output is evaluated in CTModeRun 4\nat the nodes of psi_chic.py (or its --exact points), and the angular average\nof the finite part is formed twice: from MadLoop's result (groups rounded to\ndouble precision) and from the quadruple-precision sum (rounded once). Both\nare compared with psi_chic_ref.madloop_c0 (J = 0, 1, 2; for etac, Gong-Wang's\nn_l = 3 value 24.53642 of research/literature.md C.4, seven digits).\n",
+ "case": "etac",
+ "energy": 10.58,
+ "exact": false,
+ "reference": 24.53642,
+ "rows": [
+  {
+   "m_b": 1000.0,
+   "m_t": 1000.0,
+   "points": [
+    {
+     "born": 2.7989890079949292e-08,
+     "c0": 24.536413511441605,
+     "ans": 5.159105457551189e-08,
+     "qp_sum": 5.1591054575542787e-08,
+     "cancellation": 11666.806117529835,
+     "counterterms": -0.0003006257220770749,
+     "loops": 0.00030067731313165045,
+     "c0_qp_sum": 24.5364135114563
+    },
+    {
+     "born": 1.7929463719206097e-08,
+     "c0": 24.536413511450363,
+     "ans": 3.3047644653316484e-08,
+     "qp_sum": 3.3047644653324504e-08,
+     "cancellation": 11666.806117525688,
+     "counterterms": -0.00019257160216224828,
+     "loops": 0.0001926046498069016,
+     "c0_qp_sum": 24.536413511456317
+    },
+    {
+     "born": 1.79294637192061e-08,
+     "c0": 24.53641351145036,
+     "ans": 3.3047644653316484e-08,
+     "qp_sum": 3.3047644653324504e-08,
+     "cancellation": 11666.806117525688,
+     "counterterms": -0.00019257160216224828,
+     "loops": 0.0001926046498069016,
+     "c0_qp_sum": 24.536413511456313
+    },
+    {
+     "born": 2.798989007994929e-08,
+     "c0": 24.536413511441612,
+     "ans": 5.159105457551189e-08,
+     "qp_sum": 5.1591054575542787e-08,
+     "cancellation": 11666.806117529835,
+     "counterterms": -0.0003006257220770749,
+     "loops": 0.00030067731313165045,
+     "c0_qp_sum": 24.536413511456306
+    }
+   ],
+   "c0_madloop": 24.536413511446387,
+   "c0_qp_sum": 24.536413511456313,
+   "max_cancellation": 11666.806117529835,
+   "max_rounding": 5.988799898408672e-13,
+   "dev_madloop": 2.644458161633564e-07,
+   "dev_qp_sum": 2.644454116103687e-07
+  },
+  {
+   "m_b": 10000.0,
+   "m_t": 10000.0,
+   "points": [
+    {
+     "born": 2.7989890079949292e-08,
+     "c0": 24.536420880374997,
+     "ans": 5.1591070069668954e-08,
+     "qp_sum": 5.1591070109421474e-08,
+     "cancellation": 1165127.5324935224,
+     "counterterms": -0.030054762390990503,
+     "loops": 0.030054813982060613,
+     "c0_qp_sum": 24.536420899281072
+    },
+    {
+     "born": 1.7929463719206097e-08,
+     "c0": 24.536420899539895,
+     "ans": 3.304765460419856e-08,
+     "qp_sum": 3.304765460384998e-08,
+     "cancellation": 1165127.5315834654,
+     "counterterms": -0.01925215748755812,
+     "loops": 0.019252190535212727,
+     "c0_qp_sum": 24.53642089928109
+    },
+    {
+     "born": 1.79294637192061e-08,
+     "c0": 24.53642089953989,
+     "ans": 3.304765460419856e-08,
+     "qp_sum": 3.304765460384998e-08,
+     "cancellation": 1165127.5315834654,
+     "counterterms": -0.01925215748755812,
+     "loops": 0.019252190535212727,
+     "c0_qp_sum": 24.536420899281083
+    },
+    {
+     "born": 2.798989007994929e-08,
+     "c0": 24.536420880375,
+     "ans": 5.1591070069668954e-08,
+     "qp_sum": 5.1591070109421474e-08,
+     "cancellation": 1165127.5324935224,
+     "counterterms": -0.030054762390990503,
+     "loops": 0.030054813982060613,
+     "c0_qp_sum": 24.536420899281076
+    }
+   ],
+   "c0_madloop": 24.536420890832197,
+   "c0_qp_sum": 24.536420899281076,
+   "max_cancellation": 1165127.5324935224,
+   "max_rounding": 7.705310252783603e-10,
+   "dev_madloop": 3.6306527086763524e-08,
+   "dev_qp_sum": 3.665086741554058e-08
+  },
+  {
+   "m_b": 10000.0,
+   "m_t": 100000.0,
+   "points": [
+    {
+     "born": 2.7989890079949292e-08,
+     "c0": 24.536421256173732,
+     "ans": 5.15910708598355e-08,
+     "qp_sum": 5.1591070187090637e-08,
+     "cancellation": 58838138.35060828,
+     "counterterms": -1.5177609567600219,
+     "loops": 1.5177610083510922,
+     "c0_qp_sum": 24.536420936220086
+    },
+    {
+     "born": 1.7929463719206097e-08,
+     "c0": 24.536420947194244,
+     "ans": 3.304765466838333e-08,
+     "qp_sum": 3.304765465360246e-08,
+     "cancellation": 58838139.091538645,
+     "counterterms": -0.9722310423844891,
+     "loops": 0.9722310754321437,
+     "c0_qp_sum": 24.536420936220104
+    },
+    {
+     "born": 1.79294637192061e-08,
+     "c0": 24.53642094719424,
+     "ans": 3.304765466838333e-08,
+     "qp_sum": 3.304765465360246e-08,
+     "cancellation": 58838139.091538645,
+     "counterterms": -0.9722310423844891,
+     "loops": 0.9722310754321437,
+     "c0_qp_sum": 24.5364209362201
+    },
+    {
+     "born": 2.798989007994929e-08,
+     "c0": 24.536421256173735,
+     "ans": 5.15910708598355e-08,
+     "qp_sum": 5.1591070187090637e-08,
+     "cancellation": 58838138.35060828,
+     "counterterms": -1.5177609567600219,
+     "loops": 1.5177610083510922,
+     "c0_qp_sum": 24.53642093622009
+    }
+   ],
+   "c0_madloop": 24.536421087581065,
+   "c0_qp_sum": 24.536420936220097,
+   "max_cancellation": 58838139.091538645,
+   "max_rounding": 1.3039947769384262e-08,
+   "dev_madloop": 4.432517315919264e-08,
+   "dev_qp_sum": 3.815634460948726e-08
+  },
+  {
+   "m_b": 100000.0,
+   "m_t": 100000.0,
+   "points": [
+    {
+     "born": 2.7989890079949292e-08,
+     "c0": 24.536421889792674,
+     "ans": 5.159107219210313e-08,
+     "qp_sum": 5.15910702647598e-08,
+     "cancellation": 116511146.17782986,
+     "counterterms": -3.0054671511290536,
+     "loops": 3.0054672027201237,
+     "c0_qp_sum": 24.536420973159096
+    },
+    {
+     "born": 1.7929463719206097e-08,
+     "c0": 24.536420947194244,
+     "ans": 3.304765466838333e-08,
+     "qp_sum": 3.304765470335494e-08,
+     "cancellation": 116511150.65375677,
+     "counterterms": -1.92520992728142,
+     "loops": 1.9252099603290747,
+     "c0_qp_sum": 24.536420973159114
+    },
+    {
+     "born": 1.79294637192061e-08,
+     "c0": 24.53642094719424,
+     "ans": 3.304765466838333e-08,
+     "qp_sum": 3.304765470335494e-08,
+     "cancellation": 116511150.65375677,
+     "counterterms": -1.92520992728142,
+     "loops": 1.9252099603290747,
+     "c0_qp_sum": 24.53642097315911
+    },
+    {
+     "born": 2.798989007994929e-08,
+     "c0": 24.53642188979268,
+     "ans": 5.159107219210313e-08,
+     "qp_sum": 5.15910702647598e-08,
+     "cancellation": 116511146.17782986,
+     "counterterms": -3.0054671511290536,
+     "loops": 3.0054672027201237,
+     "c0_qp_sum": 24.536420973159103
+    }
+   ],
+   "c0_madloop": 24.536421375469924,
+   "c0_qp_sum": 24.536420973159107,
+   "max_cancellation": 116511150.65375677,
+   "max_rounding": 3.735807994893406e-08,
+   "dev_madloop": 5.605829720166572e-08,
+   "dev_qp_sum": 3.966182136905349e-08
+  }
+ ]
+}

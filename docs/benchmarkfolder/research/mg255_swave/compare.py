@@ -95,7 +95,8 @@ def main(case, mu):
         s = (rows_[0][0] + rows_[1][0]) ** 2 - sum((rows_[0][j] + rows_[1][j]) ** 2 for j in (1, 2, 3))
         m = ml[i]
         entry = dict(tag=tag, sqrts=math.sqrt(s), ml=dict(born=m['born'], fin=m['finite_norm'],
-                     c1=m['single_norm'], c2=m['double_norm'], code=m['ret_code']), ref={})
+                     c1=m['single_norm'], c2=m['double_norm'], code=m['ret_code'],
+                     accuracy=m['accuracy']), ref={})
         for o in opts:
             v = ref[o][i]
             bn = -v[2] / csum
