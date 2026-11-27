@@ -1768,21 +1768,23 @@ namespace madmatrix
           }
         }
         const bool okcdf = nGoodLoop > 0 && valid_flavor_id( iflavorVec[ievt] ) && selectable_total( MEs_ighel[nGoodLoop - 1] );
+        // The hit, or the last helicity with a weight when rndhel is not below 1
+        // (a double just below 1 rounds to 1 in a float fptype, #542), as in select_helicity_signed
+        int ighelSel = -1;
         for( int ighel = 0; okcdf && ighel < nGoodLoop; ighel++ )
         {
-          const bool okhel = allrndhel[ievt] < ( MEs_ighel[ighel] / MEs_ighel[nGoodLoop - 1] );
-          if( okhel )
-          {
-            // Unnormalised CDF bin [clo,chi) of the selected ighel, and the total
-            // ctot the stored variate is normalised by (okhel tested rnd < hi/tot)
-            fptype clo = (fptype)0;
-            const fptype ctot = MEs_ighel[nGoodLoop - 1];
-            const fptype chi = MEs_ighel[ighel];
-            if( ighel > 0 ) clo = MEs_ighel[ighel - 1];
-            const int ihelF = selected_helicity( params, ighel, iflavorVec[ievt], allrndhel[ievt] * ctot, clo, chi ); // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
-            allselhel[ievt] = ihelF;
-            break;
-          }
+          if( MEs_ighel[ighel] == ( ighel > 0 ? MEs_ighel[ighel - 1] : (fptype)0 ) ) continue; // no weight
+          ighelSel = ighel;
+          if( allrndhel[ievt] < ( MEs_ighel[ighel] / MEs_ighel[nGoodLoop - 1] ) ) break;
+        }
+        if( ighelSel >= 0 )
+        {
+          // Unnormalised CDF bin [clo,chi) of the selected ighel, and the total
+          // ctot the stored variate is normalised by
+          const fptype ctot = MEs_ighel[nGoodLoop - 1];
+          const fptype chi = MEs_ighel[ighelSel];
+          const fptype clo = ighelSel > 0 ? MEs_ighel[ighelSel - 1] : (fptype)0;
+          allselhel[ievt] = selected_helicity( params, ighelSel, iflavorVec[ievt], allrndhel[ievt] * ctot, clo, chi ); // NB Fortran [1,ncomb], madmatrix [0,ncomb-1]
         }
       }
       const int vecsize = neppV;
@@ -1816,16 +1818,17 @@ namespace madmatrix
           // iconfig (#919), as the GPU does; -ffast-math could pass rnd < 0/0 instead
           channelIdVec[ieppV] = madmatrix::nchannels;
           const bool okcdf = valid_flavor_id( iflavorVec[ievt] ) && selectable_total( normalization );
+          // channelIdVec ends as the hit, or as the last channel with a weight when
+          // rnddiagram is not below 1 (a double just below 1 rounds to 1 in a float fptype, #542)
           for( unsigned int ichan = 0; okcdf && ichan < madmatrix::nchannels; ichan++ )
           {
             if( madmatrix::channel2iconfig[ichan] == -1 ) continue;
-            numerator_sum += allNumerators[ievt / neppV * neppV * ndiagrams +
-                                           ichan * neppV + ieppV % neppV];
-            if( allrnddiagram[ievt] < numerator_sum / normalization )
-            {
-              channelIdVec[ieppV] = ichan + 1;
-              break;
-            }
+            const fptype numerator = allNumerators[ievt / neppV * neppV * ndiagrams +
+                                                   ichan * neppV + ieppV % neppV];
+            if( !( numerator > 0 ) ) continue;
+            numerator_sum += numerator;
+            channelIdVec[ieppV] = ichan + 1;
+            if( allrnddiagram[ievt] < numerator_sum / normalization ) break;
           }
           if( allDiagramIdsOut ) allDiagramIdsOut[ievt] = channelIdVec[ieppV];
         }
@@ -1868,13 +1871,13 @@ namespace madmatrix
           const int ievt = ievt00 + ieppV;
           allselcol[ievt] = 0; // no color unless one is chosen below (vanishing or NaN jamp2 sum)
           const bool okcdf = valid_flavor_id( iflavorVec[ievt] ) && selectable_total( targetamp[ncolor_flow - 1] );
+          // allselcol ends as the hit, or as the last flow with a weight when rndcol is
+          // not below 1 (a double just below 1 rounds to 1 in a float fptype, #542)
           for( int icolC = 0; okcdf && icolC < ncolor_flow; icolC++ )
           {
-            if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) )
-            {
-              allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], madmatrix [0,ncolor-1]
-              break;
-            }
+            if( !( targetamp[icolC] > ( icolC > 0 ? targetamp[icolC - 1] : 0 ) ) ) continue; // no weight
+            allselcol[ievt] = icolC + 1; // NB Fortran [1,ncolor], madmatrix [0,ncolor-1]
+            if( allrndcol[ievt] < ( targetamp[icolC] / targetamp[ncolor_flow - 1] ) ) break;
           }
         }
       }
