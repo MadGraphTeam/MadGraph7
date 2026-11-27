@@ -19,7 +19,7 @@ that constituent process with the constituents at zero relative momentum,
 p_i = (m_i/M) K. Its amplitude is projected onto the bound state as at tree
 level (arXiv:2510.26773): the colour projector (delta_ij/sqrt(Nc) or
 sqrt(2) T^a_ij) is in the colour bases, and the spin projector is the sum over
-the constituent helicities h weighted by ONIA_PROJ(h, J_z).
+the constituent helicities h weighted by ONIA_LOOP_PROJ(h, J_z).
 
 MadLoop contracts the loop amplitude of each helicity configuration h with
 the conjugate Born amplitude of the same h before the reduction. Since the

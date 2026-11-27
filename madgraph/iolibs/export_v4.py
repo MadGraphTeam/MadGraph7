@@ -2887,6 +2887,26 @@ c     quadruple precision (MP_Dual).
         with open(pjoin(write_dir, 'makefile'), 'w') as stream:
             stream.write(makefile)
 
+    @staticmethod
+    def append_onia_projectors(path):
+        """The spin projectors of the tree-level bound states (onia_proj,
+        onia_proj_in of aloha_functions.f) at the end of the HELAS helper file
+        path, for the loop one (aloha_functions_loop.f), which has none: the
+        Borns and reals of an FKS output with MadLoop virtuals call them
+        (MadLoop itself projects in onia_loop.f)."""
+        with open(pjoin(MG5DIR, 'aloha', 'template_files', 'aloha_functions.f')) as stream:
+            tree = stream.read()
+        start = tree.index('      subroutine onia_proj(')
+        last = tree.index('      subroutine onia_proj_in(', start)
+        end = tree.index('\n      end\n', last) + len('\n      end\n')
+        with open(path) as stream:
+            text = stream.read()
+        if 'subroutine onia_proj(' in text:
+            return
+        with open(path, 'a') as stream:
+            stream.write('\nc     Spin projectors of the bound states (aloha_functions.f)\n')
+            stream.write(tree[start:end])
+
     def write_aloha_library(self, model, wanted_lorentz, npwave=0, gauge='',
                             loop_dual=False, loop_npwave=1, loop_ep=False):
         """The ALOHA routines of the matrix elements and their helper file:
@@ -2965,6 +2985,8 @@ c     quadruple precision (MP_Dual).
         elif any([any([tag.startswith('L') for tag in d[1]]) for d in wanted_lorentz]):
             cp(MG5DIR + '/aloha/template_files/aloha_functions_loop.f',
                                                  write_dir+'/aloha_functions.f')
+            if getattr(self, 'has_boundstates', False):
+                self.append_onia_projectors(write_dir+'/aloha_functions.f')
             aloha_model.loop_mode = False
         elif npwave>0:
             cp(MG5DIR + '/aloha/template_files/Makefile_F_dual', write_dir+'/makefile')
@@ -3224,6 +3246,13 @@ c     quadruple precision (MP_Dual).
                 constituents.append(pair[1])
             for i in sorted(constituents, reverse=True):
                 del states[i - 1]
+            # the uncoupled output of a 3P colour octet (--onia_uncoupled,
+            # MadSpin's onia_madspin) labels its rows by (L_z, S_z) codes
+            # outside -J..J: take the values the rows hold
+            for row in matrix_element.get_helicity_matrix():
+                for k, val in enumerate(row):
+                    if val not in states[k]:
+                        states[k].append(val)
         nstate = [len(s) for s in states]
         nexternal = len(states)
         maxhel = max(nstate) if nstate else 1

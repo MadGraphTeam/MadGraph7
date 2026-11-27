@@ -852,3 +852,119 @@ C     ----------
 
       SUBROUTINE %(proc_prefix)sRESHUFFLE_MOMENTA(P,PMASS,P_RESH)
 %(onia_reshuffle_body)s
+
+      SUBROUTINE %(proc_prefix)sGET_NHEL(IDEN_STAR,NHEL_STAR)
+C     The helicity table of the physical legs (one per bound state) and
+C     the denominator, for F77_<prefix>GET_NHEL_ENTRY of all_matrix.f.
+C     DATA-backed: SMATRIX initialises PROCESS_NHEL (helicity_lines).
+CF2PY INTENT(OUT) :: NHEL_STAR
+CF2PY INTENT(OUT) :: IDEN_STAR
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER                 NCOMB
+      PARAMETER (             NCOMB=%(ncomb)d)
+      INTEGER NHEL(NEXTERNAL,NCOMB)
+      COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
+      INTEGER NHEL_STAR(NEXTERNAL,NCOMB)
+      INTEGER IDEN,IDEN_STAR
+%(den_factor_line)s
+      IDEN_STAR = IDEN
+      NHEL_STAR = NHEL
+      END
+
+C     The f2py entries of matrix_standalone_v4.inc (GET_value, GET_value_idx),
+C     which the f2py wrapper of every subprocess calls (all_matrix py library)
+      SUBROUTINE %(proc_prefix)sGET_value(P, ALPHAS, NHEL, FLAVOR ,ANS)
+C     f2py interface accepting the full FLAVOR(NEXTERNAL) array (back-compat):
+C     resolve it to FLAV_IDX and forward to GET_value_internal. Use
+C     GET_value_idx below to pass the flavor index directly.
+      use model_object
+      IMPLICIT NONE
+C
+C CONSTANT
+C
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+C
+C ARGUMENTS
+C
+      REAL*8 P(0:3,NEXTERNAL),ANS
+      INTEGER NHEL
+      DOUBLE PRECISION ALPHAS
+      INTEGER FLAVOR(NEXTERNAL)
+      INTEGER FLAV_IDX
+      INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
+CF2PY INTENT(OUT) :: ANS
+CF2PY INTENT(IN) :: NHEL
+CF2PY INTENT(IN) :: P(0:3,NEXTERNAL)
+CF2PY INTENT(IN) :: ALPHAS
+CF2PY INTENT(IN) :: FLAVOR(NEXTERNAL)
+C     ROUTINE FOR F2PY to read the benchmark point.
+
+      FLAV_IDX = %(proc_prefix)sGET_FLAVOR_INDEX(FLAVOR)
+      CALL  %(proc_prefix)sGET_value_internal(P, ALPHAS, NHEL, FLAV_IDX ,ANS)
+      RETURN
+      END
+
+
+      SUBROUTINE %(proc_prefix)sGET_value_idx(P, ALPHAS, NHEL, FLAV_IDX ,ANS)
+C     f2py interface accepting the flavor index directly.
+      use model_object
+      IMPLICIT NONE
+C
+C CONSTANT
+C
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+C
+C ARGUMENTS
+C
+      REAL*8 P(0:3,NEXTERNAL),ANS
+      INTEGER NHEL
+      DOUBLE PRECISION ALPHAS
+      INTEGER FLAV_IDX
+CF2PY INTENT(OUT) :: ANS
+CF2PY INTENT(IN) :: NHEL
+CF2PY INTENT(IN) :: P(0:3,NEXTERNAL)
+CF2PY INTENT(IN) :: ALPHAS
+CF2PY INTENT(IN) :: FLAV_IDX
+
+      CALL  %(proc_prefix)sGET_value_internal(P, ALPHAS, NHEL, FLAV_IDX ,ANS)
+      RETURN
+      END
+
+
+      SUBROUTINE %(proc_prefix)sGET_value_internal(P, ALPHAS, NHEL, FLAV_IDX ,ANS)
+      use model_object
+C     This routine is the real value but can not be in the interface
+C     due to f2py not knowing how to handle the couplings common block
+      use model_object
+      IMPLICIT NONE
+C
+C CONSTANT
+C
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+C
+C ARGUMENTS
+C
+      REAL*8 P(0:3,NEXTERNAL),ANS
+      INTEGER NHEL
+      DOUBLE PRECISION ALPHAS
+      real*8 pi
+      INTEGER FLAV_IDX
+C     ROUTINE FOR F2PY to read the benchmark point.
+C     the include file with the values of the parameters and masses
+      include "coupl.inc"
+
+      pi = 3.141592653589793d0
+      G = 2* DSQRT(ALPHAS*pi)
+      call UPDATE_AS_PARAM()
+      if (NHEL.ne.0) then
+        CALL %(proc_prefix)sSMATRIXHEL(P, NHEL, FLAV_IDX, ANS)
+      else
+        CALL %(proc_prefix)sSMATRIX(P, FLAV_IDX, ANS)
+      endif
+      return
+      end
+

@@ -13,7 +13,8 @@ C      onto
 C     the bound states as at tree level (arXiv:2510.26773): the colour
 C     projector is in the colour factors, the spin projector is the
 C      sum over
-C     the constituent helicities h weighted by PROJ(h,J_z) (ONIA_PROJ).
+C     the constituent helicities h weighted by PROJ(h,J_z)
+C      (ONIA_LOOP_PROJ).
 C     The projected interference with the Born is MadLoop's ordinary
 C      one
 C     with the Born amplitudes A(h) replaced by the effective Born
@@ -366,8 +367,8 @@ C         p1 = (sqrt(k^2+m1^2), k n) with (PF-p1)^2 = m2^2
       CALL ML5_0_MP_ONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
       END
 
-      SUBROUTINE ML5_0_ONIA_PROJ(P1,M1,NHEL1,P2,M2,NHEL2,P3,M3,NHEL3
-     $ ,SPIN,PROJ)
+      SUBROUTINE ML5_0_ONIA_LOOP_PROJ(P1,M1,NHEL1,P2,M2,NHEL2,P3,M3
+     $ ,NHEL3,SPIN,PROJ)
 C     The spin projector of a bound state (as ONIA_PROJ of the
 C      tree-level
 C     output): the weight of the constituent helicities NHEL1
@@ -402,7 +403,7 @@ C     and polarisation NHEL3 (momentum P3, mass M3).
       PROJ = 0.5D0/SQRT(2D0*M1*M2)*TMP
       END
 
-      SUBROUTINE ML5_0_MP_ONIA_PROJ(P1,M1,NHEL1,P2,M2,NHEL2,P3,M3
+      SUBROUTINE ML5_0_MP_ONIA_LOOP_PROJ(P1,M1,NHEL1,P2,M2,NHEL2,P3,M3
      $ ,NHEL3,SPIN,PROJ)
 C     The spin projector of a bound state, in quadruple precision
       USE ALOHA_OBJECT
@@ -545,7 +546,8 @@ C     The spin projectors of the constituent helicity configurations
             Q1=ONIA_Q1(K)
             Q2=ONIA_Q2(K)
             KQ(0:3)=P(0:3,Q1)+P(0:3,Q2)
-            CALL ML5_0_ONIA_PROJ(P(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
+            CALL ML5_0_ONIA_LOOP_PROJ(P(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H)
+     $       ,
      &       P(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KQ,
      &       SQRT(MAX(KQ(0)**2-KQ(1)**2-KQ(2)**2-KQ(3)**2,0D0)),
      &       ONIA_JZ(K,T),ONIA_S(K),PRK)
@@ -661,7 +663,8 @@ C     precision
             Q1=ONIA_Q1(K)
             Q2=ONIA_Q2(K)
             KQ(0:3)=P(0:3,Q1)+P(0:3,Q2)
-            CALL ML5_0_MP_ONIA_PROJ(P(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
+            CALL ML5_0_MP_ONIA_LOOP_PROJ(P(0,Q1),CMASS(Q1)
+     $       ,ONIA_HELC(Q1,H),
      &       P(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KQ,
      &       SQRT(MAX(KQ(0)**2-KQ(1)**2-KQ(2)**2-KQ(3)**2,0.0E0_16)),
      &       ONIA_JZ(K,T),ONIA_S(K),PRK)

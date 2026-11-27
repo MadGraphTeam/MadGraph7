@@ -102,7 +102,15 @@ arrays can exceed 2 GB. Their loop numerators reach rank R+2, and the
 polynomial routines are written for that rank (`loop_onia.loop_rank_increase`).
 
 The FKS modes `[QCD]` and `[real=QCD]` go to the fixed-order NLO of bound
-states (FKS subtraction, `madgraph/fks/fks_onia.py`), with its own checks.
+states (FKS subtraction, `madgraph/fks/fks_onia.py`), with its own checks. In
+a loop model (`import model loop_sm_onia-c_mass`), `[QCD]` takes the virtual
+of this layer for Borns with S-wave bound states (`fks_onia.madloop_virtual`):
+`generate p p > Jpsi(1|3S11) j [QCD]` is a complete NLO calculation. The FKS
+output links `onia_loop.f` into its `V*` directories, and its run fills the
+LDMEs of `COMMON/LDME` from the onia card for it (`ONIA_SET_LDME_COMMON`).
+P-wave bound states keep the built-in or user virtual there, since this
+layer's P-wave HELAS library is in dual numbers for every process of an
+output.
 
 Refused with an explanatory error:
 - more than two P-wave bound states, and states with L >= 2;

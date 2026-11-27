@@ -271,6 +271,36 @@ class TestFKSOniaGeneration(unittest.TestCase):
         real = [r for r in born.real_amps if r.process['legs'][-1]['id'] == 21][0]
         self.assertEqual(sorted(real.fks_j_from_i[5]), [1, 2, 3])
 
+    def test_virtual_source(self):
+        """[QCD] with bound states: the tree model keeps the built-in or user
+        virtual (onia_virtual); a loop model gives MadLoop's for S waves
+        (virt_process with the constituent legs and their 'onium'), and the
+        built-in or user one for P waves (fks_onia.madloop_virtual)."""
+        born = self.generate('g g > etac(1|1S01) [QCD]')[0]
+        self.assertTrue(born.onia_virtual)
+        self.assertIsNone(born.virt_process)
+        cmd = MGCmd.MasterCmd()
+        cmd.no_notification()
+        cmd.exec_cmd('set automatic_html_opening False --no_save')
+        cmd.exec_cmd('import model loop_sm_onia-c_mass')
+        for line, madloop in [('g g > etac(1|1S01) [QCD]', True),
+                              ('u u~ > tata(1|3S1) [QCD]', True),
+                              ('g g > chic2(1|3P21) [QCD]', False)]:
+            cmd.exec_cmd('generate %s' % line)
+            born = cmd._fks_multi_proc['born_processes'][0]
+            self.assertEqual(not getattr(born, 'onia_virtual', False), madloop, line)
+            if madloop:
+                legs = born.virt_process.get('legs')
+                self.assertEqual([bool(l.get('onium')) for l in legs],
+                                 [bool(l.get('onium')) for l in born.born_amp['process']['legs']])
+                self.assertTrue(born.virt_amp.get('loop_diagrams'), line)
+            else:
+                self.assertIsNone(born.virt_amp)
+        ok, why = fks_onia.madloop_virtual(self.cmd._fks_multi_proc['born_processes'][0]
+                                           .born_amp['process'])
+        self.assertFalse(ok)
+        self.assertIn('no QCD loops', why)
+
     def test_builtin_virtuals(self):
         """[QCD] with bound states: which 2 -> 1 Borns get a built-in virtual
         (BinothLHA_onia.f: Petrelli et al., and g g -> 1P1[8] recomputed),

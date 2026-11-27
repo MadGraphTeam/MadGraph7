@@ -120,6 +120,37 @@ def make_jpeg_async(args):
 #=================================================================================
 # Class for used of the (non-optimized) Loop process
 #=================================================================================
+# The LDMEs of the onia card in COMMON/LDME (ldme.inc) for MadLoop's
+# bound-state layer (onia_loop.f): the FKS matrix elements read the card
+# themselves (ONIA_AMP_*READCARD, no COMMON), and nothing else of an FKS run
+# calls SETONIA. Called by BinothLHA.f before MadLoop's first evaluation; a
+# no-op in onia_legs_dummy.f.
+ONIA_SET_LDME_COMMON = """      SUBROUTINE ONIA_SET_LDME_COMMON()
+C     The LDMEs of the onia card in COMMON/LDME for MadLoop's bound-state
+C     layer (onia_loop.f), once (export_fks.ONIA_SET_LDME_COMMON)
+      IMPLICIT NONE
+      CHARACTER*40 FILES(4)
+      DATA FILES /'onia_card.dat', '../onia_card.dat',
+     &  '../../Cards/onia_card.dat', '../../../Cards/onia_card.dat'/
+      INTEGER K
+      LOGICAL FOUND, DONE
+      DATA DONE/.FALSE./
+      SAVE DONE
+      IF (DONE) RETURN
+      DONE = .TRUE.
+      DO K = 1, 4
+        INQUIRE(FILE=FILES(K), EXIST=FOUND)
+        IF (FOUND) THEN
+          CALL SETONIA(TRIM(FILES(K)))
+          RETURN
+        ENDIF
+      ENDDO
+      WRITE(*,*) 'Error: the onia card onia_card.dat was not found'
+      STOP 1
+      END
+"""
+
+
 class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     """Class to take care of exporting a set of matrix elements to
     Fortran (v4) format."""
@@ -2986,7 +3017,8 @@ As a result, the default card will not be tailored to the process generated.""")
                   '      IF (NFKSPROCESS.LT.1 .OR. NFKSPROCESS.GT.NCONF) RETURN',
                   '      IF (I.LT.1 .OR. I.GT.NEXT) RETURN',
                   '      FKS_ONIA_NOSECTOR = NOSEC(NFKSPROCESS,I)',
-                  '      END']
+                  '      END', '', '']
+        lines += ONIA_SET_LDME_COMMON.splitlines()
         writer = writers.FortranWriter(filename)
         writer.writelines('\n'.join(lines) + '\n')
         writer.close()
@@ -6417,6 +6449,23 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
     def finalize(self, *args, **opts):
         ProcessExporterFortranFKS.finalize(self, *args, **opts)
         #export_v4.ProcessExporterFortranSA.finalize(self, *args, **opts)
+        self.set_onia_madloop_card()
+
+    def set_onia_madloop_card(self):
+        """MadLoop virtuals of Borns with bound states (write_onia_loop_files
+        sets has_onia): the MadLoopParams.dat defaults of the onia layer
+        (set_onia_madloop_defaults: TIRust for the threshold integrals, no
+        helicity filter), in the card and in its copies of the output."""
+        if not getattr(self, 'has_onia', False):
+            return
+        card_path = pjoin(self.dir_path, 'Cards', 'MadLoopParams.dat')
+        if not os.path.exists(card_path):
+            return
+        card = banner_mod.MadLoopParam(card_path)
+        self.set_onia_madloop_defaults(card)
+        for path in [card_path, pjoin(self.dir_path, 'Cards', 'MadLoopParams_default.dat'),
+                     pjoin(self.dir_path, 'SubProcesses', 'MadLoopParams.dat')]:
+            card.write(path)
 
     def write_pmass_file(self, writer, matrix_element):
         """pmass.inc. The MadLoop exporter's version (bound states of a loop

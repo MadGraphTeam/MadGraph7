@@ -8,8 +8,65 @@ def get_boundstates_ufo(model):
     `model` is either a loaded model or the path of a UFO directory. The
     states are read from that UFO's own boundstates.py only, so nothing from
     a model imported earlier in the same session can leak in.
+
+    Constituents named as in the UFO but renamed by the import (the MadGraph
+    names of Model.pass_particles_name_in_mg_default: loop_sm's m-, tt- are
+    mu-, ta- unless --modelname) are renamed with them (_rename_constituents).
     """
-    return _from_boundstates(model, lambda module: list(module.all_boundstates), [])
+    states = _from_boundstates(model, lambda module: list(module.all_boundstates), [])
+    if states and not isinstance(model, str):
+        _rename_constituents(model, states)
+    return states
+
+
+def _ufo_particle_pdgs(path):
+    """{name: pdg} of the particles and antiparticles of a UFO's particles.py,
+    read from the source (the names before any renaming by the import)."""
+    import ast
+    filename = os.path.join(path, 'particles.py')
+    pdgs = {}
+    try:
+        tree = ast.parse(open(filename).read(), filename)
+    except Exception:
+        return pdgs
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and getattr(node.func, 'id', None) == 'Particle':
+            kws = dict((kw.arg, kw.value) for kw in node.keywords)
+            pdg = kws.get('pdg_code')
+            if not isinstance(pdg, ast.Constant):
+                continue
+            for key, sign in (('name', 1), ('antiname', -1)):
+                if isinstance(kws.get(key), ast.Constant):
+                    pdgs.setdefault(kws[key].value, sign * pdg.value)
+    return pdgs
+
+
+def _rename_constituents(model, states):
+    """The constituent names of the Fock states as the particles of the
+    imported model are named: a name that is no particle of the model is
+    looked up in the UFO's particles.py and replaced by the current name of
+    that PDG code."""
+    try:
+        particles = model.get('particles')
+        missing = set(name for state in states for name in (state.particles or [])
+                      if not particles.find_name(name))
+    except Exception:
+        return
+    if not missing:
+        return
+    try:
+        path = model.get('modelpath') or model.__dict__.get('path')
+    except Exception:
+        path = model.__dict__.get('path')
+    ufo = _ufo_particle_pdgs(path) if path else {}
+    renamed = {}
+    for name in missing:
+        part = model.get_particle(ufo[name]) if name in ufo else None
+        if part:
+            renamed[name] = part.get_name()
+    for state in states:
+        if any(name in renamed for name in state.particles):
+            state.particles = [renamed.get(name, name) for name in state.particles]
 
 
 def get_boundstate_decays_ufo(model):

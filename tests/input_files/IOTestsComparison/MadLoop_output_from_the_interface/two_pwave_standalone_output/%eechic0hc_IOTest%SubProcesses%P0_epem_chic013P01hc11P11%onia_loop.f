@@ -13,7 +13,8 @@ C      onto
 C     the bound states as at tree level (arXiv:2510.26773): the colour
 C     projector is in the colour factors, the spin projector is the
 C      sum over
-C     the constituent helicities h weighted by PROJ(h,J_z) (ONIA_PROJ).
+C     the constituent helicities h weighted by PROJ(h,J_z)
+C      (ONIA_LOOP_PROJ).
 C     The projected interference with the Born is MadLoop's ordinary
 C      one
 C     with the Born amplitudes A(h) replaced by the effective Born

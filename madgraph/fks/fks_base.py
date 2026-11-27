@@ -557,11 +557,22 @@ class FKSMultiProcess(diagram_generation.MultiProcess): #test written
                 myproc['orders'] = loop_orders
             elif not myproc['orders']:
                     myproc['perturbation_couplings'] = myproc['model']['coupling_orders']
-            # bound states: no MadLoop virtual (fks_onia); the virtual comes
-            # from the built-in 2 -> 1 expressions or from the user hook
+            # bound states: MadLoop's virtual (loop_onia) in a loop model,
+            # otherwise the built-in 2 -> 1 expressions or the user hook
+            # (fks_onia.madloop_virtual)
             if fks_onia.has_onia(myproc.get('legs')):
-                born.virt_amp = None
-                born.onia_virtual = True
+                use_madloop, why = fks_onia.madloop_virtual(myproc)
+                name = myproc.nice_string(print_weighted=False,
+                                          print_perturbated=False).replace('Process: ', '')
+                if not use_madloop:
+                    logger.info('Bound states: the virtual of %s is the built-in one or the '
+                                'user hook (BinothLHA_user.f), not MadLoop: %s.' % (name, why))
+                    born.virt_amp = None
+                    born.onia_virtual = True
+                    continue
+                logger.info('Bound states: MadLoop computes the virtual of %s.' % name)
+                myproc['legs'] = fks_onia.virtual_legs(myproc['legs'])
+                born.virt_process = myproc
                 continue
             # take the orders that are actually used by the matrix element
             upc = [[l['is_tagged'], l['id'] in [22]] for l in [ll for ll in myproc.get('legs') if not ll['state'] and 'is_tagged'in ll]]

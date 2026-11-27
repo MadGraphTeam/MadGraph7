@@ -22,6 +22,7 @@ import shutil
 import sys
 import logging
 import tempfile
+import glob
 import time
 import math
 from io import StringIO
@@ -1419,11 +1420,12 @@ class TestOniaFixedOrder(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
 
-    def run_fo(self, process, mass, settings=(), order='NLO'):
+    def run_fo(self, process, mass, settings=(), order='NLO', model='sm_onia-c_mass', pre=()):
         """generate, output and launch at fixed order; returns (sigma, error)"""
         lines = ['set automatic_html_opening False --no_save',
-                 'set notification_center False --no_save',
-                 'import model sm_onia-c_mass']
+                 'set notification_center False --no_save']
+        lines += list(pre)
+        lines += ['import model %s' % model]
         lines += ['define %s' % d for d in self.LIGHT]
         lines += ['generate %s' % process, 'output %s' % self.path, 'launch %s' % order,
                   'set pdlabel nn23nlo', 'set fixed_ren_scale True', 'set fixed_fac_scale True',
@@ -1446,6 +1448,31 @@ class TestOniaFixedOrder(unittest.TestCase):
     def test_onia_fo_gg_etac(self):
         """g g > eta_c at NLO: built-in virtual (Petrelli et al.), check_poles"""
         sig, err = self.run_fo('p p > etac(1|1S01) [QCD]', 3.1, ['req_acc_FO 0.01'])
+        self.check(sig, err, ONIA_REF['etac'][0], ONIA_REF['etac'][1])
+
+    @staticmethod
+    def tirust_libdir():
+        """The TIRust library directory for MadLoop's bound-state virtuals:
+        $TIRUST_LIB, else the configured installation; None if neither."""
+        tirust = os.environ.get('TIRUST_LIB')
+        if not tirust:
+            tirust = MGCmd.MasterCmd().options.get('tirust')
+        if not tirust or str(tirust) == 'None' or not os.path.isdir(str(tirust)):
+            return None
+        return str(tirust)
+
+    def test_onia_fo_gg_etac_madloop(self):
+        """p p > eta_c at NLO with MadLoop's virtual (loop_sm_onia, the onia
+        layer of MadLoop, fks_onia.madloop_virtual): the cross section of the
+        built-in virtual (test_onia_fo_gg_etac), as the two virtuals agree.
+        Needs TIRust ($TIRUST_LIB or the configured one)."""
+        tirust = self.tirust_libdir()
+        if not tirust:
+            self.skipTest('TIRust is not installed (install tirust, or set TIRUST_LIB)')
+        sig, err = self.run_fo('p p > etac(1|1S01) [QCD]', 3.1, ['req_acc_FO 0.01'],
+                               model='loop_sm_onia-c_mass',
+                               pre=['set tirust %s --no_save' % tirust])
+        self.assertTrue(glob.glob(pjoin(self.path, 'SubProcesses', 'P*', 'V*')))
         self.check(sig, err, ONIA_REF['etac'][0], ONIA_REF['etac'][1])
 
     def test_onia_fo_chic_2to1(self):

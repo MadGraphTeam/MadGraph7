@@ -162,6 +162,13 @@ end function
 double precision function get_virtual_a0Gmu_conv(i,j,k,born)
 error stop 'unexpected conversion'
 end function
+! MadLoop's reduction-library code of the last evaluation, and the LDMEs
+! of the bound states (onia_legs.f / onia_legs_dummy.f)
+integer function ml_get_ret_code_library()
+ml_get_ret_code_library=0
+end function
+subroutine onia_set_ldme_common()
+end subroutine
 ''')
             self.compile_and_run(work, work / 'params.f90', work / 'virtual.f',
                                  work / 'driver.f90')

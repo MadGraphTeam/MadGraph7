@@ -20,3 +20,12 @@ c**************************************************************************
       fks_onia_nosector=.false.
       return
       end
+
+
+      subroutine onia_set_ldme_common()
+c**************************************************************************
+c     No bound state in this process: no LDME for MadLoop (see onia_legs.f).
+c**************************************************************************
+      implicit none
+      return
+      end

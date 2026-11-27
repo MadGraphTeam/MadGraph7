@@ -123,6 +123,9 @@ c no conflict on the write access to HelFilter.dat when running
 c locally in multicore without a cluster_tmp_path
          if (.not. force_polecheck)
      &        call set_forbid_hel_doublecheck(.True.)
+c Bound states: the LDMEs of the onia card for MadLoop's bound-state
+c layer (onia_legs.f; a no-op without bound states)
+         call onia_set_ldme_common()
          call get_nsqso_loop(nsqso)
          call get_answer_dimension(MLResArrayDim)
          allocate(accuracies(0:nsqso))

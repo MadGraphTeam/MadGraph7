@@ -248,6 +248,12 @@ ANNOUNCEMENT:
          2 -> 1 Borns: g g -> 1S0, 3P0, 3P2 (singlet and octet) and 1P1[8],
          q q~ -> 3S1[8], q q~ -> leptonium. Other [QCD] processes need a user
          virtual (BinothLHA_user.f), or can be run as [real=QCD];
+       - in a loop model with bound states ("import model loop_sm_onia-c_mass")
+         MadLoop computes the virtual of Borns with S-wave quarkonia and leptonia
+         (the bound-state layer of MadLoop), for any [QCD] process, e.g.
+         "generate p p > Jpsi(1|3S11) j [QCD]": a fully automated NLO. It needs
+         TIRust for the threshold integrals of quarkonia ("install tirust").
+         P-wave bound states keep the built-in or user virtual;
        - diagrams that vanish by C parity or colour are left out of the colour
          flows. The generation warns when a real emission has a soft or collinear
          region whose Born was not generated (use p = j = all massless flavours);

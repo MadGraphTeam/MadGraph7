@@ -26,7 +26,8 @@ PROCESS= $(patsubst %(dotf)s,%(doto)s,$(wildcard polynomial.f)) \
 		 $(patsubst %(dotf)s,%(doto)s,$(wildcard GOLEM_interface.f)) \
 		 $(patsubst %(dotf)s,%(doto)s,$(wildcard COLLIER_interface.f)) \
 		 $(patsubst %(dotf)s,%(doto)s,$(wildcard TIRUST_interface.f)) \
-		 $(patsubst %(dotf)s,%(doto)s,$(wildcard compute_color_flows.f))
+		 $(patsubst %(dotf)s,%(doto)s,$(wildcard compute_color_flows.f)) \
+		 $(patsubst %(dotf)s,%(doto)s,$(wildcard onia_loop.f))
 
 # This is the core of madloop computationally wise, so make sure to turn optimizations on and bound checks off.
 # We use %%olynomial.o and not directly polynomial.o because we want it to match when both doing make check here
@@ -41,6 +42,8 @@ all: cleanlib $(LOOPLIB)
 
 # The TIRust adapter reads the generated polynomial constants module.
 TIRUST_interface.o: polynomial.o
+# and so does the bound-state layer (onia_loop.f, loop_onia.py)
+onia_loop.o: polynomial.o
 
 
 $(LOOPLIB): $(PROCESS)   

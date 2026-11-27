@@ -71,3 +71,29 @@ C     (soft partners, onium_emission_split) are part of it.
       FKS_ONIA_NOSECTOR = NOSEC(NFKSPROCESS,I)
       END
 
+
+      SUBROUTINE ONIA_SET_LDME_COMMON()
+C     The LDMEs of the onia card in COMMON/LDME for MadLoop's
+C      bound-state
+C     layer (onia_loop.f), once (export_fks.ONIA_SET_LDME_COMMON)
+      IMPLICIT NONE
+      CHARACTER*40 FILES(4)
+      DATA FILES /'onia_card.dat', '../onia_card.dat',
+     &  '../../Cards/onia_card.dat', '../../../Cards/onia_card.dat'/
+      INTEGER K
+      LOGICAL FOUND, DONE
+      DATA DONE/.FALSE./
+      SAVE DONE
+      IF (DONE) RETURN
+      DONE = .TRUE.
+      DO K = 1, 4
+        INQUIRE(FILE=FILES(K), EXIST=FOUND)
+        IF (FOUND) THEN
+          CALL SETONIA(TRIM(FILES(K)))
+          RETURN
+        ENDIF
+      ENDDO
+      WRITE(*,*) 'Error: the onia card onia_card.dat was not found'
+      STOP 1
+      END
+

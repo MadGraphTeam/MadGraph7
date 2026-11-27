@@ -38,6 +38,7 @@ class), and the MS-bar counterterms of the eight-quark operators that absorb
 their poles.
 """
 
+import copy
 import fractions
 
 import madgraph.various.misc as misc
@@ -896,6 +897,45 @@ def vanishing_2to1(legs, model, state=None):
     if massless and a == -b and 0 < abs(a) <= 6:
         return key in _ZERO_QQ
     return False
+
+
+def madloop_virtual(process):
+    """(True, '') if MadLoop computes the one-loop virtual of this Born with
+    bound states in the FKS output (the onia layer of MadLoop, loop_onia.py),
+    else (False, why). The virtual then comes from the built-in 2 -> 1
+    expressions (builtin_virtual) or the user hook (BinothLHA_user.f).
+    MadLoop needs a model with QCD loops (loop_sm_onia, written by
+    tools/make_onia_model.py). Its P-wave bound states need a HELAS library in
+    dual numbers for every process of the output (export_v4, loop_dual),
+    which the Borns and reals of the FKS output do not have: they keep the
+    built-in or user virtual."""
+    model = process.get('model')
+    if 'QCD' not in (model.get('perturbation_couplings') or []):
+        return False, ('the model %s has no QCD loops (MadLoop: a loop model, e.g. '
+                       '"import model loop_sm_onia-c_mass")' % model.get('name'))
+    for leg in process.get('legs'):
+        onium = onium_of(leg)
+        if onium and onium.get('L', 0) > 0:
+            return False, ('P-wave bound state %s (MadLoop in the FKS output: '
+                           'S-wave bound states only)' % onium.get('name'))
+    return True, ''
+
+
+def virtual_legs(legs):
+    """The legs of the virtual process of a Born with bound states, as
+    fks_common.to_legs, which leaves 'onium' out: MadLoop projects the
+    constituent legs that carry it (loop_onia.py)."""
+    import madgraph.core.base_objects as base_objects
+    out = base_objects.LegList()
+    for leg in legs:
+        new = base_objects.Leg({'id': leg.get('id'), 'number': leg.get('number'),
+                                'state': leg.get('state'),
+                                'from_group': leg.get('from_group'),
+                                'polarization': leg.get('polarization')})
+        if onium_of(leg):
+            new.set('onium', copy.deepcopy(onium_of(leg)))
+        out.append(new)
+    return out
 
 
 def builtin_virtual(legs, model):
