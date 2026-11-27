@@ -1,5 +1,6 @@
 """Check MINT's iteration estimator and recovery after rejected iterations."""
 
+import itertools
 import math
 import pathlib
 import shutil
@@ -26,6 +27,26 @@ def combine(means, errors):
             math.sqrt(sum((weight * error)**2
                           for weight, error in zip(weights, errors))),
             weight_error, weights)
+
+
+# Numbers of phase-space points of the iterations in the program below
+# (doubling, as in MINT); they only matter where the grids are fixed.
+POINTS = [100., 200., 400., 800., 1600.]
+
+
+def combine_points(means, errors, points):
+    """Oracle for MINT step 1 of (N)LO+PS runs: weights from the number of points."""
+    total = sum(points)
+    weights = [n / total for n in points]
+    return (sum(w * m for w, m in zip(weights, means)),
+            math.sqrt(sum((w * e)**2 for w, e in zip(weights, errors))),
+            weights)
+
+
+# Two equally likely outcomes per iteration with expectation 3: an upward
+# fluctuation that comes with a larger error estimate, as for a skewed
+# weight distribution. Must match the 'skewed' cases of the program.
+SKEWED = ((5., 4.), (1., 1.))
 
 
 @unittest.skipUnless(shutil.which('gfortran'), 'gfortran is required')
@@ -149,7 +170,50 @@ class TestMintUncertainty(unittest.TestCase):
                 result = self.run_case(mode)
                 means = [10. * j for j in range(1, 11) if j not in rejected]
                 self.assertEqual(result['INCLUDED'], [len(means)])
-                self.assert_combined(result, means, [1.] * len(means))
+                if mode == 'reject_fo':
+                    self.assert_combined(result, means, [1.] * len(means))
+                else:
+                    # MINT step 1 of an MC@NLO run: fixed grids, equal
+                    # numbers of points, so a plain average.
+                    mean, error, _ = combine_points(means, [1.] * len(means),
+                                                    [1.] * len(means))
+                    self.assertAlmostEqual(result['TOTAL'][0], mean, places=12)
+                    self.assertAlmostEqual(result['TOTAL'][1], error, places=12)
+
+    def test_mint_step1_weights_iterations_by_points(self):
+        result = self.run_case('mint1')
+        means, errors = [5., 9., -2., 4., 11.], [1., 4., 2., 3., 1.5]
+        mean, error, weights = combine_points(means, errors, POINTS)
+        self.assertAlmostEqual(result['TOTAL'][0], mean, places=13)
+        self.assertAlmostEqual(result['TOTAL'][1], error, places=13)
+        self.assertAlmostEqual(result['POINTS'][0], sum(POINTS))
+        channel_means = ([0., 3., 0., 1., -2.], [5., 6., -2., 3., 13.])
+        channel_errors = ([0., 3.2, 0., 2.4, 1.2], [1., 3.6, 2., 2.7, 1.35])
+        for key, cmeans, cerrors in zip(('CHANNEL1', 'CHANNEL2'), channel_means,
+                                        channel_errors):
+            self.assertAlmostEqual(result[key][0], sum(w * x for w, x in zip(weights, cmeans)))
+            self.assertAlmostEqual(result[key][1], math.sqrt(sum((w * e)**2
+                                                                 for w, e in zip(weights, cerrors))))
+        mean3, error3, _ = combine_points([-2., 4., 11.], [2., 3., 1.5], POINTS[2:])
+        self.assertAlmostEqual(result['LAST3'][0], mean3)
+        self.assertAlmostEqual(result['LAST3'][1], error3)
+
+    def test_mint_step1_weight_does_not_depend_on_own_error(self):
+        self.assertAlmostEqual(self.run_case('mint1')['TOTAL'][0],
+                               self.run_case('mint1other')['TOTAL'][0], places=13)
+
+    def test_mint_step1_unbiased_when_value_and_error_are_correlated(self):
+        # All 2^5 outcomes of five iterations in which an upward fluctuation
+        # comes with a larger error. With fixed grids the expectation of the
+        # combination must be that of a single iteration.
+        self.assertAlmostEqual(self.run_case('skewed_mint1')['SKEWED'][0], 3., places=13)
+        # Grid set-up and fixed order keep the 1/error weights (adapting
+        # grids), which are biased for such an ensemble.
+        legacy = sum(combine([SKEWED[k][0] for k in pattern],
+                             [SKEWED[k][1] for k in pattern])[0]
+                     for pattern in itertools.product((0, 1), repeat=5)) / 32.
+        self.assertAlmostEqual(self.run_case('skewed_fo')['SKEWED'][0], legacy, places=12)
+        self.assertLess(legacy, 2.6)
 
 
 PROGRAM = r'''
@@ -164,7 +228,12 @@ call get_command_argument(1,mode)
 fixed_order=.true.
 nlo_ps=.false.
 nchans=2
+imode=0
 double_events=.false.
+if(index(mode,'mint1').eq.1) then
+ fixed_order=.false.
+ imode=1
+endif
 if(mode.eq.'mc') fixed_order=.false.
 if(mode.eq.'adaptive') double_events=.true.
 if(index(mode,'reject').eq.1) then
@@ -189,6 +258,7 @@ if(index(mode,'reject').eq.1) then
  do j=1,10
   call start_iteration
   ntotcalls=ncalls
+  iteration_points=dble(ncalls)
   vtot(1:2,0:1)=10d0*j
   etot(1:2,0:1)=1d0
   if(j.eq.4.or.(mode.eq.'reject_twice'.and.j.eq.5).or. &
@@ -202,6 +272,34 @@ if(index(mode,'reject').eq.1) then
  write(*,*) 'CHECK INCLUDED',nit_included
  write(*,*) 'CHECK TOTAL',ans(2,0),unc(2,0)
  write(*,*) 'CHECK NORM',iteration_weight_unc(2)
+ stop
+endif
+if(index(mode,'skewed').eq.1) then
+ nchans=1
+ if(mode.eq.'skewed_mint1') then
+  fixed_order=.false.
+  imode=1
+ endif
+ total=0d0
+ do pattern=0,31
+  call setup_common
+  do j=1,5
+   nit=j
+   vtot=0d0
+   etot=0d0
+   if(btest(pattern,j-1)) then
+    vtot(1:2,0:1)=1d0
+    etot(1:2,0:1)=1d0
+   else
+    vtot(1:2,0:1)=5d0
+    etot(1:2,0:1)=4d0
+   endif
+   iteration_points=100d0*2**(j-1)
+   call combine_iterations
+  enddo
+  total=total+ans(2,0)
+ enddo
+ write(*,*) 'CHECK SKEWED',total/32d0
  stop
 endif
 if(mode.eq.'ensemble') then
@@ -242,6 +340,8 @@ elseif(mode.eq.'lastzero') then
  means(3)=0d0
 elseif(mode.eq.'lastnegative') then
  means(3)=-7d0
+elseif(mode.eq.'mint1other') then
+ errors=[3d0,1d0,5d0,0.5d0,2d0]
 endif
 do j=1,count
  nit=j
@@ -261,6 +361,7 @@ do j=1,count
  etot(1:2,1)=e1
  etot(1:2,2)=e2
  if(mode.eq.'lastskip'.and.j.eq.3) etot(2,0)=0d0
+ iteration_points=100d0*2**(j-1)
  call combine_iterations
  call combine_final_three_iterations
 enddo
@@ -271,6 +372,7 @@ write(*,*) 'CHECK CHANNEL1_CHI2',chi2(2,1)
 write(*,*) 'CHECK NORM',iteration_weight_unc(2)
 write(*,*) 'CHECK HWU',HwU_values
 write(*,*) 'CHECK LAST3',ans_l3(2),unc_l3(2)
+write(*,*) 'CHECK POINTS',included_points(2)
 if(mode.eq.'accuracy') then
  chi2=0d0
  min_it=0
