@@ -679,40 +679,95 @@
     // the shift is for the transverse helicities, the only ones of a massless vector
     if( vmass != 0. || iref == ipar ) return;
     mgDebug( 0, __FUNCTION__ );
-    const fptype_momenta_sv rm0 = M_ACCESS::kernelAccessIp4IparConst( momenta, 0, iref );
+    // The reference-vector zeros (eps(p;r) slashed on the spinor of r, eps_i.eps_j for
+    // a shared r) are identities of exactly lightlike momenta. The momenta given are
+    // lightlike only to rounding, p^2 ~ eps E^2, and when p is close to r a zero
+    // computed from them is left at p^2/(2 r.p) ~ eps/theta^2 of the amplitudes
+    // (1e-5 at 1e-6 rad), which the gauge cancellation needs as soon as the zero is
+    // dropped. So the polarisation is built here for the lightlike p^ = (|p|, p) and
+    // the reference r^ = (|r|, r), consistently: vxxxxx (which normalises with p0) is
+    // redone with |p|, and r^.p^ = |r||p| - r.p is computed without the cancellation
+    // of two nearly collinear momenta, as |r x p|^2/(|r||p| + |r.p|) + (|r.p| - r.p).
+    // The zeros are then zeros to the rounding of the arithmetic, at any angle.
     const fptype_momenta_sv rm1 = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, iref );
     const fptype_momenta_sv rm2 = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, iref );
     const fptype_momenta_sv rm3 = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, iref );
-    // vc.pvec is nsv * p: the sign cancels between r.p and the shift along p.
-    // r.p of two lightlike momenta cancels between its terms when they are close
-    // to collinear, as p^2 does: it is made in the precision of the momenta (FP64
-    // in FPTYPE=v, as the propagator denominators), the shift in that of the amplitudes
-    const fptype_momenta_sv rdotp_mom = rm0 * vc.pvec[0] - rm1 * vc.pvec[1] - rm2 * vc.pvec[2] - rm3 * vc.pvec[3];
-    const fptype_amp_sv rdotp = fpamp_of_mom( rdotp_mom );
-    const fptype_amp_sv r0 = fpamp_of_mom( rm0 );
+    const fptype_momenta_sv pm1 = M_ACCESS::kernelAccessIp4IparConst( momenta, 1, ipar );
+    const fptype_momenta_sv pm2 = M_ACCESS::kernelAccessIp4IparConst( momenta, 2, ipar );
+    const fptype_momenta_sv pm3 = M_ACCESS::kernelAccessIp4IparConst( momenta, 3, ipar );
+    // the three-vector products in the precision of the momenta (FP64 in FPTYPE=v)
+    const fptype_momenta_sv rpm = rm1 * pm1 + rm2 * pm2 + rm3 * pm3;
+    const fptype_momenta_sv cxm = rm2 * pm3 - rm3 * pm2;
+    const fptype_momenta_sv cym = rm3 * pm1 - rm1 * pm3;
+    const fptype_momenta_sv czm = rm1 * pm2 - rm2 * pm1;
+    const fptype_momenta_sv crossm = cxm * cxm + cym * cym + czm * czm;
+    const fptype_amp_sv rp3 = fpamp_of_mom( rpm );
+    const fptype_amp_sv cross2 = fpamp_of_mom( crossm );
     const fptype_amp_sv r1 = fpamp_of_mom( rm1 );
     const fptype_amp_sv r2 = fpamp_of_mom( rm2 );
     const fptype_amp_sv r3 = fpamp_of_mom( rm3 );
-    const fptype_amp_sv p0 = fpamp_of_mom( vc.pvec[0] );
-    const fptype_amp_sv p1 = fpamp_of_mom( vc.pvec[1] );
-    const fptype_amp_sv p2 = fpamp_of_mom( vc.pvec[2] );
-    const fptype_amp_sv p3 = fpamp_of_mom( vc.pvec[3] );
+    const fptype_amp_sv p1 = fpamp_of_mom( pm1 );
+    const fptype_amp_sv p2 = fpamp_of_mom( pm2 );
+    const fptype_amp_sv p3 = fpamp_of_mom( pm3 );
+    const fptype_amp sqh = fpsqrt( 0.5 );
+    const fptype_amp_sv hel = nhel;
     cxtype_amp_sv* w = W_ACCESS::kernelAccess( vc.w );
-    const cxtype_amp_sv rdote = w[0] * r0 - w[1] * r1 - w[2] * r2 - w[3] * r3;
 #ifndef MADMATRIX_SIMD
+    const fptype_amp_sv pt2 = p1 * p1 + p2 * p2;
+    const fptype_amp_sv pp = fpsqrt( pt2 + p3 * p3 );
+    const fptype_amp_sv pt = fpsqrt( pt2 );
+    const fptype_amp_sv rr = fpsqrt( r1 * r1 + r2 * r2 + r3 * r3 );
+    const fptype_amp_sv arp = rp3 < 0 ? -rp3 : rp3;
+    const fptype_amp_sv rrpp = rr * pp + arp;
+    if( rrpp == 0. )
+    {
+      mgDebug( 1, __FUNCTION__ );
+      return;
+    }
+    const fptype_amp_sv rdotp = cross2 / rrpp + ( arp - rp3 );
     if( rdotp == 0. )
     {
       mgDebug( 1, __FUNCTION__ );
       return;
     }
+    if( pt != 0. )
+    {
+      // vxxxxx (massless) with |p| in place of p0
+      const fptype_amp pzpt = p3 / ( pp * pt ) * sqh * hel;
+      w[1] = cxmake( -p1 * pzpt, -nsv * p2 / pt * sqh );
+      w[2] = cxmake( -p2 * pzpt, nsv * p1 / pt * sqh );
+      w[3] = cxmake( hel * pt / pp * sqh, 0. );
+    }
+    // eps^0 = 0: r^0 does not enter r^.eps
+    const cxtype_amp_sv rdote = -( w[1] * r1 + w[2] * r2 + w[3] * r3 );
     const cxtype_amp_sv cfac = rdote / rdotp;
 #else
+    volatile fptype_amp_v pt2 = p1 * p1 + p2 * p2;
+    volatile fptype_amp_v pp2 = pt2 + p3 * p3;
+    volatile fptype_amp_v rr2 = r1 * r1 + r2 * r2 + r3 * r3;
+    const fptype_amp_v pp = fpsqrt( pp2 );
+    const fptype_amp_v pt = fpsqrt( pt2 );
+    const fptype_amp_v rr = fpsqrt( rr2 );
+    const fptype_amp_v arp = fpternary( rp3 < 0, -rp3, rp3 );
+    const fptype_amp_v rrpp = rr * pp + arp;
+    volatile fptype_amp_v rrppDENOM = fpternary( rrpp != 0, rrpp, 1. );
+    const fptype_amp_v rdotp = fpternary( rrpp != 0, cross2 / rrppDENOM + ( arp - rp3 ), 0. );
+    // vxxxxx (massless) with |p| in place of p0, in the lanes with pt != 0 (so pp != 0)
+    const bool_v redo = ( pt != 0 );
+    volatile fptype_amp_v ppDENOM = fpternary( redo, pp, 1. );
+    volatile fptype_amp_v ptDENOM = fpternary( redo, pt, 1. );
+    const fptype_amp_v pzpt = p3 / ( ppDENOM * ptDENOM ) * sqh * hel;
+    w[1] = cxternary( redo, cxmake( -p1 * pzpt, -(fptype_amp)nsv * p2 / ptDENOM * sqh ), w[1] );
+    w[2] = cxternary( redo, cxmake( -p2 * pzpt, (fptype_amp)nsv * p1 / ptDENOM * sqh ), w[2] );
+    w[3] = cxternary( redo, cxmake( hel * pt / ppDENOM * sqh, 0. ), w[3] );
+    const cxtype_amp_v rdote = -( w[1] * r1 + w[2] * r2 + w[3] * r3 );
     // as in vxxxxx: no division by zero in the lanes where r.p = 0 (#701), which keep eps
     volatile fptype_amp_v rpDENOM = fpternary( rdotp != 0, rdotp, 1. );
     const fptype_amp_v rpINV = fptype_amp( 1 ) / rpDENOM;
     const cxtype_amp_v cfac = cxternary( rdotp != 0, rdote * rpINV, cxzero_sv() );
 #endif
-    w[0] = w[0] - cfac * p0;
+    // the shift along p^ (unsigned, as the momenta eps is built from: vc.pvec is nsv * p)
+    w[0] = w[0] - cfac * pp;
     w[1] = w[1] - cfac * p1;
     w[2] = w[2] - cfac * p2;
     w[3] = w[3] - cfac * p3;

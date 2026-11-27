@@ -274,16 +274,6 @@ class ProbeTree(object):
         # MG_HR_PROBE, half of them boosted, per crossing at its own masses)
         # over every extended flavor id; any perf run triggers it
         env = dict(os.environ, MG_DUMP_GOODHEL='1')
-        env.pop('MG_HR_EXACT_ZERO', None)
-        try:
-            with open(pjoin(pdir, RECIPE)) as fsock:
-                exact_zero = json.load(fsock).get('exact_zero')
-        except (OSError, ValueError):
-            exact_zero = False
-        if exact_zero:
-            # --axial_gauge: the reference-vector zeros are a rounding residual
-            # the collinear limit needs: drop exact zeros only
-            env['MG_HR_EXACT_ZERO'] = '1'
         run = subprocess.run([pjoin(target, 'check_sa.exe'), 'perf', '1', '64', '1'],
                              cwd=target, env=env, stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT)

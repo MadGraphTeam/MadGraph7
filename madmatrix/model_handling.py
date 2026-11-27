@@ -2714,10 +2714,6 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
                 # --hel_recycling=True asked for: say loudly why it is declined
                 'explicit': self.hel_recycling_explicit,
                 'chunk': options.get('hel_recycling_chunk'),
-                # --axial_gauge: the reference-vector zeros are a rounding
-                # residual the collinear limit needs, so the probe drops exact
-                # zeros only (MG_HR_EXACT_ZERO, hel_recycling_filter.ProbeTree.run)
-                'exact_zero': bool(helas_call_writers.axial_gauge_requested(options)),
                 # crossing folded in: the per-lane gather that opens the
                 # recycled block (crossing_preamble_recycled), '' otherwise
                 'crossing_preamble':
