@@ -175,6 +175,31 @@ class TestLoopOniaGeneration(unittest.TestCase):
             same = [o2 for h2, o2 in zip(info['helc'], info['others']) if h2[:2] == h[:2]]
             self.assertEqual(set(same), set([o]))
 
+    def test_physical_helicity_configurations(self):
+        """SLOOPMATRIXHEL numbers the physical configurations as MadGraph's
+        helicity matrix of the physical process (the tree-level output and
+        the FKS Born): a bound state with its J_z = -J..J, the last leg
+        fastest. Each has the signature of its other legs."""
+        me = self.matrix_element('g g > Jpsi(1|3S11) g [virt=QCD]')
+        info = loop_onia.onia_loop_info(me)
+        self.assertEqual(info['phys_helc'],
+                         [tuple(h) for h in me.get_helicity_matrix(onia_physical=True)])
+        self.assertEqual(len(info['phys_helc']), 24)
+        self.assertEqual(info['phys_helc'][:3], [(-1, -1, -1, -1), (-1, -1, -1, 1),
+                                                 (-1, -1, 0, -1)])
+        self.assertEqual(info['phys_leg'], [1, 2, -1, 5])
+        for c, o in zip(info['phys_helc'], info['phys_others']):
+            for h, o2 in zip(info['helc'], info['others']):
+                if o2 == o:
+                    self.assertEqual((h[0], h[1], h[4]), (c[0], c[1], c[3]))
+        # two bound states
+        me = self.matrix_element('e+ e- > Jpsi(1|3S11) etac(1|1S01) / z QED=2 [virt=QCD]')
+        info = loop_onia.onia_loop_info(me)
+        self.assertEqual(info['phys_helc'],
+                         [tuple(h) for h in me.get_helicity_matrix(onia_physical=True)])
+        self.assertEqual(len(info['phys_helc']), 12)
+        self.assertEqual(info['phys_leg'], [1, 2, -1, -2])
+
     def test_pwave_projection_data(self):
         """g g > chic2: one P-wave bound state, its five J_z."""
         me = self.matrix_element('g g > chic2(1|3P21) [virt=QCD]')

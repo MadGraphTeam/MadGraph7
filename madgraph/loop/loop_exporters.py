@@ -2086,6 +2086,18 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         nexternal = info['nexternal']
         ncomb = len(info['helc'])
         nonia = len(info['onia'])
+        # MadFKS's MC over helicities (BinothLHA.f) reads
+        # MadLoop5_resources/HelFilter.dat in the numbering of SLOOPMATRIXHEL,
+        # the physical configurations: all of them are kept (multiplicity 1),
+        # since which J_z of a massive bound state vanish depends on the frame.
+        # MadLoop's own helicity filter is off for bound states
+        # (HelicityFilterLevel=0, loop_matrix.f), so it neither reads nor
+        # writes this file.
+        resources = pjoin('..', 'MadLoop5_resources')
+        if os.path.isdir(resources):
+            with open(pjoin(resources, '%(proc_prefix)sHelFilter.dat'
+                            % matrix_element.rep_dict), 'w') as hel_filter:
+                hel_filter.write(''.join(' 1\n' for _ in info['phys_helc']))
         njzt = len(info['jz'])
         nborn = matrix_element.get_number_of_born_amplitudes()
         model = matrix_element.get('processes')[0].get('model')
@@ -2127,6 +2139,23 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         lines.append('DATA ONIA_JZ/%s/' % ints([j for t in info['jz'] for j in t]))
         lines.append('DATA ONIA_HELC/%s/' % ints([h for hel in info['helc'] for h in hel]))
         lines.append('DATA ONIA_OTHERS/%s/' % ints(info['others']))
+        nphys, nphyscomb = info['nexternal_phys'], len(info['phys_helc'])
+        lines += ['C     the physical helicity configurations (SLOOPMATRIXHEL): the',
+                  'C     helicity matrix of the physical process, a bound state with its',
+                  'C     J_z = -J..J, the last leg fastest (as the tree-level output and',
+                  'C     the FKS Born); per physical leg its constituent leg, or minus',
+                  'C     the index of its bound state; per configuration the signature',
+                  'C     (ONIA_OTHERS) of the helicities of the other legs',
+                  'C     A selected configuration is not averaged over the initial',
+                  'C     helicities (ONIA_HELAVG of them), as in MadLoop and the tree level',
+                  'INTEGER ONIA_NPHYS, ONIA_PHYS_NCOMB, ONIA_HELAVG',
+                  'PARAMETER (ONIA_NPHYS=%d, ONIA_PHYS_NCOMB=%d, ONIA_HELAVG=%d)'
+                  % (nphys, nphyscomb, matrix_element.get_hel_avg_factor()),
+                  'INTEGER ONIA_PHYS_HEL(%d,%d), ONIA_PHYS_LEG(%d)' % (nphys, nphyscomb, nphys),
+                  'INTEGER ONIA_PHYS_OTHERS(%d)' % nphyscomb,
+                  'DATA ONIA_PHYS_HEL/%s/' % ints([h for hel in info['phys_helc'] for h in hel]),
+                  'DATA ONIA_PHYS_LEG/%s/' % ints(info['phys_leg']),
+                  'DATA ONIA_PHYS_OTHERS/%s/' % ints(info['phys_others'])]
         lines.append('C     the colour flows of the projected Born amplitudes (ONIA_BF, one')
         lines.append('C     basis: ONIA_BORN_FLOWS) and the colour matrix between them')
         lines.append('INTEGER ONIA_NFLOW')

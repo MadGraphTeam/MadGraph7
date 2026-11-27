@@ -38,6 +38,30 @@ frame. The Born, the virtual and the predicted poles are those of the
 selected J_z. `tools/onia_loop_check.py` exposes it as `jz=(K, [J_z, ...])` of
 `run_points` (driver option `--jz`).
 
+**One helicity configuration.** `SLOOPMATRIXHEL(P, HEL, ANS)` and
+`SLOOPMATRIXHEL_THRES(P, HEL, ANS, PREC_ASKED, PREC_FOUND, RET_CODE)` give
+the result of one physical helicity configuration HEL, on the physical momenta.
+This is what the MC over helicities of MadFKS uses.
+- **Numbering.** A configuration is the helicity of each elementary leg and
+  the J_z of each bound state. They are numbered as in MadGraph's helicity
+  matrix of the physical process: a bound state takes J_z = -J..J, and the
+  last leg varies fastest. This is the table of the tree-level output and of
+  the FKS Born (`ONIA_PHYS_HEL` in `onia_loop_data.inc`).
+- **What is computed.** The constituent helicities are summed over.
+- **Normalisation.** As in MadLoop and the tree-level `SMATRIXHEL`, a
+  configuration is not averaged over the initial helicities. ANS(0) is its
+  Born and ANS(1:3) its virtual, and the configurations add up to
+  `ONIA_HELAVG` (4 for two incoming partons) times the summed result.
+- **Selections.** As in MadLoop, `SLOOPMATRIXHEL` leaves the configuration
+  selected for later calls (`USERHEL` of the `USERCHOICE` common; -1 restores
+  the sum). A J_z selection of the user is put back after each call.
+- **Helicity filter.** `MadLoop5_resources/<prefix>HelFilter.dat` lists every
+  physical configuration with multiplicity 1, for MadFKS (`BinothLHA.f`).
+  Which J_z of a massive bound state vanish depends on the frame, so none is
+  filtered. MadLoop's own helicity filter, which would read that file in the
+  constituent numbering, stays off for bound states.
+- **Tool.** `tools/onia_loop_check.py` drives it with `run_points_hel`.
+
 Supported: `[virt=QCD]` with S-wave bound states in the final state, and at
 most one P-wave bound state. A P-wave output needs a TIRust installation with
 raised propagator powers (`raised_powers` in its metadata; `install tirust

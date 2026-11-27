@@ -739,8 +739,20 @@ C Setup the file paths
   CALL JOINPATH(TMP,COLORDENOMFNAME,COLORDENOMFN)
   CALL JOINPATH(TMP,HELFILTERFNAME,HELFILTERFN)
 
-  CALL %(proc_prefix)sSET_N_EVALS(N_DP_EVAL,N_QP_EVAL)  
+  CALL %(proc_prefix)sSET_N_EVALS(N_DP_EVAL,N_QP_EVAL)
 
+## if(Onia) {
+C Disable the helicity filter for processes with bound
+C states, also when MadLoopParams.dat asks for it. Which
+C constituent helicity configurations contribute depends
+C on the frame (onia_loop.f skips them point by point), and
+C HelFilter.dat lists the physical configurations of
+C SLOOPMATRIXHEL for MadFKS, not the constituent ones.
+  IF (HelicityFilterLevel.NE.0) THEN
+    WRITE(*,*) '##INFO: Helicity filter deactivated for processes with bound states.'
+    HelicityFilterLevel = 0
+  ENDIF
+## }
 C Disable the helicity filter for 2>1 and 1>2 processes.
 C In the c.m. frame one particle is then at rest (the
 C final state of a 2>1, the decaying one of a 1>2), and

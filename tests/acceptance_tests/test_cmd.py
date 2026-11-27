@@ -5000,6 +5000,104 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
                 self.assertAlmostEqual(r['single_norm'], single, 8, process)
                 self.assertAlmostEqual(r['double_norm'], double, 8, process)
 
+    def test_quarkonium_loop_helicities(self):
+        """SLOOPMATRIXHEL for bound states (the MC over helicities of MadFKS)
+        on g g > Jpsi(1|3S11) g [virt=QCD]: its 24 physical configurations
+        (the J/psi with J_z = -1, 0, 1) are numbered as the helicity matrix of
+        the tree-level output, each one's Born is that of the tree-level
+        SMATRIXHEL, and they add up to 4 times the summed result (as MadLoop,
+        a selected configuration is not averaged over the initial helicities).
+        MadLoop5_resources/<prefix>HelFilter.dat lists every configuration."""
+
+        import sys
+        import re
+        sys.path.insert(0, pjoin(MG5DIR, 'tools'))
+        import onia_loop_check
+
+        tirust = self.cmd.options.get('tirust')
+        if not tirust or str(tirust) == 'None' or not os.path.isdir(str(tirust)):
+            self.skipTest('TIRust is not installed (install tirust)')
+
+        process = 'g g > Jpsi(1|3S11) g'
+        outdir = onia_loop_check.output_process(
+            'loop_sm_onia-c_mass', process + ' [virt=QCD]', pjoin(self.tmpdir, 'onia_hel'),
+            regenerate=True)
+        pdir = onia_loop_check.subprocess_dir(outdir)
+        onia_loop_check.build_driver(pdir)
+        masses = onia_loop_check.driver_masses(pdir)
+        points = [p['momenta'] for p in onia_loop_check.points_lib.generate_points(
+            masses[2:], count=2, energy=20., seed=5, incoming_masses=tuple(masses[:2]))]
+        onia_loop_check.set_reduction(outdir, [9])
+        results = onia_loop_check.run_points_hel(pdir, points)
+        prefix = open(pjoin(pdir, 'proc_prefix.txt')).read().strip()
+        hel_filter = open(pjoin(outdir, 'SubProcesses', 'MadLoop5_resources',
+                                prefix + 'HelFilter.dat')).read().split()
+        self.assertEqual(hel_filter, ['1'] * 24)
+        for r in results:
+            self.assertEqual((len(r['configs']), r['helavg']), (24, 4))
+            for key, tol in (('born', 1e-13), ('finite', 1e-9), ('single', 1e-11),
+                             ('double', 1e-11)):
+                total = sum(c[key] for c in r['configs']) / r['helavg']
+                self.assertLess(abs(total / r['sum'][key] - 1.), tol, key)
+
+        # MadLoop's own helicity filter stays off for bound states even when
+        # MadLoopParams.dat asks for it: it would learn the filter in the
+        # constituent numbering and write it to HelFilter.dat
+        onia_loop_check.set_reduction(outdir, [9], {'HelicityFilterLevel': 2})
+        again = onia_loop_check.run_points_hel(pdir, points[:1])[0]
+        self.assertEqual(open(pjoin(outdir, 'SubProcesses', 'MadLoop5_resources',
+                                    prefix + 'HelFilter.dat')).read().split(), ['1'] * 24)
+        for a, b in zip([again['sum']] + again['configs'],
+                        [results[0]['sum']] + results[0]['configs']):
+            for key in ('born', 'finite'):
+                self.assertLessEqual(abs(a[key] - b[key]), 1e-14 * abs(b[key]), key)
+
+        # the tree-level output of the same process: its helicity table and
+        # SMATRIXHEL
+        treedir = pjoin(self.tmpdir, 'onia_hel_tree')
+        onia_loop_check.run_madgraph(['import model sm_onia-c_mass', 'generate %s' % process,
+                                      'output standalone_fortran %s -f' % treedir],
+                                     pjoin(self.tmpdir, 'onia_hel_tree.log'))
+        tdir = onia_loop_check.subprocess_dir(treedir)
+        tree_table = [tuple(int(x) for x in m.group(1).split(','))
+                      for m in re.finditer(r'DATA \(NHEL\(I,\s*\d+\),I=1,\d+\) /([^/]*)/',
+                                           open(pjoin(tdir, 'matrix.f')).read())]
+        data = open(pjoin(pdir, 'onia_loop_data.inc')).read()
+        values = [int(x) for x in re.search(r'DATA ONIA_PHYS_HEL/([^/]*)/', data, re.S)
+                  .group(1).replace('$', ' ').split(',')]
+        self.assertEqual(tree_table, [tuple(values[4 * i:4 * i + 4]) for i in range(24)])
+        with open(pjoin(tdir, 'treehel.f'), 'w') as f:
+            f.write('\n'.join([
+                '      PROGRAM TREEHEL', '      IMPLICIT NONE',
+                '      REAL*8 P(0:3,4), ANS', '      INTEGER NPOINTS, K, I, J, H',
+                "      CALL SETPARA('param_card.dat')", "      CALL SETONIA('onia_card.dat')",
+                '      READ(*,*) NPOINTS', '      DO K=1,NPOINTS', '        DO I=1,4',
+                '          READ(*,*) (P(J,I),J=0,3)', '        ENDDO',
+                '        CALL SMATRIX(P,1,ANS)',
+                "        WRITE(*,'(A,2I6,ES26.17E3)') 'TREE',K,0,ANS",
+                '        DO H=1,24', '          CALL SMATRIXHEL(P,H,1,ANS)',
+                "          WRITE(*,'(A,2I6,ES26.17E3)') 'TREE',K,H,ANS",
+                '        ENDDO', '      ENDDO', '      END', '']))
+        with open(pjoin(tdir, 'treehel.mk'), 'w') as f:
+            f.write('include makefile\ntreehel: $(LIBS) $(PROCESS) treehel.o\n'
+                    '\t$(FC) $(FFLAGS) -o treehel $(PROCESS) treehel.o $(LINKLIBS)\n')
+        onia_loop_check.make(tdir, 'treehel', 'treehel.mk')
+        lines = [str(len(points))] + [' '.join('%.17e' % c for c in v)
+                                      for p in points for v in p]
+        out = subprocess.run([pjoin(tdir, 'treehel')], cwd=tdir, input='\n'.join(lines) + '\n',
+                             capture_output=True, text=True, check=True).stdout
+        tree = {}
+        for line in out.splitlines():
+            if line.startswith('TREE'):
+                f = line.split()
+                tree.setdefault(int(f[1]), {})[int(f[2])] = float(f[3])
+        for k, r in enumerate(results):
+            # the share of each configuration in the summed Born (both without
+            # the helicity average)
+            for h, c in enumerate(r['configs']):
+                self.assertAlmostEqual(c['born'] / r['sum']['born'],
+                                       tree[k + 1][h + 1] / tree[k + 1][0], 10)
+
     def raised_power_tirust(self):
         """The TIRust library directory for P-wave virtuals: $TIRUST_LIB, else
         the configured installation. Skips the test unless it has raised

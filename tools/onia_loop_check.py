@@ -282,6 +282,96 @@ def run_points(pdir, momenta, mu=None, warmup=3, timeout=None, relmom=None, jz=N
     return results[warmup:]
 
 
+HEL_DRIVER = """\
+C     Reads NPOINTS, then per point MU_R (<= 0: sqrt(s)) and the momenta of
+C     the NEXTERNAL physical legs. Per point: the summed SLOOPMATRIX_THRES
+C     (configuration 0), then SLOOPMATRIXHEL_THRES for every physical
+C     helicity configuration (onia_loop_data.inc), one HEL line each.
+      PROGRAM ML_HEL_DRIVER
+      IMPLICIT NONE
+      INTEGER NEXTERNAL
+      PARAMETER (NEXTERNAL=@NEXTERNAL@)
+      INCLUDE 'coupl.inc'
+      INCLUDE 'onia_loop_data.inc'
+      REAL*8 P(0:3,NEXTERNAL), PIN(0:3), MU
+      REAL*8, ALLOCATABLE :: ANS(:,:), PREC(:)
+      INTEGER NDIM, NSO, NPOINTS, K, I, J, H, RET, USERHEL
+      COMMON/@PREFIX@USERCHOICE/USERHEL
+      CALL SETPARA('param_card.dat')
+      CALL SETONIA('onia_card.dat')
+      CALL @PREFIX@GET_ANSWER_DIMENSION(NDIM)
+      CALL @PREFIX@GET_NSQSO_LOOP(NSO)
+      ALLOCATE(ANS(0:3,0:NDIM),PREC(0:NSO))
+      READ(*,*) NPOINTS
+      DO K=1,NPOINTS
+        READ(*,*) MU
+        DO I=1,NEXTERNAL
+          READ(*,*) (P(J,I),J=0,3)
+        ENDDO
+        IF (MU.LE.0D0) THEN
+          PIN(0:3)=P(0:3,1)+P(0:3,2)
+          MU=DSQRT(DABS(PIN(0)**2-PIN(1)**2-PIN(2)**2-PIN(3)**2))
+        ENDIF
+        MU_R=MU
+        CALL UPDATE_AS_PARAM()
+C       SLOOPMATRIXHEL leaves USERHEL set, as in MadLoop
+        USERHEL=-1
+        CALL @PREFIX@SLOOPMATRIX_THRES(P,ANS,-1D0,PREC,RET)
+        WRITE(*,'(A,2I6,4ES26.17E3,ES12.4,I5)') 'HEL',K,0,ANS(0,0),
+     &   ANS(1,0),ANS(2,0),ANS(3,0),PREC(0),RET
+        DO H=1,ONIA_PHYS_NCOMB
+          CALL @PREFIX@SLOOPMATRIXHEL_THRES(P,H,ANS,-1D0,PREC,RET)
+          WRITE(*,'(A,2I6,4ES26.17E3,ES12.4,I5)') 'HEL',K,H,ANS(0,0),
+     &     ANS(1,0),ANS(2,0),ANS(3,0),PREC(0),RET
+        ENDDO
+        USERHEL=-1
+      ENDDO
+      END
+"""
+
+
+def run_points_hel(pdir, momenta, mu=None, timeout=None):
+    """Per point (lists of 4-vectors) of a bound-state output: the summed
+    result and that of every physical helicity configuration
+    (SLOOPMATRIXHEL_THRES), as {'sum': r, 'configs': [r1, r2, ...], 'helavg': n}
+    with r = dict(born, finite, single, double, accuracy, ret_code). As in
+    MadLoop, a configuration is not averaged over the initial helicities: the
+    configurations add up to helavg times the sum."""
+    prefix = open(os.path.join(pdir, 'proc_prefix.txt')).read().strip()
+    nexternal = int(re.search(r'NEXTERNAL_PHYS=(\d+)',
+                              open(os.path.join(pdir, 'onia_loop.f')).read()).group(1))
+    helavg = int(re.search(r'ONIA_HELAVG=(\d+)',
+                           open(os.path.join(pdir, 'onia_loop_data.inc')).read()).group(1))
+    with open(os.path.join(pdir, 'ml_hel_driver.f'), 'w') as f:
+        f.write(HEL_DRIVER.replace('@NEXTERNAL@', str(nexternal)).replace('@PREFIX@', prefix))
+    with open(os.path.join(pdir, 'ml_hel_driver.mk'), 'w') as f:
+        f.write(DRIVER_MAKEFILE.replace('ml_points_driver', 'ml_hel_driver'))
+    make(pdir, 'ml_hel_driver', 'ml_hel_driver.mk')
+    lines = [str(len(momenta))]
+    for p in momenta:
+        lines.append('%.17e' % (mu if mu else -1.0))
+        lines.extend(' '.join('%.17e' % c for c in v) for v in p)
+    proc = subprocess.run([os.path.join(pdir, 'ml_hel_driver')], cwd=pdir,
+                          input='\n'.join(lines) + '\n', capture_output=True, text=True,
+                          timeout=timeout)
+    if proc.returncode:
+        raise RuntimeError('ml_hel_driver failed:\n%s\n%s' % (proc.stdout[-2000:],
+                                                              proc.stderr[-2000:]))
+    out = [dict(sum=None, configs=[], helavg=helavg) for _ in momenta]
+    for line in proc.stdout.splitlines():
+        if not line.startswith('HEL'):
+            continue
+        f = line.split()
+        k, h = int(f[1]), int(f[2])
+        r = dict(born=float(f[3]), finite=float(f[4]), single=float(f[5]), double=float(f[6]),
+                 accuracy=float(f[7]), ret_code=int(f[8]))
+        if h == 0:
+            out[k - 1]['sum'] = r
+        else:
+            out[k - 1]['configs'].append(r)
+    return out
+
+
 def relative_momentum_scan(pdir, masses, onium_legs, velocities, npoints=1, energy=1000.,
                            seed=None, mu=None, direction=(0.48, 0.36, 0.8), timeout=None):
     """The virtual with a relative momentum +-q of the constituents of the
