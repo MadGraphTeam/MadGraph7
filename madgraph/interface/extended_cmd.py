@@ -2456,6 +2456,8 @@ class SmartQuestion(BasicCmd):
         self._prev_box_lines = 0  # line count of the box as currently on screen
         self._cmd_seq = 0        # bumped once per onecmd() call
         self._history_seq = -1   # _cmd_seq already appended to _answer_history
+        self._hint_text = ''     # tutorial hint as printed, redrawn under the box
+        self._progress_key = None # (_cmd_seq, line) whose progress was printed
 
         if 'case' in opt:
             self.casesensitive = opt['case']
@@ -2496,7 +2498,7 @@ class SmartQuestion(BasicCmd):
                 nb_rows = int(os.popen('stty size', 'r').read().split()[0])
             except Exception:
                 nb_rows = 0
-            box_lines = text.count('\n') + 1
+            box_lines = text.count('\n') + 1 + self._hint_text.count('\n')
             margin = 2 # 1 free row + 1 so the next untracked echo line doesn't force a scroll
 
             old_history = self._answer_history
@@ -2521,13 +2523,13 @@ class SmartQuestion(BasicCmd):
                 if is_new_input:
                     n_up += 1 # the '>answer' line, invisible to the hook
                 sys.stdout.write('\x1b[%dA\x1b[0J' % n_up)
-                sys.stdout.write(text + '\n')
+                sys.stdout.write(text + '\n' + self._hint_text)
                 for entry in updated_history:
                     sys.stdout.write(entry)
                 self._answer_history = updated_history
             else:
                 # tainted, or doesn't fit: give up erasing, print fresh, keep what fits
-                sys.stdout.write(text + '\n')
+                sys.stdout.write(text + '\n' + self._hint_text)
                 if tainted:
                     kept = [new_block] if new_block is not None else []
                 elif nb_rows:
@@ -2571,6 +2573,11 @@ class SmartQuestion(BasicCmd):
                 self.display_question()
                 logger_tuto.info(get_question_hint(), '$MG:BOLD')
                 logger_plugin.info("Need help here? type 'help'" , '$MG:BOLD')
+                if self._redraw is not None:
+                    # part of the box: redrawn with it, not moved below the answer
+                    self._hint_text = ''.join(self._redraw.captured)
+                    self._prev_box_lines += self._hint_text.count('\n')
+                    self._redraw.captured = []
             return self.cmdloop()
         finally:
             if self._redraw is not None:
@@ -2654,8 +2661,12 @@ class SmartQuestion(BasicCmd):
             if not prev_timer:
                 self.question = pat.sub('',self.question)
             self.display_question()
-            # a lesson which has something to say about the answer just given
-            progress = get_question_progress(line)
+            # a lesson which has something to say about the answer just given;
+            # postcmd can reask twice for one answer, so say it once
+            progress = None
+            if (self._cmd_seq, line) != self._progress_key:
+                self._progress_key = (self._cmd_seq, line)
+                progress = get_question_progress(line)
             if progress:
                 logger_tuto.info(progress, '$MG:BOLD')
 

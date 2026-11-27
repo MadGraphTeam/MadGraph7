@@ -30,8 +30,8 @@ The first lessons are a good start:
 ``mg7``
     The run card, the phase-space options and training MadNIS.
 
-Other lessons cover models, decays, standalone matrix elements, NLO and MadLoop, the
-``check`` commands and the MadEvent mode. The ``exercises`` lesson checks your answers
+Other lessons cover gridpacks and cluster runs, models, decays, standalone matrix elements,
+NLO and MadLoop, the ``check`` commands and the MadEvent mode. The ``exercises`` lesson checks your answers
 and tells you which mistake you made. Leave a lesson with ``tutorial stop``.
 
 Where to go next
