@@ -16,7 +16,9 @@ template's runtime (one native call per template and slot permutation in the
 switch). A crossed member (process.flavor_union_crossing) reads sign-flipped
 momenta with helicities flipped by rho; a call of the switch shares one crossing.
 With rusticol.flavour-union-relabelling.v2 a call spans template sides: it is
-keyed by the all-outgoing flavour per event slot (``SWITCH_CROSS_SIDE``).
+keyed by the all-outgoing flavour per event slot (``SWITCH_CROSS_SIDE``). A
+template whose calls would derive more than ``MAX_RELABELLED_ASSIGNMENTS`` ids
+keeps the per-side key; past that the catalogue is refused at generation.
 Pure-QCD orderings read the summed leading colour of one member of their
 charge-conjugate class (``SWITCH_C_DEDUP``); the targets keep their own.
 Full-colour targets are the members' own processes of the target artifact, or
@@ -80,6 +82,8 @@ SWITCH_C_DEDUP = os.environ.get("PYAMPLICOL_SWITCH_C_DEDUP", "1") != "0"
 # Switch calls of a template merge across sides by all-outgoing flavour when the
 # core relabels across sides (False: per template side, for A/B comparisons).
 SWITCH_CROSS_SIDE = os.environ.get("PYAMPLICOL_SWITCH_CROSS_SIDE", "1") != "0"
+# Relabelled assignment ids a loaded runtime may derive (rusticol-core engine.rs).
+MAX_RELABELLED_ASSIGNMENTS = 4096
 
 
 def runtime_capabilities() -> frozenset[str]:
@@ -442,13 +446,15 @@ def _switch_calls(
     member_ids: Mapping[tuple[int, int], tuple[str, tuple]],
     incoming: int = 2,
     conjugated: Mapping[tuple[int, int], bool] | None = None,
+    derived_ids: dict[int, set[tuple]] | None = None,
 ) -> list[dict[str, Any]]:
     """The native calls of the switch evaluations ``indices``. One call per
     (runtime, legs): the assignments of a template share it. With a pattern
     table, one per ``call_key`` (template and leg flavours): an evaluation at legs
     l is its assignment relabelled by pi[r] = c^-1[l[r]] at the call's legs c,
     those of its first evaluation (the legs source: the C code gathers the
-    momenta and crossing signs there), uncrossed when the call has one."""
+    momenta and crossing signs there), uncrossed when the call has one.
+    ``derived_ids`` collects per runtime the keys the core interns a new id for."""
     groups: dict[tuple, list[int]] = {}
     for index in indices:
         groups.setdefault(call_key(index), []).append(index)
@@ -515,6 +521,12 @@ def _switch_calls(
             if entry == len(call["assignments"]):
                 call["assignments"].append(assignment)
                 call["permutations"].append(list(permutation))
+                # the core keys a derived id by (base, crossing, patterns)
+                own = patterns if patterns == ("template",) else tuple(
+                    sorted(zip(patterns, signs, strict=True))
+                )
+                if derived_ids is not None and (derived != own or sigma_c != sigma_e):
+                    derived_ids.setdefault(rep, set()).add((assignment, sigma_c, derived))
             call["entries"].append(entry)
         if call["evaluations"][0] != source or call["legs"] != list(
             described[call["evaluations"][0]][2]
@@ -808,6 +820,8 @@ def switch_catalogue(
         FLAVOUR_UNION_CROSS_SIDE_RELABELLING_RUNTIME_CAPABILITY
         in runtime_capabilities()
     )
+    # templates whose cross-side calls exceed MAX_RELABELLED_ASSIGNMENTS
+    side_keyed: set[int] = set()
 
     def call_key(index: int) -> tuple:
         rep, assignment, legs, _, _ = described[index]
@@ -816,7 +830,7 @@ def switch_catalogue(
         if pattern_tables.get(rep) is None:
             return (rep, legs)
         types = [0] * len(legs)
-        if cross_side:
+        if cross_side and rep not in side_keyed:
             # all-outgoing template flavour per event slot, kept across sides
             for r, slot in enumerate(legs):
                 pdg = processes[rep]["pdgs"][r]
@@ -829,32 +843,57 @@ def switch_catalogue(
             sides[slot] = r < incoming
         return (rep, tuple(types), tuple(sides))
 
-    calls = _switch_calls(described, range(len(described)), call_key, pattern_tables,
-                          member_ids, incoming, conjugated_of)
-    pure = [_pure_qcd(processes[e[0]]) for e in described] if SWITCH_C_DEDUP else []
-    if any(pure):
-        call_of = [0] * len(described)
-        costs = []
-        for g, call in enumerate(calls):
-            for e in call["evaluations"]:
-                call_of[e] = g
-            # a call costs about one template recursion per helicity and flow
-            rep = call["process"]
-            costs.append(float(max(1, len(processes[rep].get("helicity_ids") or ()))
-                               * max(1, len(flow_ids.get(rep, ())))))
-        representative = _c_representatives(
-            order_columns.evaluation, order_columns.weight, flavours, pure, call_of,
-            costs,
+    evaluation_column = array("i", order_columns.evaluation)
+
+    def build_calls(derived: dict[int, set[tuple]]) -> list[dict[str, Any]]:
+        order_columns.evaluation[:] = evaluation_column
+        calls = _switch_calls(described, range(len(described)), call_key, pattern_tables,
+                              member_ids, incoming, conjugated_of, derived)
+        pure = [_pure_qcd(processes[e[0]]) for e in described] if SWITCH_C_DEDUP else []
+        if any(pure):
+            call_of = [0] * len(described)
+            costs = []
+            for g, call in enumerate(calls):
+                for e in call["evaluations"]:
+                    call_of[e] = g
+                # a call costs about one template recursion per helicity and flow
+                rep = call["process"]
+                costs.append(float(max(1, len(processes[rep].get("helicity_ids") or ()))
+                                   * max(1, len(flow_ids.get(rep, ())))))
+            representative = _c_representatives(
+                order_columns.evaluation, order_columns.weight, flavours, pure, call_of,
+                costs,
+            )
+            if representative is not None:
+                # the orderings read the representatives; targets keep their own
+                order_columns.evaluation[:] = array(
+                    "i", map(representative.__getitem__, order_columns.evaluation)
+                )
+                derived.clear()
+                calls = _switch_calls(
+                    described, sorted(set(order_columns.evaluation)), call_key,
+                    pattern_tables, member_ids, incoming, conjugated_of, derived,
+                )
+        return calls
+
+    derived: dict[int, set[tuple]] = {}
+    calls = build_calls(derived)
+    over = {rep for rep, keys in derived.items() if len(keys) > MAX_RELABELLED_ASSIGNMENTS}
+    if over and cross_side:
+        # per template side: fewer moved slots, so fewer derived ids
+        side_keyed.update(over)
+        derived = {}
+        calls = build_calls(derived)
+        over = {
+            rep for rep, keys in derived.items() if len(keys) > MAX_RELABELLED_ASSIGNMENTS
+        }
+    if over:
+        worst = max(over, key=lambda rep: len(derived[rep]))
+        raise ValueError(
+            f"switch calls of {processes[worst]['id']!r} need {len(derived[worst])} "
+            f"relabelled assignments, more than the {MAX_RELABELLED_ASSIGNMENTS} a "
+            "runtime may derive"
         )
-        if representative is not None:
-            # the orderings read the representatives; targets keep their own
-            order_columns.evaluation[:] = array(
-                "i", map(representative.__getitem__, order_columns.evaluation)
-            )
-            calls = _switch_calls(
-                described, sorted(set(order_columns.evaluation)), call_key,
-                pattern_tables, member_ids, incoming, conjugated_of,
-            )
     targets = SwitchTargetTable(
         target_evaluation, target_color_set, color_sets, target_pdgs, n
     )

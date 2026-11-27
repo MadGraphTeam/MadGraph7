@@ -604,3 +604,43 @@ def test_switch_calls_span_template_sides_with_cross_side_relabelling(
     for call in catalogue["calls"]:
         first = catalogue["evaluations"][call["evaluations"][0]]
         assert call["legs"] == first["legs"]
+
+
+def test_switch_calls_count_the_ids_the_core_derives():
+    crossed = (0, 1, (0, 2, 1, 3), "m1", (1, -1, 1, 1))
+    plain = (0, 2, (0, 1, 2, 3), "m2", None)
+    from pyamplicol.artifacts.umami_reweight import _switch_calls
+
+    member_ids = {(0, a): (f"m{a}", (("template",), (), a, 1)) for a in (1, 2)}
+    tables = {0: ([[(1, 0)]], {((1, 0),): 0})}
+    derived: dict[int, set[tuple]] = {}
+    _switch_calls([crossed, plain], range(2), lambda _: ("key",), tables, member_ids,
+                  2, None, derived)
+    # the identity request keeps its id; the crossed one moves onto the call's crossing
+    assert derived == {0: {(1, (False,) * 4, ("template",))}}
+
+
+def test_switch_calls_keep_the_side_key_past_the_relabel_cap(monkeypatch):
+    import pyamplicol.artifacts.umami_reweight as module
+
+    reference, groups = _cross_side_union()
+    monkeypatch.setattr(module, "SWITCH_CROSS_SIDE", False)
+    old = switch_catalogue(reference, groups, 1)
+    monkeypatch.setattr(module, "SWITCH_CROSS_SIDE", True)
+    assert switch_catalogue(reference, groups, 1)["calls"] != old["calls"]
+    # no cross-side id fits: the template falls back to the per-side calls
+    monkeypatch.setattr(module, "MAX_RELABELLED_ASSIGNMENTS", 0)
+    capped = switch_catalogue(reference, groups, 1)
+    assert capped["calls"] == old["calls"]
+    assert capped["ordering_table"] == old["ordering_table"]
+    # still too many after the fallback: refused at generation
+    real = module._switch_calls
+
+    def padded(*args):
+        calls = real(*args)
+        args[-1].setdefault(0, set()).add(("same-side id",))
+        return calls
+
+    monkeypatch.setattr(module, "_switch_calls", padded)
+    with pytest.raises(ValueError, match="1 relabelled assignments"):
+        switch_catalogue(reference, groups, 1)
