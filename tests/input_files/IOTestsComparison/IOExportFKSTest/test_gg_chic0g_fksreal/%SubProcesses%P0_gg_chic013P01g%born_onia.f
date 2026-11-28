@@ -35,7 +35,20 @@ C     and identical-particle denominator), without g_s. P^mu A(r') is
 C      built from
 C     the S-wave amplitudes A(S_z) of the same diagrams,
 C     V^mu(J_z) = sum_{L_z,S_z} <1 L_z; S S_z|J J_z> eps*^mu(L_z)
-C      A(S_z).
+C      A(S_z),
+C     with eps(L_z) instead of eps*(L_z) for a decaying onium (ISV =
+C      -1, the
+C     incoming polarisation vectors of its P-wave kernel). The soft
+C      current of
+C     a decaying onium is that of the production with its momentum
+C      taken as
+C     -P (all momenta outgoing): the cross vectors (of degree -1 in P)
+C      change
+C     sign, and the dipole-dipole tensors with each decaying onium;
+C      the self
+C     tensor (degree -2) does not. These signs are in VEC, DD and
+C      VPAR, so
+C     that the soft, integrated and pole terms take the physical P.
 C     The results are kept for the last momenta P.
 C     
 C     Process: g g > chic0(1|3P01) g [ real = QCD QED ] QCD^2=8 QED^2=0
@@ -71,11 +84,12 @@ C
       INTEGER H, H1, H2, IP, KD1, KD2, SZ1, SZ2, LZ1, LZ2, JZ1, JZ2
       INTEGER NHELS(NB,NCOMB), NHEL(NB)
       INTEGER QQ(NPQ), SPIN(NPQ), JTOT(NPQ), NAUX(NPQ), IQ(NPQ)
-      INTEGER IQBAR(NPQ), IPAIR(2,NPAIRX)
+      INTEGER IQBAR(NPQ), IPAIR(2,NPAIRX), ISV(NPQ)
       INTEGER NCOLS(NAUXMAX,NPQ), NCOLD(NAUXMAX,NAUXMAX,NPAIRX)
       CHARACTER*2 LABEL(NAUXMAX,NPQ)
       DATA QQ(1), SPIN(1), JTOT(1), NAUX(1) /3, 1, 0, 1/
       DATA IQ(1), IQBAR(1) /3, 4/
+      DATA ISV(1) /1/
       DATA LABEL(1,1), NCOLS(1,1) /'18', 6/
       DATA LABEL(2,1), NCOLS(2,1) /'  ', 1/
       DATA IPAIR(1,1), IPAIR(2,1) /0, 0/
@@ -135,6 +149,11 @@ C       ([88]), FK(2,.) -i f_abc ([88])
         DO H = 1, NPQ
           MQQ(H) = PMASS_ONIA(IQ(H))+PMASS_ONIA(IQBAR(H))
           R = PMASS_ONIA(IQ(H))/PMASS_ONIA(IQBAR(H))
+C         a decaying onium: crossed, its antiquark is the quark of the
+C         pair (it carries the octet index), r -> 1/r: the -i f_abc
+C          part
+C         (1/r-r)/2 of Q_eff(88) changes sign (the rest is symmetric)
+          IF (ISV(H).LT.0) R = 1D0/R
           MSUM = 2D0+R+1D0/R
           DO A = 1, NAUX(H)
             IF (LABEL(A,H).EQ.'18') THEN
@@ -296,7 +315,7 @@ C            flow
               NHEL(QQ(H)) = SZ
               CALL ONIA_SOFT_AMPS(H,A,P,NHEL,JS)
               NHEL(QQ(H)) = JZ
-              CALL VXXXXX(P(0,QQ(H)),MQQ(H),LZ,1,EPS)
+              CALL VXXXXX(P(0,QQ(H)),MQQ(H),LZ,ISV(H),EPS)
               DO MU = 0, 3
                 V(MU,1:NCOLS(A,H),A,H) = V(MU,1:NCOLS(A,H),A,H)
      &            +CG*EPS%W(MU+1)*JS(1:NCOLS(A,H))
@@ -361,14 +380,14 @@ C             the parallel class: A_P^* Z P_1^mu P_2^nu A(r'_12)
                 CALL ONIA_SOFT_AMPPCG(1,LZ1,SPIN(H1),SZ1,JTOT(H1),JZ1,
      &            CG1)
                 IF (CG1.EQ.0D0) CYCLE
-                CALL VXXXXX(P(0,QQ(H1)),MQQ(H1),LZ1,1,EPS1)
+                CALL VXXXXX(P(0,QQ(H1)),MQQ(H1),LZ1,ISV(H1),EPS1)
                 DO SZ2 = -SPIN(H2), SPIN(H2)
                   LZ2 = JZ2-SZ2
                   IF (ABS(LZ2).GT.1) CYCLE
                   CALL ONIA_SOFT_AMPPCG(1,LZ2,SPIN(H2),SZ2,JTOT(H2),
      &              JZ2,CG2)
                   IF (CG2.EQ.0D0) CYCLE
-                  CALL VXXXXX(P(0,QQ(H2)),MQQ(H2),LZ2,1,EPS2)
+                  CALL VXXXXX(P(0,QQ(H2)),MQQ(H2),LZ2,ISV(H2),EPS2)
                   NHEL(QQ(H1)) = SZ1
                   NHEL(QQ(H2)) = SZ2
                   CALL ONIA_SOFT_AMPD(IP,A1,A2,P,NHEL,JD)
@@ -401,6 +420,13 @@ C             the parallel class: A_P^* Z P_1^mu P_2^nu A(r'_12)
         ENDDO
       ENDDO
       FAC = ONIA_SOFT_AMPPFAC()/DBLE(IDEN)
+      DO H = 1, NPQ
+        VEC(:,:,H) = VEC(:,:,H)*ISV(H)
+      ENDDO
+      DO IP = 1, NPAIR
+        DD(:,:,IP) = DD(:,:,IP)*ISV(IPAIR(1,IP))*ISV(IPAIR(2,IP))
+        VPAR(:,:,IP) = VPAR(:,:,IP)*ISV(IPAIR(1,IP))*ISV(IPAIR(2,IP))
+      ENDDO
       VEC(:,:,:) = VEC(:,:,:)*FAC
       TEN(:,:,:) = TEN(:,:,:)*FAC
       BAUX(:,:) = BAUX(:,:)*FAC
@@ -434,11 +460,12 @@ C     antiquark; the pairs (H1, H2) of the dipole-dipole terms
       CHARACTER*2 LABEL_OUT(NAUXMAX,NPQ)
       REAL*8 CEFF_OUT(NAUXMAX,NPQ), MQ_OUT(NPQ), MQB_OUT(NPQ), R, MSUM
       INTEGER QQ(NPQ), SPIN(NPQ), JTOT(NPQ), NAUX(NPQ), IQ(NPQ)
-      INTEGER IQBAR(NPQ), IPAIR(2,NPAIRX)
+      INTEGER IQBAR(NPQ), IPAIR(2,NPAIRX), ISV(NPQ)
       INTEGER NCOLS(NAUXMAX,NPQ), NCOLD(NAUXMAX,NAUXMAX,NPAIRX)
       CHARACTER*2 LABEL(NAUXMAX,NPQ)
       DATA QQ(1), SPIN(1), JTOT(1), NAUX(1) /3, 1, 0, 1/
       DATA IQ(1), IQBAR(1) /3, 4/
+      DATA ISV(1) /1/
       DATA LABEL(1,1), NCOLS(1,1) /'18', 6/
       DATA LABEL(2,1), NCOLS(2,1) /'  ', 1/
       DATA IPAIR(1,1), IPAIR(2,1) /0, 0/
@@ -720,7 +747,9 @@ C     summed over S_z.
           SZS(I,NGOOD) = SZ(I)
           IF (L_ONIA(I).NE.1) CYCLE
           QQ = ONIA(I)
-          CALL VXXXXX(P(0,QQ),PMASS_RESH(QQ),NHEL(QQ)-SZ(I),1,EPS_L)
+C         eps*(L_z) of an outgoing onium, eps(L_z) of a decaying one
+          CALL VXXXXX(P(0,QQ),PMASS_RESH(QQ),NHEL(QQ)-SZ(I),
+     &      1-2*ONIA_IN(I),EPS_L)
           DO A = 1, 3
             CAS(A,I,NGOOD) = -(EPS_L%W(1)*E3(0,A,I)
      &        -EPS_L%W(2)*E3(1,A,I)-EPS_L%W(3)*E3(2,A,I)
@@ -787,9 +816,15 @@ C       diagram.)
             Q2 = FINDLOC(PAIRS,-I, DIM=1)
             DO J = 1, 2
               DO A = 1, 2
-                CALL ONIA_PROJ(P_ONIA(:,Q1),ONIA_MS(Q1),HELQ(J),
-     &            P_ONIA(:,Q2),ONIA_MS(Q2),HELQ(A),P(:,QQ),
-     &            PMASS_RESH(QQ),SZS(I,IGS),S_ONIA(I),PROJ)
+                IF (ONIA_IN(I).EQ.1) THEN
+                  CALL ONIA_PROJ_IN(P_ONIA(:,Q1),ONIA_MS(Q1),HELQ(J),
+     &              P_ONIA(:,Q2),ONIA_MS(Q2),HELQ(A),P(:,QQ),
+     &              PMASS_RESH(QQ),SZS(I,IGS),S_ONIA(I),PROJ)
+                ELSE
+                  CALL ONIA_PROJ(P_ONIA(:,Q1),ONIA_MS(Q1),HELQ(J),
+     &              P_ONIA(:,Q2),ONIA_MS(Q2),HELQ(A),P(:,QQ),
+     &              PMASS_RESH(QQ),SZS(I,IGS),S_ONIA(I),PROJ)
+                ENDIF
                 PROJ_SAVED(I,HELQ(J),HELQ(A),IGS) = PROJ
               ENDDO
             ENDDO
@@ -930,7 +965,10 @@ C
 C     The LDME factor of the bound states of ONIA_SOFT_AMPP: for each
 C      onium
 C     <O_n> (m1+m2)/(2 m1 m2)/(N_[C] (2J+1)), N_[1] = 6, N_[8] = 8
-C     (arXiv:2402.19221, eq. 2.9), with the LDMEs of the onia card.
+C     (arXiv:2402.19221, eq. 2.9), with the LDMEs of the onia card. A
+C     decaying onium has its decay LDME <O_H> (Block ldme_decay),
+C      without
+C     the 1/(2J+1): the average over its 2J+1 states is in IDEN.
 C     
       IMPLICIT NONE
       INTEGER    NEXTERNAL
@@ -965,7 +1003,7 @@ C
       REAL*8     ZERO
       PARAMETER (ZERO=0D0)
       INTEGER I, Q1, Q2
-      REAL*8 LDME, PMASS_ONIA(NEXTERNAL+NONIA)
+      REAL*8 LDME, NPOL, PMASS_ONIA(NEXTERNAL+NONIA)
       LOGICAL FIRSTTIME
       DATA FIRSTTIME/.TRUE./
       REAL*8 SAVED
@@ -991,10 +1029,15 @@ C
           Q2 = FINDLOC(PAIRS,-I, DIM=1)
           LDME = LDME*(PMASS_ONIA(Q1)+PMASS_ONIA(Q2))
      &      /(2D0*PMASS_ONIA(Q1)*PMASS_ONIA(Q2))
+          IF (ONIA_IN(I).EQ.1) THEN
+            NPOL = 1D0
+          ELSE
+            NPOL = 2D0*J_ONIA(I)+1D0
+          ENDIF
           IF (C_ONIA(I).EQ.1) THEN
-            LDME = LDME/6D0/(2D0*J_ONIA(I)+1D0)
+            LDME = LDME/6D0/NPOL
           ELSE IF (C_ONIA(I).EQ.8) THEN
-            LDME = LDME/8D0/(2D0*J_ONIA(I)+1D0)
+            LDME = LDME/8D0/NPOL
           ENDIF
         ENDDO
 C       perturbative (leptonium) LDMEs
@@ -1008,11 +1051,11 @@ C       perturbative (leptonium) LDMEs
 
       SUBROUTINE ONIA_SOFT_AMPPREADCARD(N, PDG, VAL)
 C     
-C     The LDMEs of Block ldme of the onia card for the codes PDG(1:N),
-C      read
-C     directly (no COMMON: the native Born providers keep private
-C      copies of
-C     the COMMON blocks of their sources).
+C     The LDMEs of the onia card for the codes PDG(1:N): Block ldme for
+C     PDG > 0, Block ldme_decay for -PDG when PDG < 0 (a decaying
+C      onium),
+C     read directly (no COMMON: the native Born providers keep private
+C     copies of the COMMON blocks of their sources).
 C     
       IMPLICIT NONE
       INTEGER N, PDG(*)
@@ -1024,7 +1067,8 @@ C
      &  '../../Cards/onia_card.dat', '../../../Cards/onia_card.dat'/
       INTEGER I, K, IUNIT, IOS, ID
       DOUBLE PRECISION X
-      LOGICAL INBLOCK, FOUND(64)
+      INTEGER INBLOCK
+      LOGICAL FOUND(64)
       IF (N.EQ.0) RETURN
       IUNIT = 97
       DO K = 1, 4
@@ -1034,7 +1078,7 @@ C
       WRITE(*,*) 'Error: the onia card onia_card.dat was not found'
       STOP 1
  10   CONTINUE
-      INBLOCK = .FALSE.
+      INBLOCK = 0
       DO I = 1, N
         FOUND(I) = .FALSE.
       ENDDO
@@ -1047,15 +1091,18 @@ C
       READ(LINE,*,IOSTAT=IOS) WORD, BNAME
       IF (WORD.EQ.'Block' .OR. WORD.EQ.'BLOCK' .OR. WORD.EQ.'block')
      $  THEN
-        INBLOCK = BNAME.EQ.'ldme' .OR. BNAME.EQ.'LDME' .OR.
-     $    BNAME.EQ.'Ldme'
+        INBLOCK = 0
+        IF (BNAME.EQ.'ldme' .OR. BNAME.EQ.'LDME' .OR. BNAME.EQ.'Ldme')
+     &    INBLOCK = 1
+        IF (BNAME.EQ.'ldme_decay' .OR. BNAME.EQ.'LDME_DECAY'
+     &    .OR. BNAME.EQ.'Ldme_decay') INBLOCK = -1
         GOTO 20
       ENDIF
-      IF (INBLOCK) THEN
+      IF (INBLOCK.NE.0) THEN
         READ(LINE,*,IOSTAT=IOS) ID, X
         IF (IOS.EQ.0) THEN
           DO I = 1, N
-            IF (PDG(I).EQ.ID) THEN
+            IF (PDG(I).EQ.INBLOCK*ID) THEN
               VAL(I) = X
               FOUND(I) = .TRUE.
             ENDIF
@@ -1067,8 +1114,13 @@ C
       CLOSE(IUNIT)
       DO I = 1, N
         IF (.NOT.FOUND(I)) THEN
-          WRITE(*,*) 'Error: no LDME for ', PDG(I), ' in Block ldme'
-     &      //' of the onia card'
+          IF (PDG(I).GT.0) THEN
+            WRITE(*,*) 'Error: no LDME for ', PDG(I), ' in Block ldme'
+     &        //' of the onia card'
+          ELSE
+            WRITE(*,*) 'Error: no LDME for ', -PDG(I),
+     &        ' in Block ldme_decay of the onia card'
+          ENDIF
           STOP 1
         ENDIF
       ENDDO
@@ -1374,7 +1426,9 @@ C     summed over S_z.
           SZS(I,NGOOD) = SZ(I)
           IF (L_ONIA(I).NE.1) CYCLE
           QQ = ONIA(I)
-          CALL VXXXXX(P(0,QQ),PMASS_RESH(QQ),NHEL(QQ)-SZ(I),1,EPS_L)
+C         eps*(L_z) of an outgoing onium, eps(L_z) of a decaying one
+          CALL VXXXXX(P(0,QQ),PMASS_RESH(QQ),NHEL(QQ)-SZ(I),
+     &      1-2*ONIA_IN(I),EPS_L)
           DO A = 1, 3
             CAS(A,I,NGOOD) = -(EPS_L%W(1)*E3(0,A,I)
      &        -EPS_L%W(2)*E3(1,A,I)-EPS_L%W(3)*E3(2,A,I)
@@ -1441,9 +1495,15 @@ C       diagram.)
             Q2 = FINDLOC(PAIRS,-I, DIM=1)
             DO J = 1, 2
               DO A = 1, 2
-                CALL ONIA_PROJ(P_ONIA(:,Q1),ONIA_MS(Q1),HELQ(J),
-     &            P_ONIA(:,Q2),ONIA_MS(Q2),HELQ(A),P(:,QQ),
-     &            PMASS_RESH(QQ),SZS(I,IGS),S_ONIA(I),PROJ)
+                IF (ONIA_IN(I).EQ.1) THEN
+                  CALL ONIA_PROJ_IN(P_ONIA(:,Q1),ONIA_MS(Q1),HELQ(J),
+     &              P_ONIA(:,Q2),ONIA_MS(Q2),HELQ(A),P(:,QQ),
+     &              PMASS_RESH(QQ),SZS(I,IGS),S_ONIA(I),PROJ)
+                ELSE
+                  CALL ONIA_PROJ(P_ONIA(:,Q1),ONIA_MS(Q1),HELQ(J),
+     &              P_ONIA(:,Q2),ONIA_MS(Q2),HELQ(A),P(:,QQ),
+     &              PMASS_RESH(QQ),SZS(I,IGS),S_ONIA(I),PROJ)
+                ENDIF
                 PROJ_SAVED(I,HELQ(J),HELQ(A),IGS) = PROJ
               ENDDO
             ENDDO
@@ -1584,7 +1644,10 @@ C
 C     The LDME factor of the bound states of ONIA_SOFT_AMPS1_1: for
 C      each onium
 C     <O_n> (m1+m2)/(2 m1 m2)/(N_[C] (2J+1)), N_[1] = 6, N_[8] = 8
-C     (arXiv:2402.19221, eq. 2.9), with the LDMEs of the onia card.
+C     (arXiv:2402.19221, eq. 2.9), with the LDMEs of the onia card. A
+C     decaying onium has its decay LDME <O_H> (Block ldme_decay),
+C      without
+C     the 1/(2J+1): the average over its 2J+1 states is in IDEN.
 C     
       IMPLICIT NONE
       INTEGER    NEXTERNAL
@@ -1619,7 +1682,7 @@ C
       REAL*8     ZERO
       PARAMETER (ZERO=0D0)
       INTEGER I, Q1, Q2
-      REAL*8 LDME, PMASS_ONIA(NEXTERNAL+NONIA)
+      REAL*8 LDME, NPOL, PMASS_ONIA(NEXTERNAL+NONIA)
       LOGICAL FIRSTTIME
       DATA FIRSTTIME/.TRUE./
       REAL*8 SAVED
@@ -1645,10 +1708,15 @@ C
           Q2 = FINDLOC(PAIRS,-I, DIM=1)
           LDME = LDME*(PMASS_ONIA(Q1)+PMASS_ONIA(Q2))
      &      /(2D0*PMASS_ONIA(Q1)*PMASS_ONIA(Q2))
+          IF (ONIA_IN(I).EQ.1) THEN
+            NPOL = 1D0
+          ELSE
+            NPOL = 2D0*J_ONIA(I)+1D0
+          ENDIF
           IF (C_ONIA(I).EQ.1) THEN
-            LDME = LDME/6D0/(2D0*J_ONIA(I)+1D0)
+            LDME = LDME/6D0/NPOL
           ELSE IF (C_ONIA(I).EQ.8) THEN
-            LDME = LDME/8D0/(2D0*J_ONIA(I)+1D0)
+            LDME = LDME/8D0/NPOL
           ENDIF
         ENDDO
 C       perturbative (leptonium) LDMEs
@@ -1662,11 +1730,11 @@ C       perturbative (leptonium) LDMEs
 
       SUBROUTINE ONIA_SOFT_AMPS1_1READCARD(N, PDG, VAL)
 C     
-C     The LDMEs of Block ldme of the onia card for the codes PDG(1:N),
-C      read
-C     directly (no COMMON: the native Born providers keep private
-C      copies of
-C     the COMMON blocks of their sources).
+C     The LDMEs of the onia card for the codes PDG(1:N): Block ldme for
+C     PDG > 0, Block ldme_decay for -PDG when PDG < 0 (a decaying
+C      onium),
+C     read directly (no COMMON: the native Born providers keep private
+C     copies of the COMMON blocks of their sources).
 C     
       IMPLICIT NONE
       INTEGER N, PDG(*)
@@ -1678,7 +1746,8 @@ C
      &  '../../Cards/onia_card.dat', '../../../Cards/onia_card.dat'/
       INTEGER I, K, IUNIT, IOS, ID
       DOUBLE PRECISION X
-      LOGICAL INBLOCK, FOUND(64)
+      INTEGER INBLOCK
+      LOGICAL FOUND(64)
       IF (N.EQ.0) RETURN
       IUNIT = 97
       DO K = 1, 4
@@ -1688,7 +1757,7 @@ C
       WRITE(*,*) 'Error: the onia card onia_card.dat was not found'
       STOP 1
  10   CONTINUE
-      INBLOCK = .FALSE.
+      INBLOCK = 0
       DO I = 1, N
         FOUND(I) = .FALSE.
       ENDDO
@@ -1701,15 +1770,18 @@ C
       READ(LINE,*,IOSTAT=IOS) WORD, BNAME
       IF (WORD.EQ.'Block' .OR. WORD.EQ.'BLOCK' .OR. WORD.EQ.'block')
      $  THEN
-        INBLOCK = BNAME.EQ.'ldme' .OR. BNAME.EQ.'LDME' .OR.
-     $    BNAME.EQ.'Ldme'
+        INBLOCK = 0
+        IF (BNAME.EQ.'ldme' .OR. BNAME.EQ.'LDME' .OR. BNAME.EQ.'Ldme')
+     &    INBLOCK = 1
+        IF (BNAME.EQ.'ldme_decay' .OR. BNAME.EQ.'LDME_DECAY'
+     &    .OR. BNAME.EQ.'Ldme_decay') INBLOCK = -1
         GOTO 20
       ENDIF
-      IF (INBLOCK) THEN
+      IF (INBLOCK.NE.0) THEN
         READ(LINE,*,IOSTAT=IOS) ID, X
         IF (IOS.EQ.0) THEN
           DO I = 1, N
-            IF (PDG(I).EQ.ID) THEN
+            IF (PDG(I).EQ.INBLOCK*ID) THEN
               VAL(I) = X
               FOUND(I) = .TRUE.
             ENDIF
@@ -1721,8 +1793,13 @@ C
       CLOSE(IUNIT)
       DO I = 1, N
         IF (.NOT.FOUND(I)) THEN
-          WRITE(*,*) 'Error: no LDME for ', PDG(I), ' in Block ldme'
-     &      //' of the onia card'
+          IF (PDG(I).GT.0) THEN
+            WRITE(*,*) 'Error: no LDME for ', PDG(I), ' in Block ldme'
+     &        //' of the onia card'
+          ELSE
+            WRITE(*,*) 'Error: no LDME for ', -PDG(I),
+     &        ' in Block ldme_decay of the onia card'
+          ENDIF
           STOP 1
         ENDIF
       ENDDO

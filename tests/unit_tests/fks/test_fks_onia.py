@@ -613,6 +613,169 @@ class TestFKSOniaGeneration(unittest.TestCase):
                     self.assertFalse(aux['matrices'][(tm['onium'], 'D')])
                     self.assertTrue(aux['matrices'][(tm['onium'], 'T')])
 
+    def test_decay_reals_and_channels(self):
+        """The decay of a bound state at NLO: the reals of eta_c > g g are
+        found over the physical legs (fks_base.find_reals), and the
+        phase-space channels of a decay are s-channel trees over the final
+        state with the decaying onium at their root (no t-channel between
+        its two incoming constituents)."""
+        import madgraph.fks.fks_helas_objects as fks_helas
+        import madgraph.iolibs.export_fks as export_fks
+        born, = self.generate('etac(1|1S01) > g g [real=QCD]')
+        self.assertEqual(sorted(tuple(l['id'] for l in r.process['legs'])
+                                for r in born.real_amps),
+                         [(4, -4, 1, -1, 21), (4, -4, 2, -2, 21), (4, -4, 3, -3, 21),
+                          (4, -4, 21, 21, 21)])
+        self.generate('Jpsi(1|3S18) > u u~ [real=QCD]')
+        multi = fks_helas.FKSHelasMultiProcess(self.cmd._fks_multi_proc)
+        fme = multi.get('matrix_elements')[0]
+        model = fme.born_me.get('processes')[0].get('model')
+        for info in fme.get_fks_info_list():
+            rme = fme.real_processes[info['n_me'] - 1].matrix_element
+            for diag in rme.get('diagrams'):
+                s, t = export_fks.ProcessExporterFortranFKS.get_fks_s_and_t_channels(
+                    rme, diag, 1, model)
+                self.assertEqual(t, [])
+                self.assertEqual(len(s), 2)
+                self.assertEqual(s[-1]['legs'][-1]['id'], 9940003)
+                self.assertEqual(sorted(l['number'] for v in s for l in v['legs'][:-1]
+                                        if l['number'] > 0), [2, 3, 4])
+
+    def test_incoming_octet_links(self):
+        """A decaying colour octet: its octet index is carried by its
+        antiquark (color_amp.OniumColorString, loop_onia.octet_leg), which
+        labels the physical FKS leg, and the colour links conserve colour:
+        T1.T2 = T1.T3 = -C_A/2, T2.T3 = 1/6 for 3S1[8] > u u~ (times the
+        colour norm 4; the self-link is C_A/2 times the norm)."""
+        import fractions
+        import madgraph.core.helas_objects as helas_objects
+        born, = self.generate('Jpsi(1|3S18) > u u~ [real=QCD]')
+        amp = born.born_amp
+        legs, model = amp['process']['legs'], amp['process']['model']
+        self.assertEqual(fks_onia.octet_label(legs, legs[0], model), 2)
+        self.assertEqual([(l['number'], l['color'])
+                          for l in fks_onia.physical_fks_legs(legs, model)],
+                         [(2, 8), (3, 3), (4, -3)])
+        me = helas_objects.HelasMatrixElement(amp)
+
+        class _Born(object):
+            def get(self, key):
+                return {'base_amplitude': amp, 'color_basis': me['color_basis']}[key]
+        links = dict((tuple(l['link']), l['matrix'][(0, 0)][0])
+                     for l in fks_onia.born_color_links(_Born()))
+        F = fractions.Fraction
+        self.assertEqual(links, {(1, 1): F(6), (1, 2): F(-6), (1, 3): F(-6),
+                                 (2, 3): F(2, 3)})
+        # a produced octet keeps its quark
+        born, = self.generate('u u~ > Jpsi(1|3S18) [real=QCD]')
+        legs = born.born_amp['process']['legs']
+        self.assertEqual(fks_onia.octet_label(legs, legs[2], model), 3)
+
+    def test_decay_pwave_soft_data(self):
+        """The soft current of a decaying P wave: flagged incoming (born_onia.f
+        then takes its incoming polarisation vectors and the sign of -P),
+        with colour-conserving transition matrices for P[1] -> S[8] and
+        P[8] -> S[1], S[8]."""
+        import madgraph.core.helas_objects as helas_objects
+        for line, labels in [('chic0(1|3P01) > g g', ['18']),
+                             ('chic0(1|3P01) > u u~', ['18']),
+                             ('Jpsi(1|3P08) > g g', ['81', '88'])]:
+            born, = self.generate(line + ' [real=QCD]')
+            me = helas_objects.HelasMatrixElement(born.born_amp)
+
+            class _Born(object):
+                def get(self, key):
+                    return {'base_amplitude': born.born_amp,
+                            'color_basis': me['color_basis']}[key]
+            data = fks_onia.soft_current_data(_Born())
+            pw, = data['pwaves']
+            self.assertTrue(pw['incoming'])
+            self.assertEqual(pw['onium'], 1)
+            self.assertEqual([a['label'] for a in pw['aux']], labels)
+            for aux in pw['aux']:
+                for kind in set(kd for (_, kd) in aux['matrices']):
+                    total = {}
+                    for (k, kd), mat in aux['matrices'].items():
+                        if kd != kind:
+                            continue
+                        for key, (re, im) in mat.items():
+                            t = total.get(key, (0, 0))
+                            total[key] = (t[0] + re, t[1] + im)
+                    self.assertFalse([v for v in total.values() if v != (0, 0)],
+                                     (line, kind))
+
+    def test_decay_kernel_and_loop_frame(self):
+        """The Born kernel of a decay reads its decay LDME from Block
+        ldme_decay (code -pdg) without the 1/(2J+1) (the average is in
+        IDEN), and MadLoop's virtual of a decay is taken in a boosted frame
+        (ONIA_LOOP_FRAME), that of a production at the Born momenta."""
+        import shutil
+        import tempfile
+        import madgraph.fks.fks_helas_objects as fks_helas
+        import madgraph.iolibs.export_fks as export_fks
+        import madgraph.iolibs.helas_call_writers as helas_call_writers
+        exporter = export_fks.ProcessExporterFortranFKS()
+        tmp = tempfile.mkdtemp()
+        try:
+            for line, decay in (('etac(1|1S01) > g g [real=QCD]', True),
+                                ('g g > etac(1|1S01) [real=QCD]', False)):
+                self.generate(line)
+                multi = fks_helas.FKSHelasMultiProcess(self.cmd._fks_multi_proc)
+                fme = multi.get('matrix_elements')[0]
+                born_me = fme.born_me
+                model = born_me.get('processes')[0].get('model')
+                writer = helas_call_writers.FortranUFOHelasCallWriter(model)
+                rdict = {'helas_calls': '\n'.join(writer.get_matrix_element_calls(born_me)),
+                         'info_lines': '', 'process_lines': '',
+                         'ngraphs': born_me.get_number_of_amplitudes(),
+                         'nwavefuncs': born_me.get_number_of_wavefunctions()}
+                kernel = exporter.get_onia_kernel(born_me, rdict, 'KN', fortran_model=writer)
+                self.assertIn('IF (ONIA_IN(I).EQ.1) THEN\n            NPOL = 1D0', kernel)
+                if decay:
+                    self.assertIn('DATA LDME_PDG/-441,0/', kernel)
+                    self.assertIn('LDMED_441 = LDME_VAL(1)', kernel)
+                    self.assertIn('SAVED = LDME*LDMED_441', kernel)
+                else:
+                    self.assertIn('DATA LDME_PDG/441,0/', kernel)
+                    self.assertNotIn('LDMED_441', kernel)
+                path = os.path.join(tmp, 'onia_legs.f')
+                exporter.write_onia_legs_file(path, fme)
+                with open(path) as fsock:
+                    text = fsock.read()
+                self.assertIn('SUBROUTINE ONIA_LOOP_FRAME(P,PL)', text)
+                self.assertEqual('BETA(3) = 1.8D0/SQRT(14D0)' in text, decay)
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_decay_born_onia(self):
+        """born_onia.f of a decaying P wave: ISV = -1 (incoming orbital
+        polarisation vectors, the sign of -P in the cross vectors and the
+        dipole-dipole tensors, r -> 1/r in Q_eff(88)); +1 in production."""
+        import shutil
+        import tempfile
+        import madgraph.fks.fks_helas_objects as fks_helas
+        import madgraph.iolibs.export_fks as export_fks
+        import madgraph.iolibs.helas_call_writers as helas_call_writers
+        exporter = export_fks.ProcessExporterFortranFKS()
+        tmp = tempfile.mkdtemp()
+        try:
+            for line, isv in (('chic0(1|3P01) > g g [real=QCD]', -1),
+                              ('g g > chic0(1|3P01) [real=QCD]', 1)):
+                self.generate(line)
+                multi = fks_helas.FKSHelasMultiProcess(self.cmd._fks_multi_proc)
+                fme = multi.get('matrix_elements')[0]
+                model = fme.born_me.get('processes')[0].get('model')
+                path = os.path.join(tmp, 'born_onia.f')
+                self.assertTrue(exporter.write_born_onia_file(
+                    path, fme, helas_call_writers.FortranUFOHelasCallWriter(model)))
+                with open(path) as fsock:
+                    text = fsock.read()
+                self.assertIn('DATA ISV(1) /%d/' % isv, text)
+                self.assertIn('CALL VXXXXX(P(0,QQ(H)),MQQ(H),LZ,ISV(H),EPS)', text)
+                self.assertIn('IF (ISV(H).LT.0) R = 1D0/R', text)
+        finally:
+            shutil.rmtree(tmp)
+
     def test_colour_forbidden_born(self):
         """q q~ > chi_c0[1] has an empty projected colour basis: zero colour
         flows (not a colourless process) and zero colour links, while g g >

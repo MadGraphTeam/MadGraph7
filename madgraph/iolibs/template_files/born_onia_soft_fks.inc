@@ -23,7 +23,14 @@ C                  P_1^mu P_2^nu A(r'_12)  (virtual, parallel class, eq. MV)
 C with the LDME and average factors of the P-wave Born (its kernel factor
 C and identical-particle denominator), without g_s. P^mu A(r') is built from
 C the S-wave amplitudes A(S_z) of the same diagrams,
-C   V^mu(J_z) = sum_{L_z,S_z} <1 L_z; S S_z|J J_z> eps*^mu(L_z) A(S_z).
+C   V^mu(J_z) = sum_{L_z,S_z} <1 L_z; S S_z|J J_z> eps*^mu(L_z) A(S_z),
+C with eps(L_z) instead of eps*(L_z) for a decaying onium (ISV = -1, the
+C incoming polarisation vectors of its P-wave kernel). The soft current of
+C a decaying onium is that of the production with its momentum taken as
+C -P (all momenta outgoing): the cross vectors (of degree -1 in P) change
+C sign, and the dipole-dipole tensors with each decaying onium; the self
+C tensor (degree -2) does not. These signs are in VEC, DD and VPAR, so
+C that the soft, integrated and pole terms take the physical P.
 C The results are kept for the last momenta P.
 C
 %(process_lines)s
@@ -59,7 +66,7 @@ C
       INTEGER H, H1, H2, IP, KD1, KD2, SZ1, SZ2, LZ1, LZ2, JZ1, JZ2
       INTEGER NHELS(NB,NCOMB), NHEL(NB)
       INTEGER QQ(NPQ), SPIN(NPQ), JTOT(NPQ), NAUX(NPQ), IQ(NPQ)
-      INTEGER IQBAR(NPQ), IPAIR(2,NPAIRX)
+      INTEGER IQBAR(NPQ), IPAIR(2,NPAIRX), ISV(NPQ)
       INTEGER NCOLS(NAUXMAX,NPQ), NCOLD(NAUXMAX,NAUXMAX,NPAIRX)
       CHARACTER*2 LABEL(NAUXMAX,NPQ)
 %(data_decl_lines)s
@@ -105,6 +112,10 @@ C       ([88]), FK(2,.) -i f_abc ([88])
         DO H = 1, NPQ
           MQQ(H) = PMASS_ONIA(IQ(H))+PMASS_ONIA(IQBAR(H))
           R = PMASS_ONIA(IQ(H))/PMASS_ONIA(IQBAR(H))
+C         a decaying onium: crossed, its antiquark is the quark of the
+C         pair (it carries the octet index), r -> 1/r: the -i f_abc part
+C         (1/r-r)/2 of Q_eff(88) changes sign (the rest is symmetric)
+          IF (ISV(H).LT.0) R = 1D0/R
           MSUM = 2D0+R+1D0/R
           DO A = 1, NAUX(H)
             IF (LABEL(A,H).EQ.'18') THEN
@@ -203,7 +214,7 @@ C           V^mu(J_z) of the S-wave daughter, colour flow by colour flow
               NHEL(QQ(H)) = SZ
               CALL ONIA_SOFT_AMPS(H,A,P,NHEL,JS)
               NHEL(QQ(H)) = JZ
-              CALL VXXXXX(P(0,QQ(H)),MQQ(H),LZ,1,EPS)
+              CALL VXXXXX(P(0,QQ(H)),MQQ(H),LZ,ISV(H),EPS)
               DO MU = 0, 3
                 V(MU,1:NCOLS(A,H),A,H) = V(MU,1:NCOLS(A,H),A,H)
      &            +CG*EPS%%W(MU+1)*JS(1:NCOLS(A,H))
@@ -268,14 +279,14 @@ C             the parallel class: A_P^* Z P_1^mu P_2^nu A(r'_12)
                 CALL ONIA_SOFT_AMPPCG(1,LZ1,SPIN(H1),SZ1,JTOT(H1),JZ1,
      &            CG1)
                 IF (CG1.EQ.0D0) CYCLE
-                CALL VXXXXX(P(0,QQ(H1)),MQQ(H1),LZ1,1,EPS1)
+                CALL VXXXXX(P(0,QQ(H1)),MQQ(H1),LZ1,ISV(H1),EPS1)
                 DO SZ2 = -SPIN(H2), SPIN(H2)
                   LZ2 = JZ2-SZ2
                   IF (ABS(LZ2).GT.1) CYCLE
                   CALL ONIA_SOFT_AMPPCG(1,LZ2,SPIN(H2),SZ2,JTOT(H2),
      &              JZ2,CG2)
                   IF (CG2.EQ.0D0) CYCLE
-                  CALL VXXXXX(P(0,QQ(H2)),MQQ(H2),LZ2,1,EPS2)
+                  CALL VXXXXX(P(0,QQ(H2)),MQQ(H2),LZ2,ISV(H2),EPS2)
                   NHEL(QQ(H1)) = SZ1
                   NHEL(QQ(H2)) = SZ2
                   CALL ONIA_SOFT_AMPD(IP,A1,A2,P,NHEL,JD)
@@ -308,6 +319,13 @@ C             the parallel class: A_P^* Z P_1^mu P_2^nu A(r'_12)
         ENDDO
       ENDDO
       FAC = ONIA_SOFT_AMPPFAC()/DBLE(IDEN)
+      DO H = 1, NPQ
+        VEC(:,:,H) = VEC(:,:,H)*ISV(H)
+      ENDDO
+      DO IP = 1, NPAIR
+        DD(:,:,IP) = DD(:,:,IP)*ISV(IPAIR(1,IP))*ISV(IPAIR(2,IP))
+        VPAR(:,:,IP) = VPAR(:,:,IP)*ISV(IPAIR(1,IP))*ISV(IPAIR(2,IP))
+      ENDDO
       VEC(:,:,:) = VEC(:,:,:)*FAC
       TEN(:,:,:) = TEN(:,:,:)*FAC
       BAUX(:,:) = BAUX(:,:)*FAC
@@ -339,7 +357,7 @@ C     antiquark; the pairs (H1, H2) of the dipole-dipole terms
       CHARACTER*2 LABEL_OUT(NAUXMAX,NPQ)
       REAL*8 CEFF_OUT(NAUXMAX,NPQ), MQ_OUT(NPQ), MQB_OUT(NPQ), R, MSUM
       INTEGER QQ(NPQ), SPIN(NPQ), JTOT(NPQ), NAUX(NPQ), IQ(NPQ)
-      INTEGER IQBAR(NPQ), IPAIR(2,NPAIRX)
+      INTEGER IQBAR(NPQ), IPAIR(2,NPAIRX), ISV(NPQ)
       INTEGER NCOLS(NAUXMAX,NPQ), NCOLD(NAUXMAX,NAUXMAX,NPAIRX)
       CHARACTER*2 LABEL(NAUXMAX,NPQ)
 %(data_decl_lines)s

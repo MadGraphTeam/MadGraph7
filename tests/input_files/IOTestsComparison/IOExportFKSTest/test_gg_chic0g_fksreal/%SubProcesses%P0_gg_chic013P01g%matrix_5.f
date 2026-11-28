@@ -693,7 +693,9 @@ C     summed over S_z.
           SZS(I,NGOOD) = SZ(I)
           IF (L_ONIA(I).NE.1) CYCLE
           QQ = ONIA(I)
-          CALL VXXXXX(P(0,QQ),PMASS_RESH(QQ),NHEL(QQ)-SZ(I),1,EPS_L)
+C         eps*(L_z) of an outgoing onium, eps(L_z) of a decaying one
+          CALL VXXXXX(P(0,QQ),PMASS_RESH(QQ),NHEL(QQ)-SZ(I),
+     &      1-2*ONIA_IN(I),EPS_L)
           DO A = 1, 3
             CAS(A,I,NGOOD) = -(EPS_L%W(1)*E3(0,A,I)
      &        -EPS_L%W(2)*E3(1,A,I)-EPS_L%W(3)*E3(2,A,I)
@@ -760,9 +762,15 @@ C       diagram.)
             Q2 = FINDLOC(PAIRS,-I, DIM=1)
             DO J = 1, 2
               DO A = 1, 2
-                CALL ONIA_PROJ(P_ONIA(:,Q1),ONIA_MS(Q1),HELQ(J),
-     &            P_ONIA(:,Q2),ONIA_MS(Q2),HELQ(A),P(:,QQ),
-     &            PMASS_RESH(QQ),SZS(I,IGS),S_ONIA(I),PROJ)
+                IF (ONIA_IN(I).EQ.1) THEN
+                  CALL ONIA_PROJ_IN(P_ONIA(:,Q1),ONIA_MS(Q1),HELQ(J),
+     &              P_ONIA(:,Q2),ONIA_MS(Q2),HELQ(A),P(:,QQ),
+     &              PMASS_RESH(QQ),SZS(I,IGS),S_ONIA(I),PROJ)
+                ELSE
+                  CALL ONIA_PROJ(P_ONIA(:,Q1),ONIA_MS(Q1),HELQ(J),
+     &              P_ONIA(:,Q2),ONIA_MS(Q2),HELQ(A),P(:,QQ),
+     &              PMASS_RESH(QQ),SZS(I,IGS),S_ONIA(I),PROJ)
+                ENDIF
                 PROJ_SAVED(I,HELQ(J),HELQ(A),IGS) = PROJ
               ENDDO
             ENDDO
@@ -955,7 +963,10 @@ C
 C     The LDME factor of the bound states of ONIA_AMP_R5: for each
 C      onium
 C     <O_n> (m1+m2)/(2 m1 m2)/(N_[C] (2J+1)), N_[1] = 6, N_[8] = 8
-C     (arXiv:2402.19221, eq. 2.9), with the LDMEs of the onia card.
+C     (arXiv:2402.19221, eq. 2.9), with the LDMEs of the onia card. A
+C     decaying onium has its decay LDME <O_H> (Block ldme_decay),
+C      without
+C     the 1/(2J+1): the average over its 2J+1 states is in IDEN.
 C     
       IMPLICIT NONE
       INTEGER    NEXTERNAL
@@ -990,7 +1001,7 @@ C
       REAL*8     ZERO
       PARAMETER (ZERO=0D0)
       INTEGER I, Q1, Q2
-      REAL*8 LDME, PMASS_ONIA(NEXTERNAL+NONIA)
+      REAL*8 LDME, NPOL, PMASS_ONIA(NEXTERNAL+NONIA)
       LOGICAL FIRSTTIME
       DATA FIRSTTIME/.TRUE./
       REAL*8 SAVED
@@ -1017,10 +1028,15 @@ C
           Q2 = FINDLOC(PAIRS,-I, DIM=1)
           LDME = LDME*(PMASS_ONIA(Q1)+PMASS_ONIA(Q2))
      &      /(2D0*PMASS_ONIA(Q1)*PMASS_ONIA(Q2))
+          IF (ONIA_IN(I).EQ.1) THEN
+            NPOL = 1D0
+          ELSE
+            NPOL = 2D0*J_ONIA(I)+1D0
+          ENDIF
           IF (C_ONIA(I).EQ.1) THEN
-            LDME = LDME/6D0/(2D0*J_ONIA(I)+1D0)
+            LDME = LDME/6D0/NPOL
           ELSE IF (C_ONIA(I).EQ.8) THEN
-            LDME = LDME/8D0/(2D0*J_ONIA(I)+1D0)
+            LDME = LDME/8D0/NPOL
           ENDIF
         ENDDO
 C       perturbative (leptonium) LDMEs
@@ -1034,11 +1050,11 @@ C       perturbative (leptonium) LDMEs
 
       SUBROUTINE ONIA_AMP_R5READCARD(N, PDG, VAL)
 C     
-C     The LDMEs of Block ldme of the onia card for the codes PDG(1:N),
-C      read
-C     directly (no COMMON: the native Born providers keep private
-C      copies of
-C     the COMMON blocks of their sources).
+C     The LDMEs of the onia card for the codes PDG(1:N): Block ldme for
+C     PDG > 0, Block ldme_decay for -PDG when PDG < 0 (a decaying
+C      onium),
+C     read directly (no COMMON: the native Born providers keep private
+C     copies of the COMMON blocks of their sources).
 C     
       IMPLICIT NONE
       INTEGER N, PDG(*)
@@ -1050,7 +1066,8 @@ C
      &  '../../Cards/onia_card.dat', '../../../Cards/onia_card.dat'/
       INTEGER I, K, IUNIT, IOS, ID
       DOUBLE PRECISION X
-      LOGICAL INBLOCK, FOUND(64)
+      INTEGER INBLOCK
+      LOGICAL FOUND(64)
       IF (N.EQ.0) RETURN
       IUNIT = 97
       DO K = 1, 4
@@ -1060,7 +1077,7 @@ C
       WRITE(*,*) 'Error: the onia card onia_card.dat was not found'
       STOP 1
  10   CONTINUE
-      INBLOCK = .FALSE.
+      INBLOCK = 0
       DO I = 1, N
         FOUND(I) = .FALSE.
       ENDDO
@@ -1073,15 +1090,18 @@ C
       READ(LINE,*,IOSTAT=IOS) WORD, BNAME
       IF (WORD.EQ.'Block' .OR. WORD.EQ.'BLOCK' .OR. WORD.EQ.'block')
      $  THEN
-        INBLOCK = BNAME.EQ.'ldme' .OR. BNAME.EQ.'LDME' .OR.
-     $    BNAME.EQ.'Ldme'
+        INBLOCK = 0
+        IF (BNAME.EQ.'ldme' .OR. BNAME.EQ.'LDME' .OR. BNAME.EQ.'Ldme')
+     &    INBLOCK = 1
+        IF (BNAME.EQ.'ldme_decay' .OR. BNAME.EQ.'LDME_DECAY'
+     &    .OR. BNAME.EQ.'Ldme_decay') INBLOCK = -1
         GOTO 20
       ENDIF
-      IF (INBLOCK) THEN
+      IF (INBLOCK.NE.0) THEN
         READ(LINE,*,IOSTAT=IOS) ID, X
         IF (IOS.EQ.0) THEN
           DO I = 1, N
-            IF (PDG(I).EQ.ID) THEN
+            IF (PDG(I).EQ.INBLOCK*ID) THEN
               VAL(I) = X
               FOUND(I) = .TRUE.
             ENDIF
@@ -1093,8 +1113,13 @@ C
       CLOSE(IUNIT)
       DO I = 1, N
         IF (.NOT.FOUND(I)) THEN
-          WRITE(*,*) 'Error: no LDME for ', PDG(I), ' in Block ldme'
-     &      //' of the onia card'
+          IF (PDG(I).GT.0) THEN
+            WRITE(*,*) 'Error: no LDME for ', PDG(I), ' in Block ldme'
+     &        //' of the onia card'
+          ELSE
+            WRITE(*,*) 'Error: no LDME for ', -PDG(I),
+     &        ' in Block ldme_decay of the onia card'
+          ENDIF
           STOP 1
         ENDIF
       ENDDO

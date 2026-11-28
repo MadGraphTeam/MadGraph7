@@ -1222,7 +1222,10 @@ class FKSProcess(object):
         if list(range(len(leglist))) != [l['number']-1 for l in leglist]:
             raise fks_common.FKSProcessError('Disordered numbers of leglist')
 
-        if [ i['state'] for i in leglist].count(False) == 1:
+        # a decaying bound state is two incoming constituent legs: count the
+        # physical legs (fks_onia)
+        phys_legs = fks_onia.physical_legs(leglist) if fks_onia.has_onia(leglist) else leglist
+        if [ i['state'] for i in phys_legs].count(False) == 1:
             decay_process=True
         else:
             decay_process=False

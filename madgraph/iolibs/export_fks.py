@@ -121,6 +121,46 @@ def make_jpeg_async(args):
 #=================================================================================
 # Class for used of the (non-optimized) Loop process
 #=================================================================================
+ONIA_LOOP_FRAME_IDENTITY = """      SUBROUTINE ONIA_LOOP_FRAME(P,PL)
+C     The momenta at which MadLoop evaluates the virtual: the Born momenta
+C     (no decaying bound state; export_fks.write_onia_legs_file)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      DOUBLE PRECISION P(0:3,NEXTERNAL-1), PL(0:3,NEXTERNAL-1)
+      PL(0:3,1:NEXTERNAL-1) = P(0:3,1:NEXTERNAL-1)
+      END
+"""
+
+ONIA_LOOP_FRAME_DECAY = """      SUBROUTINE ONIA_LOOP_FRAME(P,PL)
+C     The momenta at which MadLoop evaluates the virtual of the decay of
+C     a bound state: the Born momenta (rest frame of the decaying state)
+C     boosted with the fixed generic velocity BETA = 0.6 (1,2,3)/sqrt(14)
+C     (onia_loop_check.DECAY_BOOST). The helicity-summed virtual is
+C     Lorentz invariant, and TIRust's one-loop integrals of a P wave at
+C     rest, or within rounding of it, are unstable (export_fks.
+C     write_onia_legs_file; 1 -> N has no MC over helicities).
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      DOUBLE PRECISION P(0:3,NEXTERNAL-1), PL(0:3,NEXTERNAL-1)
+      DOUBLE PRECISION BETA(3), B2, GAM, BP, F
+      INTEGER I
+      B2 = 0.36D0
+      BETA(1) = 0.6D0/SQRT(14D0)
+      BETA(2) = 1.2D0/SQRT(14D0)
+      BETA(3) = 1.8D0/SQRT(14D0)
+      GAM = 1D0/SQRT(1D0-B2)
+      DO I = 1, NEXTERNAL-1
+        BP = BETA(1)*P(1,I)+BETA(2)*P(2,I)+BETA(3)*P(3,I)
+        F = (GAM-1D0)*BP/B2+GAM*P(0,I)
+        PL(0,I) = GAM*(P(0,I)+BP)
+        PL(1,I) = P(1,I)+F*BETA(1)
+        PL(2,I) = P(2,I)+F*BETA(2)
+        PL(3,I) = P(3,I)+F*BETA(3)
+      ENDDO
+      END
+"""
+
+
 # The LDMEs of the onia card in COMMON/LDME (ldme.inc) for MadLoop's
 # bound-state layer (onia_loop.f): the FKS matrix elements read the card
 # themselves (ONIA_AMP_*READCARD, no COMMON), and nothing else of an FKS run
@@ -2623,7 +2663,24 @@ As a result, the default card will not be tailored to the process generated.""")
         """The s- and t-channels of a phase-space configuration. With bound
         states, they are those of the diagram over the physical legs (the
         constituents of an onium merged into one particle,
-        ProcessExporterFortranME.get_onia_production_channels)."""
+        ProcessExporterFortranME.get_onia_production_channels). For the
+        decay of an onium, the s-channel tree of the physical invariants that
+        the propagators of the diagram depend on, as at tree level
+        (ProcessExporterFortranME.get_onia_decay_vertices): its two
+        constituents are both incoming, and a propagator between them (a
+        t-channel one between the constituents) is not a channel of the
+        1 -> N phase space."""
+        if hasattr(matrix_element, 'get_nonia') and matrix_element.get_nonia() > 0 \
+           and ninitial == 1:
+            exporter = export_v4.ProcessExporterFortranME
+            first_leg = matrix_element.get('processes')[0].get('legs')[0]
+            parent_id = abs(first_leg.get('onium').get('id')) \
+                if first_leg.get('onium') else first_leg.get('id')
+            candidates = exporter.get_onia_decay_candidates(
+                helas_diag, matrix_element.get_onia_leg_map())
+            vertices = exporter.get_onia_decay_vertices(
+                candidates, matrix_element.get_nexternal_ninitial()[0], parent_id)
+            return exporter.get_onia_decay_schannels(vertices), []
         if hasattr(matrix_element, 'get_nonia') and matrix_element.get_nonia() > 0:
             channels = export_v4.ProcessExporterFortranME.get_onia_production_channels(
                 helas_diag, matrix_element.get_onia_leg_map(), model, 990)
@@ -2792,17 +2849,26 @@ As a result, the default card will not be tailored to the process generated.""")
             helas_calls = helas_calls.replace(old, new)
         # the LDMEs of the Fock states: quarkonia from Block ldme of the onia
         # card, leptonia from their Coulomb wave function (ldme_perturbative)
+        # (decay LDMEs of decaying quarkonia from Block ldme_decay, as
+        # LDMED_<pdg>, read with the code -pdg: get_ldme_product)
         model = matrix_element.get('processes')[0].get('model')
-        ids, card_ids = [], []
+        ids, card_ids, names = [], [], []
         for leg in matrix_element.get('processes')[0].get('legs'):
             onium = leg.get('onium')
             if onium and abs(onium['id']) not in ids:
                 ids.append(abs(onium['id']))
                 if abs(model.get('particle_dict')[leg.get('id')].get_color()) == 3:
-                    card_ids.append(abs(onium['id']))
-        ldme_decl = '\n'.join('      DOUBLE PRECISION LDME_%d' % i for i in ids)
-        ldme_assign = '\n'.join('        LDME_%d = LDME_VAL(%d)' % (pdg, k + 1)
-                                for k, pdg in enumerate(card_ids))
+                    if leg.get('state'):
+                        card_ids.append(abs(onium['id']))
+                        names.append('LDME_%d' % abs(onium['id']))
+                    else:
+                        card_ids.append(-abs(onium['id']))
+                        names.append('LDMED_%d' % abs(onium['id']))
+        ldme_decl = '\n'.join(['      DOUBLE PRECISION LDME_%d' % i for i in ids] +
+                              ['      DOUBLE PRECISION %s' % n for n in names
+                               if n.startswith('LDMED_')])
+        ldme_assign = '\n'.join('        %s = LDME_VAL(%d)' % (name, k + 1)
+                                for k, name in enumerate(names))
         kernel_dict = {'kname': kname,
                        'ldme_decl': ldme_decl,
                        'nldme': len(card_ids),
@@ -3102,6 +3168,10 @@ As a result, the default card will not be tailored to the process generated.""")
                   '      IMPLICIT NONE',
                   '      ONIA_BORN_VANISHES = %s' % ('.TRUE.' if vanishes else '.FALSE.'),
                   '      END']
+        # the frame of MadLoop's virtual: a decaying onium is boosted
+        decay = any(fks_onia.onium_of(l) and not l.get('state') for l in legs)
+        lines += ['', ''] + (ONIA_LOOP_FRAME_DECAY if decay else
+                             ONIA_LOOP_FRAME_IDENTITY).splitlines()
         writer = writers.FortranWriter(filename)
         writer.writelines('\n'.join(lines) + '\n')
         writer.close()
@@ -3194,7 +3264,8 @@ As a result, the default card will not be tailored to the process generated.""")
         for h, pw in enumerate(pwaves, 1):
             decl += ['      DATA QQ(%d), SPIN(%d), JTOT(%d), NAUX(%d) /%d, %d, %d, %d/'
                      % (h, h, h, h, pw['onium'], pw['S'], pw['J'], len(pw['aux'])),
-                     '      DATA IQ(%d), IQBAR(%d) /%d, %d/' % (h, h, pw['quark'], pw['antiquark'])]
+                     '      DATA IQ(%d), IQBAR(%d) /%d, %d/' % (h, h, pw['quark'], pw['antiquark']),
+                     '      DATA ISV(%d) /%d/' % (h, -1 if pw['incoming'] else 1)]
             for a, aux in enumerate(pw['aux'], 1):
                 decl += ["      DATA LABEL(%d,%d), NCOLS(%d,%d) /'%s', %d/"
                          % (a, h, a, h, aux['label'], max(1, len(aux['keys'])))]

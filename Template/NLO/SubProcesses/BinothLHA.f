@@ -14,6 +14,9 @@ c
       parameter (pi=3.1415926535897932385d0)
       parameter (zero=0d0)
       double precision p(0:3,nexternal-1)
+c the momenta of MadLoop's virtual (onia_loop_frame: boosted for the
+c decay of a bound state, the Born momenta otherwise)
+      double precision pl(0:3,nexternal-1)
       double precision virt_wgt,born_wgt,double,single
       double precision, allocatable, save :: virt_wgts(:,:)
       double precision, allocatable, save :: virt_wgts_hel(:,:)
@@ -96,6 +99,7 @@ c masses
       data nbad / 0 /
 
       IOErrCounter = 0
+      call onia_loop_frame(p,pl)
 c update the ren_scale for MadLoop and the couplings (should be the
 c Ellis-Sexton scale)
       mu_r = sqrt(QES2)
@@ -150,7 +154,7 @@ c splips unnoticed.
          write(*,*) "alpha_s value used for the virtuals"/
      &        /" is (for the first PS point): ", alpha_S
          tolerance=IRPoleCheckThreshold/10d0 ! for the pole check below
-         call sloopmatrix_thres(p, virt_wgts, tolerance, accuracies,
+         call sloopmatrix_thres(pl, virt_wgts, tolerance, accuracies,
      $        ret_code)
 C        look for orders which match the nlo order constraint 
          do i = 1, nsqso
@@ -193,7 +197,7 @@ c Just set the accuracy found to a positive value as it is not specified
 c once the initial pole check is performed.
          if (mc_hel.eq.0) then
 
-            call sloopmatrix_thres(p,virt_wgts,tolerance,accuracies
+            call sloopmatrix_thres(pl,virt_wgts,tolerance,accuracies
      $           ,ret_code)
             do i = 1, nsqso
               if (keep_order(i)) then
@@ -221,7 +225,7 @@ c virtual as flat as possible
             call PickHelicityMC(p,goodhel,hel,ihel,volh)
             !
             fillh=.false.
-            call sloopmatrixhel_thres(p,hel(ihel),virt_wgts_hel
+            call sloopmatrixhel_thres(pl,hel(ihel),virt_wgts_hel
      $           ,tolerance,accuracies,ret_code)
             hel_fact = dble(goodhel(ihel))/volh/4d0
             do i = 1, nsqso

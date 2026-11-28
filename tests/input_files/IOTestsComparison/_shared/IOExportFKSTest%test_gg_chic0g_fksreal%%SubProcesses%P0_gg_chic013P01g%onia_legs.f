@@ -106,3 +106,14 @@ C     real-emission channels only (export_fks.write_onia_legs_file)
       ONIA_BORN_VANISHES = .FALSE.
       END
 
+
+      SUBROUTINE ONIA_LOOP_FRAME(P,PL)
+C     The momenta at which MadLoop evaluates the virtual: the Born
+C      momenta
+C     (no decaying bound state; export_fks.write_onia_legs_file)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      DOUBLE PRECISION P(0:3,NEXTERNAL-1), PL(0:3,NEXTERNAL-1)
+      PL(0:3,1:NEXTERNAL-1) = P(0:3,1:NEXTERNAL-1)
+      END
+

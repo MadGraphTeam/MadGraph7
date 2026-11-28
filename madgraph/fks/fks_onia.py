@@ -110,6 +110,32 @@ def physical_legs(legs):
     return [l for pos, l in enumerate(legs) if pos not in hidden]
 
 
+def onium_physical_number(legs, number):
+    """physical_number for the number of any leg, either constituent of an
+    onium giving the number of the bound state."""
+    pairs = onium_pairs(legs)
+    for a, b in pairs:
+        if number - 1 == b:
+            number = a + 1
+    return physical_number(legs, number)
+
+
+def octet_label(legs, leg, model):
+    """The constituent number that labels the octet index of the onium of leg
+    in the projected colour strings (color_amp.OniumColorString): its
+    constituent of colour 3 once crossed, the quark of a produced onium and
+    the antiquark of a decaying one (loop_onia.octet_leg). The first
+    constituent for a leptonium."""
+    onium = onium_of(leg)
+    pair = [l for l in legs if onium_of(l) and onium_of(l)['index'] == onium['index']
+            and l.get('state') == leg.get('state')]
+    for l in pair:
+        colour = model.get('particle_dict')[l.get('id')].get_color()
+        if (colour if l.get('state') else -colour) == 3:
+            return l.get('number')
+    return pair[0].get('number')
+
+
 def constituent_colour(leg, model):
     return model.get('particle_dict')[leg.get('id')].get_color()
 
@@ -230,10 +256,17 @@ def check_nlo_onia(legs, perturbation_couplings, loop_option, model):
         raise OniaNLOError(
             "Bound states at NLO are supported for QCD corrections only (arXiv:2402.19221), "
             "not for [%s]." % ' '.join(perturbation_couplings))
+    initial = [leg for leg in legs if not leg.get('state')]
     for (index, state), (leg, onium) in onia.items():
-        if not state:
+        if state:
+            continue
+        # the decay of a bound state: its two constituents are the whole
+        # initial state (1 -> N), as in onia_decay's tree level and MadLoop's
+        # decays (loop_onia)
+        if len(initial) != 2 or not all(onium_of(l) for l in initial):
             raise OniaNLOError(
-                "A bound state in the initial state (%s) is not supported at NLO." % onium['name'])
+                "A bound state in the initial state (%s) is supported at NLO for its decay "
+                "only, the bound state alone in the initial state (1 > N)." % onium['name'])
     for leg in legs:
         pol = leg.get('polarization') if hasattr(leg, 'get') else None
         if pol:
@@ -270,9 +303,10 @@ def fock_state_perturbation_tag(loop_option, perturbation_couplings):
 def physical_fks_legs(legs, model):
     """FKSLegs of a Born with bound states as FKS sees them: the second
     constituent of every onium dropped, the first one standing for the bound
-    state (massive, colour 8 for a colour octet, 1 otherwise). Its number stays
-    the constituent number, which is the label of the octet index in the
-    projected colour strings (color_amp.OniaColorProjection)."""
+    state (massive, colour 8 for a colour octet, 1 otherwise). Its number is
+    the constituent number that labels the octet index in the projected
+    colour strings (octet_label: the first constituent of a produced onium,
+    the antiquark of a decaying one; color_amp.OniaColorProjection)."""
     import madgraph.fks.fks_common as fks_common
     fkslegs = fks_common.to_fks_legs(legs, model)
     out = fks_common.FKSLegList()
@@ -281,7 +315,9 @@ def physical_fks_legs(legs, model):
         if pos in hidden:
             continue
         if onium_of(leg):
+            label = octet_label(legs, leg, model)
             leg = fks_common.FKSLeg(leg)
+            leg['number'] = label
             leg['color'] = physical_colour(leg, model)
             leg['massless'] = False
             leg['spin'] = 2 * onium_of(leg).get('J', 0) + 1
@@ -299,8 +335,9 @@ def born_color_links(born_me, perturbation='QCD'):
     massive octet (self-link included).
 
     The links are inserted in the simplified (projected) Born colour basis,
-    where the octet label of an onium is the number of its first constituent
-    and no fundamental index of its constituents survives."""
+    where the octet label of an onium is the number of one of its
+    constituents (octet_label) and no fundamental index of its constituents
+    survives."""
     import madgraph.fks.fks_common as fks_common
     process = born_me.get('base_amplitude').get('process')
     legs = process.get('legs')
@@ -310,11 +347,11 @@ def born_color_links(born_me, perturbation='QCD'):
     links_info = fks_common.find_color_links(plegs, symm=True, pert=perturbation)
     if not len(col_basis):
         # colourless, or colour forbidden (q q~ > chi_cJ, zero Born): zero links
-        return [{'link': [physical_number(legs, l['number']) for l in link['legs']],
+        return [{'link': [onium_physical_number(legs, l['number']) for l in link['legs']],
                  'matrix': {}, 'ncolor': 1} for link in links_info]
     result = fks_common.born_basis_link_matrices(col_basis, links_info)
     for link in result:
-        link['link'] = [physical_number(legs, n) for n in link['link']]
+        link['link'] = [onium_physical_number(legs, n) for n in link['link']]
     return result
 
 
@@ -323,8 +360,8 @@ def leshouche_view(proc, color_basis, ninitial):
     """The physical particles of a process with bound states for the event
     record: (ids, flows), ids the PDG codes (one per onium, its Fock-state PDG),
     flows a list of colour flows, each a list of (colour, anticolour) per
-    physical particle. An octet onium flows like a gluon (its index is the
-    label of its first constituent in the projected colour basis)."""
+    physical particle. An octet onium flows like a gluon (its index is its
+    octet label in the projected colour basis: octet_label)."""
     legs = proc.get_legs_with_decays()
     model = proc.get('model')
     hidden = set(b for _, b in onium_pairs(legs))
@@ -332,11 +369,13 @@ def leshouche_view(proc, color_basis, ninitial):
     ids = [onium_of(l)['id'] if onium_of(l) else l.get('id') for l in plegs]
     if not color_basis:
         return ids, []
+    labels = [octet_label(legs, l, model) if onium_of(l) else l.get('number')
+              for l in plegs]
     repr_dict = {}
-    for l in plegs:
-        repr_dict[l.get('number')] = physical_colour(l, model) * (-1) ** (1 + l.get('state'))
+    for l, n in zip(plegs, labels):
+        repr_dict[n] = physical_colour(l, model) * (-1) ** (1 + l.get('state'))
     flows = color_basis.get_flow_basis().color_flow_decomposition(repr_dict, ninitial)
-    return ids, [[tuple(flow[l.get('number')]) for l in plegs] for flow in flows]
+    return ids, [[tuple(flow[n]) for n in labels] for flow in flows]
 
 
 # ------------------------------------------------ physical FKS bookkeeping --
@@ -660,13 +699,13 @@ def transition_matrices(born_amplitude, model, basis_p=None, pleg=None):
                                'with %d of them' % len(pwaves))
         pleg = pwaves[0]
     onium = onium_of(pleg)
-    n_q = pleg.get('number')                 # the octet label of the onium
+    n_q = octet_label(legs, pleg, model)     # the octet label of the onium
     if basis_p is None:
         basis_p = color_amp.ColorBasis()
         basis_p.create_color_dict_list(born_amplitude)
         basis_p.build()
     keys_p = _sorted_keys(basis_p)
-    result = {'onium': physical_number(legs, n_q), 'index': onium['index'],
+    result = {'onium': physical_number(legs, pleg.get('number')), 'index': onium['index'],
               'basis_p': basis_p, 'keys_p': keys_p, 'aux': []}
     for colour, label in aux_states(onium):
         basis_s = aux_color_basis(born_amplitude, onium['index'], colour)
@@ -676,8 +715,8 @@ def transition_matrices(born_amplitude, model, basis_p=None, pleg=None):
             rep = leg_colour_rep(leg, model)
             if rep == 0:
                 continue
-            num = leg.get('number')
-            k = physical_number(legs, num)
+            num = octet_label(legs, leg, model) if onium_of(leg) else leg.get('number')
+            k = physical_number(legs, leg.get('number'))
             for kind in qeff_kinds(label):
                 repl_p, repl_s = {}, {}
                 if num != n_q:
@@ -718,7 +757,9 @@ def dipole_matrices(born_amplitude, model, pleg1, pleg2, tm1, tm2):
     bases are returned too: 'double': {(a1, a2): (basis, keys)}.
 
     Mass factors are left out, as in transition_matrices."""
-    o1, o2 = pleg1.get('number'), pleg2.get('number')
+    legs = born_amplitude.get('process').get('legs')
+    o1 = octet_label(legs, pleg1, model)
+    o2 = octet_label(legs, pleg2, model)
     keys_p = tm1['keys_p']
     cross, parallel, double = {}, {}, {}
     for a1, aux1 in enumerate(tm1['aux']):
@@ -799,7 +840,8 @@ def soft_current_data(born_me):
         out['ncolor_p'] = len(tm['keys_p'])
         out['pwaves'].append(dict(onium=tm['onium'], index=onium['index'], S=onium['S'],
                                   J=onium['J'], C=onium['C'], quark=quark.get('number'),
-                                  antiquark=antiquark.get('number'), aux=tm['aux']))
+                                  antiquark=antiquark.get('number'), aux=tm['aux'],
+                                  incoming=not pleg.get('state')))
     for h1 in range(len(pwaves)):
         for h2 in range(h1 + 1, len(pwaves)):
             dm = dipole_matrices(amplitude, model, pwaves[h1], pwaves[h2], tms[h1], tms[h2])

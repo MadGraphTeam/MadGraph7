@@ -40,3 +40,16 @@ c**************************************************************************
       onia_born_vanishes=.false.
       return
       end
+
+
+      subroutine onia_loop_frame(p,pl)
+c**************************************************************************
+c     No bound state in this process: MadLoop takes the Born momenta (see
+c     onia_legs.f, where the decay of a bound state is boosted).
+c**************************************************************************
+      implicit none
+      include 'nexternal.inc'
+      double precision p(0:3,nexternal-1),pl(0:3,nexternal-1)
+      pl(0:3,1:nexternal-1)=p(0:3,1:nexternal-1)
+      return
+      end
