@@ -179,15 +179,51 @@ class TestCombineCluster(unittest.TestCase):
         self.assertIn("+1.0000000000e+01", text)
         self.assertIn("+1.2000000000e+01", text)
 
+    def test_decayed_events_keep_sigma_times_br(self):
+        """A gridpack carrying MadSpin leaves events_decayed.lhe.gz (and no
+        undecayed file): combined with the cross sections of their own <init>
+        blocks, sigma x BR, while info.json keeps the production."""
+        jobs = self.jobs("lhe", [dict(count=2, mean=10., error=1.),
+                                 dict(count=3, mean=12., error=2.)])
+        for job, (xsec, error) in zip(jobs, [(0.5, 0.05), (0.6, 0.1)]):
+            with gzip.open(os.path.join(job, "events.lhe.gz"), "rt") as f:
+                text = f.read()
+            os.remove(os.path.join(job, "events.lhe.gz"))
+            head, rest = text.split("<init>\n")
+            beams, numbers, tail = rest.split("\n", 2)
+            with gzip.open(os.path.join(job, combine.DECAYED_FILE), "wt") as f:
+                f.write(head + "<init>\n" + beams + "\n"
+                        + "%.10e %.10e %.10e 1" % (xsec, error, xsec)
+                        + "\n" + tail)
+        info = combine.combine_runs(jobs, self.path("out"))
+        self.assertAlmostEqual(info["process"]["mean"], (2 * 10. + 3 * 12.) / 5)
+        decayed = info["decayed"]
+        self.assertAlmostEqual(decayed["mean"], (2 * 0.5 + 3 * 0.6) / 5)
+        self.assertAlmostEqual(decayed["error"],
+                               math.sqrt(4 * 0.05 ** 2 + 9 * 0.1 ** 2) / 5)
+        self.assertFalse(os.path.exists(self.path("out/events.lhe.gz")))
+        with gzip.open(self.path("out/" + combine.DECAYED_FILE), "rt") as f:
+            text = f.read()
+        self.assertEqual(text.count("<event>"), 5)
+        init = text.split("<init>\n")[1].split("</init>")[0].splitlines()
+        self.assertAlmostEqual(float(init[1].split()[0]), decayed["mean"])
+        self.assertAlmostEqual(float(init[1].split()[2]), decayed["mean"])
+
     def test_lhe_in_small_blocks_and_with_every_compressor(self):
         jobs = self.jobs("lhe", [dict(count=2, mean=10., error=1.),
                                  dict(count=3, mean=12., error=2.)])
         texts = []
-        # blocks that cut the closing tag; the external tool and the gzip module
+        # blocks that cut the closing tag; the external tool and the gzip module.
+        # The tool's options are set with it: an earlier test that made an
+        # interface may have configured pigz (-p N), which Apple's gzip
+        # refuses, still with exit code 0 and an empty output.
         for index, tool in enumerate(("gzip", None)):
             with mock.patch.object(combine, "_COPY_CHUNK", 7), \
                     mock.patch.object(combine, "_TAIL", 24), \
-                    mock.patch.object(combine.misc, "_gzip_tool", tool):
+                    mock.patch.object(combine.misc, "_gzip_tool", tool), \
+                    mock.patch.object(combine.misc,
+                                      "_gzip_tool_supports_multithreading", False), \
+                    mock.patch.object(combine.misc, "_gzip_tool_max_cores", None):
                 combine.combine_runs(jobs, self.path("out%d" % index))
             with gzip.open(self.path("out%d/events.lhe.gz" % index), "rt") as f:
                 texts.append(f.read())

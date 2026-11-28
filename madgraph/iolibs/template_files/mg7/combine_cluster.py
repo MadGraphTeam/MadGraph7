@@ -12,6 +12,8 @@ follows from the independence of the jobs:
     combine_cluster.py -o OUTPUT_DIR JOB_DIR ...
 
 Each JOB_DIR holds the output of a gridpack run in any of its output formats.
+The decayed events of a gridpack carrying MadSpin (events_decayed.lhe.gz) are
+combined with the cross sections of their own <init> blocks, sigma x BR.
 """
 
 import argparse
@@ -39,7 +41,10 @@ _AVERAGED = ("mean", "mean_abs", "rel_std_dev")
 _SYST_AVERAGED = ("cross_section", "central", "uncertainty_up",
                   "uncertainty_down", "min", "max")
 
-EVENT_FILES = ("events.lhe.gz", "events.lhe", "events.npy")
+# events a gridpack carrying MadSpin decayed (template_files/mg7/gridpack.py):
+# their <init> cross section is sigma x BR
+DECAYED_FILE = "events_decayed.lhe.gz"
+EVENT_FILES = (DECAYED_FILE, "events.lhe.gz", "events.lhe", "events.npy")
 _ROWS_PER_CHUNK = 1 << 20
 _COPY_CHUNK = 1 << 22
 _LHE_END = b"</LesHouchesEvents>"
@@ -306,6 +311,29 @@ def concatenate_npy(paths: list, output: str) -> None:
     combined.flush()
 
 
+def decayed_status(paths: list, counts: list) -> dict:
+    """The cross section of the decayed events of the jobs, from the <init>
+    blocks MadSpin wrote (sigma x BR of each job): combined as the production
+    cross sections are, with the production events of each job as weights."""
+    xsecs, errors, xmaxs = [], [], []
+    for path in paths:
+        lines = init_of(path)
+        if len(lines) != 2:
+            raise CombineError(f"{path}: only an <init> block of a single "
+                               "process is supported")
+        xsec, error, xmax = (float(v) for v in lines[1].split()[:3])
+        xsecs.append(xsec)
+        errors.append(error)
+        xmaxs.append(xmax)
+    total = sum(counts)
+    if total > 0:
+        error = sum((n * e) ** 2 for n, e in zip(counts, errors)) ** 0.5 / total
+    else:
+        error = sum(e ** 2 for e in errors) ** 0.5 / len(errors)
+    return {"mean": weighted_mean(xsecs, counts), "error": error,
+            "mean_abs": weighted_mean(xmaxs, counts)}
+
+
 def event_file_of(job_dir: str) -> str:
     for name in EVENT_FILES:
         if os.path.exists(os.path.join(job_dir, name)):
@@ -334,7 +362,11 @@ def combine_runs(job_dirs: list, output: str) -> dict:
 
     os.makedirs(output, exist_ok=True)
     paths = [os.path.join(d, name) for d in job_dirs]
-    if name.startswith("events.lhe"):
+    if name == DECAYED_FILE:
+        counts = [i["process"]["count_unweighted"] for i in infos]
+        info["decayed"] = decayed_status(paths, counts)
+        write_lhe(paths, os.path.join(output, name), info["decayed"], negative)
+    elif name.startswith("events.lhe"):
         write_lhe(paths, os.path.join(output, name), status, negative)
     else:
         concatenate_npy(paths, os.path.join(output, name))
@@ -375,6 +407,9 @@ def main(argv=None) -> int:
     process = info["process"]
     print("combined %d runs: %d events, cross section %.6g +- %.2g pb" % (
         len(args.runs), process["count_unweighted"], process["mean"], process["error"]))
+    if "decayed" in info:
+        print("decayed with MadSpin: cross section x BR %.6g +- %.2g pb" % (
+            info["decayed"]["mean"], info["decayed"]["error"]))
     return 0
 
 

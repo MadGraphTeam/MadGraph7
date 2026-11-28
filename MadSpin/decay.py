@@ -2314,6 +2314,8 @@ class decay_all_events(object):
     # event (re)generation that storms the filesystem (APFS write-transaction
     # contention -> large "system" CPU). So gate it on the mode.
     _need_unbuffered_fortran_io = True
+    # whether the status is pickled to production_me/all_ME.pkl (use_old_dir)
+    _pickle_status = True
 
     def __init__(self, ms_interface, banner, inputfile, options):
         """Store all the component and organize special variable"""
@@ -2423,7 +2425,14 @@ class decay_all_events(object):
 
         # generate BR and all the square matrix element based on the banner.
         pickle_info = pjoin(self.path_me,"production_me", "all_ME.pkl")
-        if not options["use_old_dir"] or not os.path.exists(pickle_info):
+        if not self._pickle_status:
+            # density/onshell: no production_me/ to pickle into (that write
+            # used to fail silently, under mute_logger), and nothing to pickle
+            # -- these modes keep their matrix elements in all_me and reuse
+            # them through the ME cache of a persistent directory
+            # (generate_all_matrix_element)
+            self.generate_all_matrix_element()
+        elif not options["use_old_dir"] or not os.path.exists(pickle_info):
            
             self.generate_all_matrix_element()
             self.save_status_to_pickle(pickle_info)
@@ -5523,6 +5532,11 @@ class decay_all_events_onshell(decay_all_events):
     # would flush every event write and storm the filesystem during the
     # many-core decay-event generation/refill). Inherited by decay_all_events_density.
     _need_unbuffered_fortran_io = False
+    _pickle_status = False
+    # format of ME_CACHE: bumped when what generate_all_matrix_element
+    # stores there changes meaning
+    ME_CACHE = 'ms_me_cache.pkl'
+    ME_CACHE_FORMAT = 1
  
     
     @misc.mute_logger()
@@ -5549,14 +5563,15 @@ class decay_all_events_onshell(decay_all_events):
         # the same process — see MadSpinInterface._ms_run_counter).
         ms_me_subdir = getattr(self.mscmd, 'ms_me_subdir', 'madspin_me')
         ms_me_decay_subdir = getattr(self.mscmd, 'ms_me_decay_subdir', 'madspin_decay')
-        try:
-            shutil.rmtree(pjoin(path_me, ms_me_subdir))
-        except Exception:
-            pass
-        try:
-            shutil.rmtree(pjoin(path_me, ms_me_decay_subdir))
-        except Exception:
-            pass
+        self._me_cache_pending = None
+        self._me_from_cache = False
+
+        def clean():
+            for subdir in (ms_me_subdir, ms_me_decay_subdir):
+                try:
+                    shutil.rmtree(pjoin(path_me, subdir))
+                except Exception:
+                    pass
         
         # 1. compute the partial width------------------------------------------
         #self.get_branching_ratio()
@@ -5665,6 +5680,7 @@ class decay_all_events_onshell(decay_all_events):
 
         # legacy options 'onshell_v1' and 'madspin_v1' store both the production and the decay in a single folder
         if self.options['spinmode'] in ['onshell_v1', 'madspin_v1']:
+            clean()
             commandline += self.get_decay_command()
             commandline = generate_line(commandline, 'fortran')
             mgcmd.exec_cmd(commandline, precmd=True)
@@ -5684,6 +5700,28 @@ class decay_all_events_onshell(decay_all_events):
             zero_width = self.zerowidth_decay_pdgs()
             backend = self.density_backend(commandline, zero_width)
             commandline_production = generate_line(commandline, backend)
+            commandline_decay = self.get_decay_command()
+            decay_backend = self.density_backend(commandline_decay, zero_width)
+            # a 1 -> N decay has no beam: the polarisation never reaches it
+            commandline_decay = generate_line(commandline_decay, 'decay')
+
+            # A persistent directory (ms_dir, use_old_dir) keeps the matrix
+            # elements of the run that built it: everything below is
+            # determined by these generate lines and backends, and a change of
+            # parameters or of MadGraph version is refused earlier
+            # (MadSpinInterface._check_reused_param_card/_version).
+            cache_key = repr((self.ME_CACHE_FORMAT, ms_me_subdir,
+                              ms_me_decay_subdir, commandline_production,
+                              backend, commandline_decay, decay_backend,
+                              zero_width))
+            cached = self.load_me_cache(cache_key)
+            if cached is not None:
+                self.all_me = cached
+                self._me_from_cache = True
+                logger.info('MadSpin: reusing the matrix elements in %s',
+                            path_me)
+                return self.all_me
+            clean()
             logger.info(commandline_production)
             mgcmd.exec_cmd(commandline_production, precmd=True)
             # same t-channel widths as madevent (zerowidth_tchannel)
@@ -5695,18 +5733,16 @@ class decay_all_events_onshell(decay_all_events):
             # store information about the production matrix elements
             fill_all_me(self, "production")
 
-            commandline_decay = self.get_decay_command()
-            backend = self.density_backend(commandline_decay, zero_width)
-            # a 1 -> N decay has no beam: the polarisation never reaches it
-            commandline_decay = generate_line(commandline_decay, 'decay')
-
             logger.info(commandline_decay)
             mgcmd.exec_cmd(commandline_decay, precmd=True)
-            self.output_density_me(pjoin(path_me, ms_me_decay_subdir), backend,
-                                   'd', '--zerowidth_decay=%s' % bool(zero_width))
+            self.output_density_me(pjoin(path_me, ms_me_decay_subdir),
+                                   decay_backend, 'd',
+                                   '--zerowidth_decay=%s' % bool(zero_width))
 
             # store information about the decay matrix elements
             fill_all_me(self, "decay")
+            # written once compile() has built them
+            self._me_cache_pending = cache_key
 
         logger.info('Done %.4g' % (time.time()-start))
 
@@ -5978,18 +6014,81 @@ class decay_all_events_onshell(decay_all_events):
             return
         ms_me_subdir = getattr(self.mscmd, 'ms_me_subdir', 'madspin_me')
         ms_me_decay_subdir = getattr(self.mscmd, 'ms_me_decay_subdir', 'madspin_decay')
+        with open(source, 'rb') as fsock:
+            content = fsock.read()
         for subdir in (ms_me_subdir, ms_me_decay_subdir):
             cards = pjoin(self.path_me, subdir, 'Cards')
             if not os.path.isdir(cards):
                 continue
-            shutil.copyfile(source, pjoin(cards, 'param_card.dat'))
+            target = pjoin(cards, 'param_card.dat')
+            # Not rewritten when it already says the same: a reused directory
+            # (a gridpack's prepared MadSpin) may be read by several runs at
+            # once, or be read-only, and truncating a file another run is
+            # reading would hand it an empty card.
+            try:
+                with open(target, 'rb') as fsock:
+                    if fsock.read() == content:
+                        continue
+            except OSError:
+                pass
+            shutil.copyfile(source, target)
+
+    def persistent_me_dir(self):
+        """Whether path_me outlives this run (ms_dir, use_old_dir): only then
+        are the matrix elements cached there."""
+        try:
+            return bool(self.options['ms_dir'] or self.options['use_old_dir'])
+        except Exception:
+            return False
+
+    def load_me_cache(self, key):
+        """all_me as the run that built path_me stored it, when it was built
+        for ``key`` (see generate_all_matrix_element); None otherwise."""
+        if not self.persistent_me_dir():
+            return None
+        path = pjoin(self.path_me, self.ME_CACHE)
+        if not os.path.exists(path):
+            return None
+        try:
+            with open(path, 'rb') as fsock:
+                data = pickle.load(fsock)
+        except Exception as error:
+            logger.debug('unreadable %s: %s', path, error)
+            return None
+        if not isinstance(data, dict) or data.get('key') != key:
+            logger.info('MadSpin: the matrix elements in %s were built for '
+                        'other processes, generating them again', self.path_me)
+            return None
+        return data['all_me']
+
+    def save_me_cache(self, key):
+        """Record all_me for the next run reusing path_me. Best effort: a
+        read-only directory only costs the next run a regeneration."""
+        path = pjoin(self.path_me, self.ME_CACHE)
+        try:
+            with open(path + '.tmp', 'wb') as fsock:
+                pickle.dump({'key': key, 'all_me': self.all_me}, fsock)
+            os.replace(path + '.tmp', path)
+        except Exception as error:
+            logger.debug('could not store the matrix elements of %s: %s',
+                         self.path_me, error)
 
     def compile(self):
-        logger.info('Compiling code')
         # Before anything is compiled or loaded: the matrix elements read their
         # parameters from these cards at initialise() time, and what
         # ``output standalone`` left there is the model default.
         self.refresh_me_param_cards()
+        if getattr(self, '_me_from_cache', False):
+            # built by the run that wrote the cache, which compiled them before
+            # writing it: a gridpack has no compiler to call make with
+            return
+        logger.info('Compiling code')
+        self.compile_me_trees()
+        pending = getattr(self, '_me_cache_pending', None)
+        if pending is not None and self.persistent_me_dir():
+            self.save_me_cache(pending)
+
+    def compile_me_trees(self):
         ms_me_subdir = getattr(self.mscmd, 'ms_me_subdir', 'madspin_me')
         ms_me_decay_subdir = getattr(self.mscmd, 'ms_me_decay_subdir', 'madspin_decay')
         # Per-instance suffix for the f2py-linked shared library: with the

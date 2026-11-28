@@ -24,6 +24,7 @@ import glob
 import os
 import sys
 
+import madgraph.interface.extended_cmd as extended_cmd
 import madgraph.interface.tutorials as tutorials
 from madgraph.interface.tutorials.session import (Step, Tutorial,
                                                   counts_line, output_name,
@@ -188,10 +189,24 @@ def _version_mismatch(interface):
     return False
 
 
+def _shower_started(run):
+    """Whether the shower was started on `run` at all: it leaves its
+    directory, its logs or its crash report."""
+
+    return bool(run) and any(glob.glob(os.path.join(run, pattern)) for pattern in
+                             ('PY8_parallelization', '*pythia8*', '*PY8*',
+                              'Pythia8_shower_crash.log'))
+
+
 def _shower_failed(interface):
     """What to say when the run left no DJR plot."""
 
     run = _latest_run(interface)
+    if run and not _shower_started(run):
+        return ("**The shower did not run**: it was off at the card question, "
+                "so there is no\nmerging and there are no DJR plots. Launch "
+                "again, with `shower=Pythia8`\nat the card question.\n\n"
+                "%s %s\n" % (P, _launch(interface)))
     crash = os.path.join(run, 'Pythia8_shower_crash.log') if run else None
     text = "**The shower did not finish**, so there are no DJR plots.\n"
     if crash and os.path.exists(crash):
@@ -248,14 +263,186 @@ The [merging] section of run_card.toml holds the MLM settings.
 """
 
 
+def _question_switch(name):
+    """The value of switch `name` of the question asked right now, upper
+    case, or None when that question has no such switch."""
+
+    try:
+        return str(extended_cmd.active_question.switch[name]).upper()
+    except Exception:
+        return None
+
+
+def _card_value(name):
+    """Parameter `name` (section.key) of the run card being edited right
+    now, or None when the question asked has no such card."""
+
+    run_card = getattr(extended_cmd.active_question, 'run_card', None)
+    try:
+        return run_card[name]
+    except Exception:
+        return None
+
+
+def _shower_off():
+    """Whether the question asked right now has the shower switch, off. Not
+    when Pythia8 is not available: there is nothing to switch on, and the
+    next lesson says so."""
+
+    value = _question_switch('shower')
+    return value is not None and not value.startswith('NOT AVAIL') and \
+        value in ('OFF', 'NONE', '')
+
+
+def _xqcut_note():
+    """What to say about the xqcut of the card being edited, or None."""
+
+    try:
+        xqcut = float(_card_value('merging.xqcut'))
+    except (TypeError, ValueError):
+        return None
+    if xqcut <= 0:
+        return ("`xqcut` is 0, which turns the MLM merging off: the two jet "
+                "samples would then count the same jets twice. Type `set "
+                "xqcut 30`.")
+    if xqcut < 10:
+        return ("`xqcut` = %g GeV is very low: the matrix element then makes "
+                "soft jets the shower describes better, and the sample with "
+                "a jet gets slow. 20 to 30 GeV is usual for t t~." % xqcut)
+    return None
+
+
 def _launch_progress(interface, line):
     words = (line or '').replace('=', ' ').lower().split()
     if words[:2] == ['shower', 'pythia8']:
         return ("The shower is on. Set the number of events too, then "
                 "press Enter.")
+    if words[:2] in (['set', 'xqcut'], ['set', 'merging.xqcut']):
+        return _xqcut_note() or "`xqcut` is set."
     if words[:2] == ['set', 'events']:
+        if _shower_off():
+            return "Now the shower: type `shower=Pythia8`, then press Enter."
         return "Now press Enter to start the run."
     return None
+
+
+def _launch_gate(interface, line):
+    """The run this lesson starts is showered and merged: Enter, done or 0
+    wait for the shower, and for an xqcut that merges."""
+
+    if _shower_off():
+        return ("Not yet: the shower is off, so there would be no merging "
+                "and no DJR plots. Type `shower=Pythia8`, then press Enter.")
+    try:
+        if float(_card_value('merging.xqcut')) <= 0:
+            return "Not yet: " + _xqcut_note()
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+RELAUNCH_HINT = """
+A new run of the same merged sample. Keep `shower=Pythia8` on. To try other
+merging scales, change them here, for example:
+
+  set xqcut 40                  `qCut` follows it
+  set JetMatching:qCut 60       `qCut` itself, at least 1.5 times `xqcut`
+
+Then press Enter. The new run makes its own DJR plots.
+"""
+
+
+def _relaunch_aside(interface, line):
+    """After a new launch, at the lessons on the DJR plots: where the plots of
+    that run are."""
+
+    if (line or '').split()[:1] != ['launch']:
+        return None
+    return ("That was a new run.\n\n%s%s%s" % (
+        _parton_result(interface), _plots_found(interface),
+        '' if not _found_plot_dir(interface)
+        else '\n%s %s\n' % (P, _open_plot(interface))))
+
+
+def _process_definitions(interface):
+    """[(final-state legs, 'p p > t t~ j')] of the processes generated so
+    far, in order."""
+
+    definitions = list(getattr(interface, '_curr_proc_defs', None) or [])
+    typed = _typed_processes(interface)
+    found = []
+    for i, definition in enumerate(definitions):
+        try:
+            legs = [leg for leg in definition.get('legs') if leg.get('state')]
+            if len(typed) == len(definitions):
+                name = typed[i]
+            else:
+                name = definition.nice_string(prefix=False).split('@')[0].strip()
+        except Exception:
+            continue
+        found.append((len(legs), name))
+    return found
+
+
+def _typed_processes(interface):
+    """The processes as the reader typed them, from the last `generate` on:
+    `p p > t t~ j`, where MG5 would spell out every multiparticle."""
+
+    typed = []
+    for line in getattr(interface, 'history', None) or []:
+        words = str(line).split('#', 1)[0].split()
+        if words[:1] == ['generate']:
+            typed = [' '.join(words[1:])]
+        elif words[:2] == ['add', 'process']:
+            typed.append(' '.join(words[2:]))
+    return [name.split('@')[0].strip() for name in typed]
+
+
+RESTART = """
+Start the list again:
+
+%(p)s generate p p > t t~
+%(p)s add process p p > t t~ j""" % {'p': P}
+
+
+def _jet_samples(interface, line=None):
+    """Gate on `add process`: one process per jet multiplicity, from the one
+    without a jet up. Two lines with the same multiplicity are one jet
+    sample twice, not a merged sample."""
+
+    found = _process_definitions(interface)
+    if len(found) < 2:
+        return None
+    counts = [count for count, _ in found]
+    if len(set(counts)) == len(counts) and \
+            max(counts) - min(counts) == len(counts) - 1:
+        return None
+    listed = '\n'.join('  %s' % name for _, name in found)
+    return ("""
+The list of processes is now
+
+%s
+
+Each line of a merged sample needs its own number of jets, from none up.
+Here two lines have the same number, so there is no sample without a jet.
+`generate` starts the list over, which is how the first line got lost. The
+tutorial stays here.
+%s""" % (listed, RESTART))
+
+
+def _generate_aside(interface, line):
+    """`generate` where the lesson asks for `add process`."""
+
+    if (line or '').split()[:1] != ['generate']:
+        return None
+    found = _process_definitions(interface)
+    if len(found) == 1 and found[0][0] == 2:
+        return ("`generate` started the list over: it holds `%s` again, the "
+                "sample without a jet. Now add the one with a jet.\n\n"
+                "%s add process p p > t t~ j" % (found[0][1], P))
+    return ("`generate` starts the list of processes over: the sample without "
+            "a jet is gone, and the list holds only `%s`. The tutorial stays "
+            "here.\n%s" % (found[-1][1] if found else (line or '')[9:], RESTART))
 
 
 tutorial = Tutorial(
@@ -298,6 +485,7 @@ Step('generate', lambda interface: """
 %(p)s add process p p > t t~ j
 """ % {'p': P, 'counts': counts_line(interface)},
      title='the sample without a jet',
+     aside=_generate_aside,
      solution='add process p p > t t~ j'),
 
 Step('add_process', lambda interface: """
@@ -311,6 +499,7 @@ sets up an MLM sample on its own. Write the output.
 %(p)s output %(run)s
 """ % {'p': P, 'run': RUN, 'counts': counts_line(interface)},
      title='the sample with one jet',
+     gate=_jet_samples,
      solution='output %s' % RUN),
 
 Step('output', lambda interface: """
@@ -337,6 +526,7 @@ events. The hint there lists the lines to type.
      title='the MLM settings',
      question_hint=LAUNCH_HINT,
      question_progress=_launch_progress,
+     question_gate=_launch_gate,
      hint="At the card question, `shower=Pythia8` and `set events 10000`, "
           "then Enter.",
      solution=_launch),
@@ -349,6 +539,10 @@ Step('launch', lambda interface: """
                (_version_mismatch(interface) or _shower_ran(interface))
                else '\n%s %s\n' % (P, _open_plot(interface))},
      title='the shower and the merging',
+     question_hint=RELAUNCH_HINT,
+     question_progress=_launch_progress,
+     question_gate=_launch_gate,
+     aside=_relaunch_aside,
      hint="`shell open PATH` opens a file, or `shell xdg-open PATH` on Linux.",
      solution=_open_plot),
 
@@ -390,7 +584,11 @@ The documentation has every option.
 Leave with `tutorial stop`.
 """ % {'docs': DOCS, 'pythia': PYTHIA_DOCS,
        'see_also': tutorials.where_next()},
-     title='reading the DJR plots'),
+     title='reading the DJR plots',
+     question_hint=RELAUNCH_HINT,
+     question_progress=_launch_progress,
+     question_gate=_launch_gate,
+     aside=_relaunch_aside),
 
     ],
 )

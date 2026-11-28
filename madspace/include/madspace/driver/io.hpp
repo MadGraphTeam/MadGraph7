@@ -227,6 +227,10 @@ public:
     static constexpr int f_bias = 256;
     static constexpr int f_matrix_element = 512;
     static constexpr int f_beamstrahlung = 1024;
+    // With f_lhe_event: the renormalisation and factorisation scales of the
+    // LHE `<scales>` attributes (mur, muf1, muf2), which SCALUP does not
+    // hold. Part of the LHE event group, right after its fields.
+    static constexpr int f_lhe_scales = 2048;
 
     // With f_syst_weights, one column rwgt_<id> is added per entry of
     // `syst_weight_ids`.
@@ -263,6 +267,16 @@ public:
                     {"alpha_qcd", FieldLayout::f64, 3},
                 }
             );
+            if (fields & f_lhe_scales) {
+                ret.insert(
+                    ret.end(),
+                    {
+                        {"mu_r", FieldLayout::f64, 3},
+                        {"mu_f1", FieldLayout::f64, 3},
+                        {"mu_f2", FieldLayout::f64, 3},
+                    }
+                );
+            }
         }
         if (fields & f_beam1) {
             ret.insert(
@@ -333,6 +347,10 @@ public:
     UnalignedRef<double> lhe_scale() { return &_data[_offsets[2] + 12]; }
     UnalignedRef<double> lhe_alpha_qed() { return &_data[_offsets[2] + 20]; }
     UnalignedRef<double> lhe_alpha_qcd() { return &_data[_offsets[2] + 28]; }
+    // with f_lhe_scales
+    UnalignedRef<double> lhe_mu_r() { return &_data[_offsets[2] + 36]; }
+    UnalignedRef<double> lhe_mu_f1() { return &_data[_offsets[2] + 44]; }
+    UnalignedRef<double> lhe_mu_f2() { return &_data[_offsets[2] + 52]; }
 
     // partial weight data for beam 1
     UnalignedRef<double> x1() { return &_data[_offsets[3] + 0]; }
@@ -362,6 +380,14 @@ public:
         lhe_scale() = event.scale;
         lhe_alpha_qed() = event.alpha_qed;
         lhe_alpha_qcd() = event.alpha_qcd;
+    }
+
+    /// The `<scales>` of `event`, for a record with f_lhe_scales; zero when
+    /// the event has none (`has_scales` false).
+    void from_lhe_scales(const LHEEvent& event) {
+        lhe_mu_r() = event.has_scales ? event.mu_r : 0.;
+        lhe_mu_f1() = event.has_scales ? event.mu_f1 : 0.;
+        lhe_mu_f2() = event.has_scales ? event.mu_f2 : 0.;
     }
 
 private:

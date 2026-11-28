@@ -690,6 +690,164 @@ class NpyDecayPool(object):
         pass
 
 
+class NpyProductionFile(object):
+    """The production events of mg7's numpy event file (``lhe_npy``), read the
+    way MadSpin reads an LHE file of them.
+
+    The events come out as the lhe_parser.Event that parsing the LHE file of
+    the same run gives: process id, weight, scales, couplings, particles, the
+    ``<scales>`` tag (mur/muf from the mu_r/mu_f1/mu_f2 columns, pt_clust_i
+    from the MLM cluster scales), the systematics and reweighting weights
+    (``rwgt_<id>`` columns) and ``<beamstrahlung>``. The banner is the
+    ``header.lhe`` the run writes next to the npy file. Reading them costs no
+    text parsing, and a worker of the parallel unweighting reads its own
+    contiguous slice ``[start, stop)`` of the memory-mapped file, where an LHE
+    input has to be split into shard files first.
+
+    Exposes the part of lhe_parser.EventFile the onshell/density modes use:
+    iteration, ``next``, ``seek(0)``, ``name``, ``get_banner`` and ``close``.
+    """
+
+    HEADER_NAME = 'header.lhe'
+    CHUNK = 4096
+
+    def __init__(self, path, start=0, stop=None, header=None):
+        import numpy
+
+        self.name = path
+        self.header = header or pjoin(os.path.dirname(path), self.HEADER_NAME)
+        self.eventgroup = False
+        self._records = numpy.load(path, mmap_mode='r', max_header_size=1 << 30)
+        total = len(self._records)
+        self._start = max(0, min(int(start), total))
+        self._stop = total if stop is None else max(self._start, min(int(stop), total))
+        self._banner = None
+
+        names = self._records.dtype.names
+        position = {name: i for i, name in enumerate(names)}
+        self._event_cols = [position[name] for name in
+                            ('process_id', 'weight', 'scale', 'alpha_qed',
+                             'alpha_qcd')]
+        self._scale_cols = [position[name] for name in ('mu_r', 'mu_f1', 'mu_f2')] \
+            if 'mu_r' in position else None
+        self._bs_cols = [position['xbs1'], position['xbs2']] \
+            if 'xbs1' in position else None
+        # the weights, in file order: the systematics' rwgt_<n>, then the
+        # named ones a reweighting adds; their LHE ids drop the prefix
+        rwgt = [name for name in names if name.startswith('rwgt_')]
+        self._rwgt_cols = [position[name] for name in rwgt]
+        self._rwgt_ids = [name[len('rwgt_'):] for name in rwgt]
+        self._particle_cols = []
+        self._cluster_cols = []
+        for index in range(1, len(names)):
+            if 'part%d_pdg_id' % index not in position:
+                break
+            self._particle_cols.append(
+                [position['part%d_%s' % (index, field)]
+                 for field in _NPY_PARTICLE_FIELDS])
+            if 'part%d_cluster_scale' % index in position:
+                self._cluster_cols.append(position['part%d_cluster_scale' % index])
+        if self._cluster_cols and len(self._cluster_cols) != len(self._particle_cols):
+            self._cluster_cols = []
+        self.seek(0)
+
+    def __len__(self):
+        return self._stop - self._start
+
+    def __bool__(self):
+        return True
+
+    def __iter__(self):
+        return self
+
+    def seek(self, position=0):
+        if position != 0:
+            raise ValueError('an npy event file only seeks back to its start')
+        self._index = self._start
+        self._chunk = []
+        self._chunk_index = 0
+
+    def close(self):
+        pass
+
+    def get_banner(self):
+        if self._banner is None:
+            self._banner = banner.Banner(self.header)
+        return self._banner
+
+    def __next__(self):
+        if self._chunk_index >= len(self._chunk):
+            if self._index >= self._stop:
+                raise StopIteration
+            end = min(self._index + self.CHUNK, self._stop)
+            # one vectorised conversion per chunk, as NpyDecayPool does
+            self._chunk = self._records[self._index:end].tolist()
+            self._chunk_index = 0
+            self._index = end
+        row = self._chunk[self._chunk_index]
+        self._chunk_index += 1
+        return self._event(row)
+
+    next = __next__
+
+    def _event(self, row):
+        event = lhe_parser.Event()
+        process_id, event.wgt, event.scale, event.aqed, event.aqcd = (
+            row[i] for i in self._event_cols)
+        event.ievent = int(process_id)
+        for columns in self._particle_cols:
+            if row[columns[1]] == 0:
+                # padding: a real particle never has status 0
+                break
+            particle = lhe_parser.Particle(event=event)
+            for attr, column in zip(_NPY_PARTICLE_ATTRS, columns):
+                setattr(particle, attr, row[column])
+            event.append(particle)
+        event.nexternal = len(event)
+        event.assign_mother()
+
+        # the tags of the LHE event, as madspace's LHE output writes them
+        tags = []
+        scales = ''
+        if self._scale_cols is not None:
+            mu_r, mu_f1, mu_f2 = (row[i] for i in self._scale_cols)
+            if mu_r > 0:
+                scales = ' mur="%.6g" muf="%.6g" muf1="%.6g" muf2="%.6g"' % (
+                    mu_r, max(mu_f1, mu_f2), mu_f1, mu_f2)
+        if self._cluster_cols:
+            scales += ''.join(
+                ' pt_clust_%d="%.5f"' % (i + 1, row[column])
+                for i, column in enumerate(self._cluster_cols[:len(event)])
+                if event[i].status == 1)
+        if scales:
+            tags.append('<scales%s></scales>' % scales)
+        if self._bs_cols is not None:
+            tags.append('<beamstrahlung>%15.7e%15.7e </beamstrahlung>'
+                        % tuple(row[i] for i in self._bs_cols))
+        event.tag = '\n'.join(tags)
+        if self._rwgt_cols:
+            event.reweight_order = list(self._rwgt_ids)
+            event.reweight_data = dict(zip(self._rwgt_ids,
+                                           (row[i] for i in self._rwgt_cols)))
+        return event
+
+
+def _npy_shard(path, start, stop):
+    """The name a slice [start, stop) of an npy production file goes by
+    between _split_production and the worker that reads it."""
+    return '%s@%d:%d' % (path, start, stop)
+
+
+def _open_production_shard(shard):
+    """The production events of one parallel unweighting worker: an LHE shard
+    file, or a slice of an npy file (see _npy_shard)."""
+    match = re.match(r'^(.*\.npy)@(\d+):(\d+)$', shard)
+    if match:
+        return NpyProductionFile(match.group(1), int(match.group(2)),
+                                 int(match.group(3)))
+    return lhe_parser.EventFile(shard)
+
+
 def _force_rmtree(path):
     """shutil.rmtree that also succeeds on read-only trees. Frozen concurrent
     gridpacks are chmod 555, so a plain rmtree raises PermissionError; make every
@@ -1205,13 +1363,29 @@ class MadSpinInterface(extended_cmd.Cmd):
             return  
         
         self.gunzipped_input = None
-        if inputfile.endswith('.gz'):
-            misc.gunzip(inputfile)
-            inputfile = inputfile[:-3]
-            self.gunzipped_input = os.path.realpath(inputfile)
-        # Read the banner of the inputfile
-        self.events_file = open(os.path.realpath(inputfile))
-        self.banner = banner.Banner(self.events_file)
+        if inputfile.endswith('.npy'):
+            # mg7's lhe_npy events, with the header.lhe of their run next to
+            # them: read as they are, without an LHE file (see
+            # NpyProductionFile); the onshell/density modes only. The path is
+            # not resolved: the decayed events are written next to it, which
+            # for the links of a gridpack decay is its work directory.
+            inputfile = os.path.abspath(inputfile)
+            header = pjoin(os.path.dirname(inputfile),
+                           NpyProductionFile.HEADER_NAME)
+            if not os.path.exists(header):
+                raise self.InvalidCmd('%s has no %s next to it: MadSpin reads '
+                                      'npy events with the header of their run'
+                                      % (inputfile, NpyProductionFile.HEADER_NAME))
+            self.events_file = NpyProductionFile(inputfile, header=header)
+            self.banner = self.events_file.get_banner()
+        else:
+            if inputfile.endswith('.gz'):
+                misc.gunzip(inputfile)
+                inputfile = inputfile[:-3]
+                self.gunzipped_input = os.path.realpath(inputfile)
+            # Read the banner of the inputfile
+            self.events_file = open(os.path.realpath(inputfile))
+            self.banner = banner.Banner(self.events_file)
         # processes in two gauges ('--gauge=FD' lines): MadSpin has its own
         self.banner.proc_card_in_one_gauge()
 
@@ -1708,6 +1882,10 @@ class MadSpinInterface(extended_cmd.Cmd):
         parser.add_option("-n", "--name",
                   default="",
                   help="When NOT run in standalone instruct MadGraph7 where to store the events file")
+        parser.add_option("--prepare_only", action="store_true", default=False,
+                  help="only prepare the ms_dir (decay gridpacks, matrix "
+                       "elements, maximum weights) from these events, without "
+                       "decaying them: what a gridpack carrying MadSpin ships")
         return parser
     
     def parse_launch(self, line):
@@ -2317,6 +2495,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             self.me_run_name = options.name # Only use by MadGraph7
         else:
             self.me_run_name = ''
+        self.prepare_only = options.prepare_only
 
         try:
             if 'noborn' in self.banner.get_detail('proc_card', 'generate'):
@@ -2339,6 +2518,14 @@ class MadSpinInterface(extended_cmd.Cmd):
         if spinmode == 'full':
             spinmode = 'madspin'
             self.options['spinmode'] = spinmode
+        if self.prepare_only:
+            if spinmode not in ('madspin', 'onshell', 'PA', 'none'):
+                raise self.InvalidCmd(
+                    "launch --prepare_only supports the spinmodes madspin "
+                    "(full), onshell, PA and none, not %s" % spinmode)
+            if not self.options['ms_dir']:
+                raise self.InvalidCmd(
+                    "launch --prepare_only prepares an ms_dir: set ms_dir first")
 
         logger.info("Running MadSpin in spinmode %s" % spinmode)
         self._check_fixed_order_spinmode(spinmode)
@@ -2380,6 +2567,13 @@ class MadSpinInterface(extended_cmd.Cmd):
         self._check_reused_param_card()
         self._check_reused_zero_width()
 
+        if isinstance(self.events_file, NpyProductionFile) and (
+                spinmode in ('none', 'madspin_v1', 'bridge')
+                or self.options['fixed_order']):
+            raise self.InvalidCmd(
+                'npy events are decayed by the onshell and madspin spin modes '
+                '(spinmode %s): give MadSpin the LHE file of these events'
+                % spinmode)
         if spinmode in ["none"]:
             out = self.run_bridge(line)
             self._finish_run()
@@ -2741,8 +2935,13 @@ class MadSpinInterface(extended_cmd.Cmd):
                         evt_decayfile[pdg] = self.generate_events(pdg, min(nb_event,100000), mg5)
                     else:
                         evt_decayfile[pdg] = self.generate_events(pdg, min(nb_needed,100000), mg5, cumul=True)
-                    
-                     
+
+        if getattr(self, 'prepare_only', False):
+            # spinmode none caches nothing but the decay gridpacks
+            logger.info("MadSpin: %s is prepared (decay gridpacks); no event "
+                        "was decayed", self.path_me)
+            return
+
         # Compute the branching ratio.
         if not self.options['cross_section']:
             br = 1
@@ -3152,6 +3351,151 @@ class MadSpinInterface(extended_cmd.Cmd):
             os.replace(events_path, target)
         return NpyDecayPool(target, width), width
 
+    # ------------------------------------------------------------------
+    # mg7 decay gridpacks (ms_dir)
+    # ------------------------------------------------------------------
+    # Under ms_dir with the mg7 generator, each decay_<pdg>_<i> is an mg7
+    # gridpack: integrated once by the run that creates the ms_dir, then only
+    # run (bin/generate_events --seed --events --output_dir) by every later
+    # one. Such a directory runs without MadGraph and without a compiler, which
+    # is what lets an mg7 production gridpack carry a prepared MadSpin.
+
+    @staticmethod
+    def _is_mg7_decay_gridpack(decay_dir):
+        """Whether ``decay_dir`` is an mg7 gridpack (as opposed to an mg7
+        output, a madevent gridpack, or nothing yet)."""
+        return (os.path.isfile(pjoin(decay_dir, 'data', 'data.json'))
+                and os.path.isfile(pjoin(decay_dir, 'bin', 'generate_events')))
+
+    @staticmethod
+    def _madspace_pythonpath():
+        """The directory holding the madspace package, for the PYTHONPATH of an
+        mg7 decay gridpack: such a gridpack ships no madspace of its own (one
+        per decay channel would be ~10 MB each) and imports the one of the
+        environment. The MadGraph install's build first -- the one MadSpin's
+        own mg7 runs use -- then whatever this interpreter finds, which is how
+        a production gridpack hands its bundled madspace down."""
+        root = os.path.dirname(os.path.dirname(os.path.abspath(madgraph.__file__)))
+        install = pjoin(root, 'madspace', 'install')
+        if os.path.isdir(pjoin(install, 'madspace')):
+            return install
+        try:
+            import importlib.util
+            spec = importlib.util.find_spec('madspace')
+        except (ImportError, ValueError):
+            spec = None
+        if spec is not None and spec.submodule_search_locations:
+            return os.path.dirname(list(spec.submodule_search_locations)[0])
+        return None
+
+    def _mg7_gridpack_env(self):
+        env = os.environ.copy()
+        path = self._madspace_pythonpath()
+        if path:
+            env['PYTHONPATH'] = os.pathsep.join(
+                [path] + [p for p in env.get('PYTHONPATH', '').split(os.pathsep) if p])
+        return env
+
+    def _build_mg7_decay_gridpack(self, decay_dir, seed):
+        """Turn the mg7 output ``decay_dir`` into an mg7 gridpack, in place, and
+        return the partial width its integration measured.
+
+        The output is integrated once (run_mode minimal: grids and maximum
+        weights, no events), then replaced by the gridpack that run saved. The
+        gridpack leaves madspace, madtrex and the sources out: it runs with the
+        madspace of whoever runs it (_madspace_pythonpath)."""
+        run_card_path = pjoin(decay_dir, 'Cards', 'run_card.toml')
+        run_card = banner.RunCardMG7(run_card_path)
+        for key, value in (
+                ('run.seed', int(seed)),
+                ('gridpack.save_gridpack', True),
+                ('gridpack.run_mode', 'minimal'),
+                ('gridpack.compress', False),
+                ('gridpack.include_source', False),
+                ('gridpack.include_madspace', False),
+                ('gridpack.include_madspace_source', False),
+                ('gridpack.include_madtrex', False),
+                ('gridpack.include_madtrex_source', False),
+                ('gridpack.output_dir', ''),
+                ('gridpack.temp_output_dir', '')):
+            run_card.set(key, value, user=True)
+        run_card.remove_all_histograms()
+        run_card.write(run_card_path)
+        with open(pjoin(decay_dir, 'Cards', 'param_card.dat'), 'w') as fsock:
+            fsock.write(self.banner['slha'])
+
+        events_dir = pjoin(decay_dir, 'Events')
+        before = set(misc.glob('*', events_dir)) if os.path.isdir(events_dir) else set()
+        log_path = pjoin(decay_dir, 'mg7_generation.log')
+        with open(log_path, 'a') as logfile, self._phase('decay_mg7_launch'):
+            returncode = misc.call(
+                [sys.executable, pjoin(decay_dir, 'bin', 'generate_events'), '-f'],
+                cwd=decay_dir, stdout=logfile, stderr=subprocess.STDOUT)
+        new_runs = sorted(set(misc.glob('*', events_dir)) - before) \
+            if os.path.isdir(events_dir) else []
+        if returncode or not new_runs or \
+                not os.path.isdir(pjoin(new_runs[-1], 'gridpack')):
+            raise self.InvalidCmd(
+                'building the mg7 decay gridpack failed in %s (exit %s); see %s'
+                % (decay_dir, returncode, log_path))
+        run_dir = new_runs[-1]
+        try:
+            with open(pjoin(run_dir, 'info.json')) as fsock:
+                width = float(json.load(fsock)['process']['mean'])
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise self.InvalidCmd('no partial width in %s: %s'
+                                  % (pjoin(run_dir, 'info.json'), error))
+
+        # the gridpack replaces the output it was made from; the build log goes
+        # with it
+        build = decay_dir + '.build'
+        if os.path.exists(build):
+            _force_rmtree(build)
+        os.rename(decay_dir, build)
+        shutil.move(pjoin(build, 'Events', os.path.basename(run_dir), 'gridpack'),
+                    decay_dir)
+        shutil.copy(pjoin(build, 'mg7_generation.log'), decay_dir)
+        _force_rmtree(build)
+        return width
+
+    def _run_mg7_decay_gridpack(self, decay_dir, nb_event, run_name='run_01',
+                                seed=None):
+        """Generate ``nb_event`` decay events with the mg7 decay gridpack
+        ``decay_dir`` into ``Events/<run_name>/events.npy``. Returns
+        ``(pool, partial_width)``, the width being the one measured when the
+        gridpack was built: every run reusing the ms_dir applies the same
+        branching ratio."""
+        target_dir = pjoin(decay_dir, 'Events', run_name)
+        if os.path.exists(target_dir):
+            _force_rmtree(target_dir)
+        command = [sys.executable, pjoin(decay_dir, 'bin', 'generate_events'),
+                   '--events', str(int(nb_event)), '--output_dir', target_dir,
+                   '--output_format', 'lhe_npy', '--verbosity', 'log']
+        if seed is not None:
+            command += ['--seed', str(int(seed))]
+        threads = getattr(self, '_gen_nb_core', None)
+        if threads:
+            command += ['--cpu_thread_pool_size', str(int(threads))]
+        log_path = pjoin(target_dir + '.log')
+        os.makedirs(os.path.dirname(log_path), exist_ok=True)
+        with open(log_path, 'w') as logfile, self._phase('decay_mg7_launch'):
+            returncode = misc.call(command, cwd=decay_dir, stdout=logfile,
+                                   stderr=subprocess.STDOUT,
+                                   env=self._mg7_gridpack_env())
+        events_path = pjoin(target_dir, _NPY_POOL_NAME)
+        if returncode or not os.path.exists(events_path):
+            tail = ''
+            try:
+                with open(log_path) as fsock:
+                    tail = '\n'.join(fsock.read().splitlines()[-30:])
+            except OSError:
+                pass
+            raise self.InvalidCmd(
+                'the mg7 decay gridpack %s failed (exit %s); see %s\n%s'
+                % (decay_dir, returncode, log_path, tail))
+        width = self._load_partial_width(decay_dir)
+        return NpyDecayPool(events_path, width), width
+
     # File in which a decay directory records the partial width that was
     # measured when it was built. Only the gridpack (ms_dir) path needs it: the
     # native path regenerates -- and so re-measures -- on every run, while a
@@ -3190,10 +3534,12 @@ class MadSpinInterface(extended_cmd.Cmd):
     # go looking for -- ``run_from_pickle`` (madspin.pkl),
     # ``get_max_weight``/``_read_upfront_cache`` (max_wgt, max_wgt_sequential*,
     # pure_interference*), ``decay_all_events`` (production_me/all_ME.pkl under
-    # use_old_dir) and the decay gridpacks themselves, whose measured partial
+    # use_old_dir, ms_me_cache.pkl in the density modes) and the decay
+    # gridpacks themselves, whose measured partial
     # widths live in ``ms_partial_width.dat`` beside them.
     CACHED_MATERIAL = ('madspin.pkl', 'max_wgt*', 'pure_interference*',
-                       'decay_*_*', pjoin('production_me', 'all_ME.pkl'))
+                       'decay_*_*', pjoin('production_me', 'all_ME.pkl'),
+                       madspin.decay_all_events_onshell.ME_CACHE)
 
     def _holds_cached_material(self, directory):
         """Whether ``directory`` already carries results of an earlier run.
@@ -3668,9 +4014,9 @@ class MadSpinInterface(extended_cmd.Cmd):
             decay_dir = pjoin(self.path_me, "decay_%s_%s" %(str(pdg).replace("-","x"),i))
             # Pin the output format explicitly rather than relying on MG5's
             # default: the directory is driven below by the matching runner, so
-            # the two must agree. Gridpack mode stays on Fortran madevent -- it
-            # drives the decay directory through run.sh, which the mg7 output
-            # does not provide.
+            # the two must agree. Gridpack mode (ms_dir) keeps an existing
+            # madevent gridpack (run.sh) on madevent, and builds a new decay
+            # directory as an mg7 gridpack when mg7 is the generator.
             # NB: ``self.options[...]`` inside a try, not ``.get(k, default)``:
             # ConfigFile aliases ``get`` to ``__getitem__``, which takes no
             # default and raises TypeError when given one. The except branch
@@ -3688,11 +4034,28 @@ class MadSpinInterface(extended_cmd.Cmd):
                 # LHE files. It reads mg7's numpy pool directly now -- every
                 # worker strides the one mmap (NpyDecayPool), so there is
                 # nothing to split and that demotion is gone.
-                if use_gridpack:
-                    # gridpack (ms_dir) drives the decay directory through
-                    # run.sh, and the mg7 output provides no run.sh.
-                    logger.info('gridpack mode: generating decay events with '
-                                'madevent rather than mg7')
+                if use_gridpack and self._is_mg7_decay_gridpack(decay_dir):
+                    # built by an earlier run: it runs with the madspace of
+                    # this environment, whatever MadGraph this is (a gridpack
+                    # ships none to build with)
+                    pass
+                elif use_gridpack and os.path.exists(decay_dir) and \
+                        not os.path.exists(pjoin(decay_dir, 'run.sh')):
+                    # neither gridpack: what an interrupted or failed build
+                    # left (the mg7 output, before its integration made it a
+                    # gridpack). Build it again rather than drive it as one.
+                    logger.warning('gridpack mode: %s is an unfinished decay '
+                                   'gridpack (an earlier build failed): '
+                                   'building it again', decay_dir)
+                    _force_rmtree(decay_dir)
+                    if not self._mg7_available():
+                        output_format = 'madevent'
+                elif use_gridpack and os.path.exists(decay_dir):
+                    # an ms_dir whose decay directories are madevent gridpacks
+                    # (run.sh): keep driving them the way they were built
+                    logger.info('gridpack mode: %s is a madevent gridpack, '
+                                'generating its decay events with madevent',
+                                decay_dir)
                     output_format = 'madevent'
                 elif not self._mg7_available():
                     # WARNING, not info: mg7 is the default, so this says the
@@ -3726,7 +4089,14 @@ class MadSpinInterface(extended_cmd.Cmd):
                     mg5.exec_cmd("output %s %s -f" % (output_format, decay_dir))
                 
                 options = dict(mg5.options)
-                if use_gridpack:
+                if use_gridpack and output_format == 'mg7':
+                    # ms_dir with the mg7 generator: the decay directory
+                    # becomes an mg7 gridpack, integrated once here; every
+                    # later run only generates from it (_run_mg7_decay_gridpack)
+                    pwidth = self._build_mg7_decay_gridpack(
+                        decay_dir, self._next_decay_seed())
+                    self._store_partial_width(decay_dir, pwidth)
+                elif use_gridpack:
                     # gridpack mode -> build the integration grid once here
                     if decay_dir in self.me_int:
                         me5_cmd = self.me_int[decay_dir]
@@ -3787,9 +4157,14 @@ class MadSpinInterface(extended_cmd.Cmd):
             if output_format == 'mg7':
                 # mg7 delivers exactly the requested number of events, so ask
                 # for what is needed rather than madevent's 0.8x undershoot.
-                out[i], pwidth = self.generate_events_mg7(
-                    decay_dir, nb_event, run_name=run_name,
-                    seed=self._next_decay_seed())
+                if use_gridpack:
+                    out[i], pwidth = self._run_mg7_decay_gridpack(
+                        decay_dir, nb_event, run_name=run_name,
+                        seed=self._next_decay_seed())
+                else:
+                    out[i], pwidth = self.generate_events_mg7(
+                        decay_dir, nb_event, run_name=run_name,
+                        seed=self._next_decay_seed())
                 if output_width:
                     channel_widths[i] = pwidth
                     width = width + pwidth if cumul else width * pwidth
@@ -3961,7 +4336,11 @@ class MadSpinInterface(extended_cmd.Cmd):
         # Read the input where it is: EventFile handles a gzipped file itself.
         # Unpacking it here only to repack identical content at the end of the
         # run cost 6 s on a 100k-event sample, and the file is never written to.
-        orig_lhe = lhe_parser.EventFile(self.events_file.name)
+        if isinstance(self.events_file, NpyProductionFile):
+            orig_lhe = self.events_file
+            orig_lhe.seek(0)
+        else:
+            orig_lhe = lhe_parser.EventFile(self.events_file.name)
         if self.options['fixed_order']:
             orig_lhe.eventgroup = True
 
@@ -4344,6 +4723,13 @@ class MadSpinInterface(extended_cmd.Cmd):
         time_maxwgt = time.time() - time_maxwgt
         logger.info(f"Time for max-weight scan = {time_maxwgt:.2f} sec")
         self._add_phase('max_weight_scan', time_maxwgt)
+        if getattr(self, 'prepare_only', False):
+            # everything a later run reuses is in the ms_dir now: the decay
+            # gridpacks, the compiled matrix elements, the maximum weights
+            logger.info("MadSpin: %s is prepared (decay gridpacks, matrix "
+                        "elements, maximum weight); no event was decayed",
+                        self.path_me)
+            return
 
         #5. generate the decay (for each production event)
         # The per-event unweighting loop is embarrassingly parallel (events are
@@ -4361,13 +4747,19 @@ class MadSpinInterface(extended_cmd.Cmd):
         input_base = orig_lhe.name
         if input_base.endswith('.gz'):
             input_base = input_base[:-3]
-        base_out = input_base.replace('.lhe', '_decayed.lhe')
+        if input_base.endswith('.npy'):
+            base_out = input_base[:-len('.npy')] + '_decayed.lhe'
+        else:
+            base_out = input_base.replace('.lhe', '_decayed.lhe')
+        # the events the first pass read: what is decayed, and what a worker
+        # needs one of
+        nb_read = nb_event
         # nb_event for the decay-pool refill sizing is the banner-declared count
         # (historical behaviour), not the physical number of events on disk.
         nb_event = orig_lhe.get_banner().run_card['nevents']
 
         nb_core = self._resolve_nb_core()
-        nb_core = max(1, min(nb_core, int(nb_event) if nb_event else 1))
+        nb_core = max(1, min(nb_core, int(nb_read) if nb_read else 1))
 
         ctx = dict(
             maxwgt=maxwgt,
@@ -4422,7 +4814,7 @@ class MadSpinInterface(extended_cmd.Cmd):
                 pass
             self._apply_accounting(base_out, [stats])
         else:
-            logger.info("MadSpin: unweighting %s events on %s cores", nb_event, nb_core)
+            logger.info("MadSpin: unweighting %s events on %s cores", nb_read, nb_core)
             self._run_onshell_parallel(orig_lhe, nb_event, nb_core,
                                        evt_decayfile, base_out, ctx)
         # The accept/reject loop proper (decay-pool reads, density MEs,
@@ -7150,6 +7542,16 @@ class MadSpinInterface(extended_cmd.Cmd):
         item is an event-group, written back with its ``<eventgroup>`` wrapper so
         the shard round-trips."""
         fixed_order = self.options['fixed_order']
+        if isinstance(orig_lhe, NpyProductionFile):
+            # nothing to write: each worker reads its slice of the npy file
+            nb_event = len(orig_lhe)
+            chunk = int(math.ceil(nb_event / float(nb_core))) if nb_event else 0
+            shards = [(sid * chunk, min(nb_event, (sid + 1) * chunk))
+                      for sid in range(nb_core)]
+            shards = [(start, stop) for start, stop in shards if stop > start]
+            return ([_npy_shard(orig_lhe.name, start, stop)
+                     for start, stop in shards],
+                    [stop - start for start, stop in shards])
         orig_lhe.seek(0)
         if fixed_order:
             orig_lhe.eventgroup = True
@@ -7298,7 +7700,7 @@ class MadSpinInterface(extended_cmd.Cmd):
             self.branching_ratio = ctx['branching_ratio']
             self._init_owner_refill(evt_decayfile, ctx['base_seed'])
 
-            prod = lhe_parser.EventFile(shard_path)
+            prod = _open_production_shard(shard_path)
             if self.options['fixed_order']:
                 prod.eventgroup = True
             local_pool = self._reopen_decay_pool(evt_decayfile, shard_id, nb_core)
@@ -7407,6 +7809,9 @@ class MadSpinInterface(extended_cmd.Cmd):
             pass
 
         for pth in shard_paths + frag_paths + stats_paths:
+            if not os.path.isfile(pth):
+                # an npy slice (_npy_shard) is not a file of its own
+                continue
             try:
                 os.remove(pth)
             except OSError:

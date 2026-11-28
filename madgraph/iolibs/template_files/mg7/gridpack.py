@@ -61,6 +61,14 @@ def compress_lhe(path: str, use_pigz="auto", cpu_threads: int = -1) -> None:
     os.remove(path)
 
 
+def _card_flag(run_card, section, key) -> bool:
+    """A boolean of the grid run card, False when it is not set."""
+    try:
+        return bool(run_card[section][key])
+    except (KeyError, TypeError):
+        return False
+
+
 def write_lhe_header(run_path: str, meta) -> None:
     """Write header.lhe next to events.npy: the <header>/<init> blocks the
     npy formats otherwise drop, with no events."""
@@ -70,6 +78,62 @@ def write_lhe_header(run_path: str, meta) -> None:
 
 # directory the gridpack was called from; relative command line paths refer to it
 _INVOCATION_DIR = os.getcwd()
+
+# MadSpin, when the gridpack was made with [gridpack] include_madspin: the
+# prepared ms_dir and the Python it runs with (madgraph, MadSpin, the model),
+# relative to the gridpack
+MADSPIN_MS_DIR = os.path.join("madspin", "ms_dir")
+MADSPIN_PYTHON = os.path.join("madspin", "python")
+# the largest seed MadSpin accepts (ranmar)
+MADSPIN_MAX_SEED = 30081 ** 2
+
+
+def madspin_seed(seed: int) -> int:
+    """The MadSpin seed of a run of seed ``seed`` (64 bit): reproducible, in
+    [1, 30081**2], and not the production's stream. Same mapping as
+    MadSpin.gridpack_decay.madspin_seed."""
+    import hashlib
+    digest = hashlib.sha256(f"{int(seed)}:madspin".encode()).digest()
+    return int.from_bytes(digest, "big") % (MADSPIN_MAX_SEED - 1) + 1
+
+
+def has_madspin() -> bool:
+    return os.path.isfile(os.path.join(MADSPIN_MS_DIR, "madspin_card.dat"))
+
+
+def decay_with_madspin(events_path: str, run_path: str, seed: int,
+                       threads: int) -> str:
+    """Decay the LHE events of this run with the prepared MadSpin, in a
+    process of its own (MadSpin seeds its random generator once per process);
+    return the decayed file. Its <init> cross section is sigma x BR."""
+    decayed = os.path.join(run_path, "events_decayed.lhe.gz")
+    # the madspace this process runs with serves the decay gridpacks too
+    madspace_root = os.path.dirname(os.path.dirname(os.path.abspath(ms.__file__)))
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [os.path.abspath(MADSPIN_PYTHON), madspace_root]
+        + [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p])
+    command = [
+        sys.executable, "-m", "MadSpin.gridpack_decay", "decay",
+        "--ms_dir", os.path.abspath(MADSPIN_MS_DIR),
+        "--events", os.path.abspath(events_path),
+        "--seed", str(madspin_seed(seed)),
+        "--output", decayed,
+        "--nb_core", str(threads if threads > 0 else (os.cpu_count() or 1)),
+        "--work_dir", run_path,
+    ]
+    log_path = os.path.abspath(os.path.join(run_path, "madspin.log"))
+    print(f"Decaying the events with MadSpin (seed {madspin_seed(seed)}), "
+          f"log in {log_path}", flush=True)
+    with open(log_path, "w") as log:
+        returncode = subprocess.call(command, env=env, stdout=log,
+                                     stderr=subprocess.STDOUT)
+    if returncode or not os.path.exists(decayed):
+        with open(log_path) as log:
+            tail = "\n".join(log.read().splitlines()[-25:])
+        sys.exit(f"\033[1m\033[31mERROR\033[39m: MadSpin failed (exit "
+                 f"{returncode}), see {log_path}:\033[0m\n{tail}")
+    return decayed
 
 
 def main() -> None:
@@ -138,6 +202,19 @@ def main() -> None:
         choices=["lhe", "lhe_npy", "compact_npy"]
     )
     parser.add_argument("--events", type=int, default=gen_args["events"])
+    madspin_args = run_card.get("madspin", {})
+    madspin_group = parser.add_mutually_exclusive_group()
+    madspin_group.add_argument(
+        "--madspin", dest="madspin", action="store_true",
+        default=bool(madspin_args.get("enable", False)) and has_madspin(),
+        help="decay the events with the MadSpin the gridpack carries "
+             "(default: [madspin] enable of the grid run card)")
+    madspin_group.add_argument(
+        "--no_madspin", dest="madspin", action="store_false",
+        help="write the undecayed events")
+    parser.add_argument(
+        "--keep_undecayed", action="store_true",
+        help="with MadSpin, keep the undecayed events next to the decayed ones")
     # these two set the final pass, which gives the events
     parser.add_argument("--max_overweight_truncation", type=float, default=gen_args["max_overweight_truncation"])
     parser.add_argument("--freeze_max_weight_after", type=int, default=gen_args["freeze_max_weight_after"])
@@ -167,6 +244,17 @@ def main() -> None:
         print()
         print(f"\033[1m\033[31mWARNING\033[39m: {message}\033[0m")
         print()
+    if args.madspin:
+        if not has_madspin():
+            sys.exit("\033[1m\033[31mERROR\033[39m: this gridpack carries no "
+                     "MadSpin (make it with [gridpack] include_madspin)\033[0m")
+        if args.output_format != "lhe":
+            # MadSpin reads and writes LHE; decaying npy events would need the
+            # conversion first, which a gridpack does not ship
+            sys.exit("\033[1m\033[31mERROR\033[39m: MadSpin decays LHE events: "
+                     f"--output_format {args.output_format} cannot be decayed. "
+                     "Use --output_format lhe, or --no_madspin for undecayed "
+                     "npy events.\033[0m")
     seed = resolve_seed(args.seed)
     # has to be set before the madspace CPU backend is first loaded
     ms.set_simd_mode(args.madspace_cpu_mode)
@@ -261,6 +349,14 @@ def main() -> None:
     # run generation
     event_generator.generate()
     output_format = args.output_format
+    # MadSpin reads the lhe_npy events as they are: no LHE file is written and
+    # parsed in between. Not when the undecayed LHE events are kept, nor with
+    # [systematics] write_inputs, whose <mgrwt> blocks only the LHE output has.
+    madspin_npy = (args.madspin and output_format == "lhe"
+                   and not args.keep_undecayed
+                   and not _card_flag(run_card, "systematics", "write_inputs"))
+    if madspin_npy:
+        output_format = "lhe_npy"
     events_path = os.path.join(run_path, "events.npy")
     if output_format == "compact_npy":
         event_generator.combine_to_compact_npy(
@@ -307,12 +403,25 @@ def main() -> None:
         data["columns"] = ["rwgt_%d" % i for i in systematics.weight_ids]
         with open(os.path.join(run_path, "events.weights.json"), "w") as f:
             json.dump(data, f, indent=1)
+    undecayed_path = None
+    if args.madspin:
+        decayed = decay_with_madspin(events_path, run_path, seed,
+                                     args.cpu_thread_pool_size)
+        if args.keep_undecayed:
+            undecayed_path = events_path
+        else:
+            os.remove(events_path)
+            if madspin_npy:
+                os.remove(os.path.join(run_path, "header.lhe"))
+        events_path = decayed
     if args.done_file:
         with open(os.path.join(_INVOCATION_DIR, args.done_file), "w") as f:
             f.write("done\n")
     # where the events are: a gridpack run is usually scripted, and its run
     # directory (Events/run_NN, or --output_dir) is not otherwise printed
     print(f"Events written to {os.path.abspath(events_path)}")
+    if undecayed_path:
+        print(f"Undecayed events kept in {os.path.abspath(undecayed_path)}")
 
 
 if __name__ == '__main__':

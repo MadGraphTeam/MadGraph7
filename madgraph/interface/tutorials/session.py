@@ -114,12 +114,18 @@ class Step(object):
               thing and take the same step again.  Checked by the mixin, not by
               step_for, which has to answer the same way with no interface at
               all (`tutorial index`, `skip N`).
+    aside     callable(interface, line) -> str or None, called after a command
+              that ran while this step is current but is not the one it waits
+              for.  For the mistakes a reader makes on the way that would
+              otherwise pass in silence: `generate` where the lesson asks for
+              `add process` (which starts the process list over), a relaunch
+              where it asks to open the plot of the run.
     """
 
     def __init__(self, key, text, hint=None, solution=None, requires=None,
                  setup=None, title=None, question_hint=None, on_failure=None,
                  sticky=False, entry=None, gate=None, question_progress=None,
-                 question_gate=None):
+                 question_gate=None, aside=None):
         self.key = key
         self.entry = entry
         self.text = text
@@ -134,6 +140,7 @@ class Step(object):
         self.on_failure = on_failure
         self.sticky = sticky
         self.gate = gate
+        self.aside = aside
 
     def refusal(self, interface=None, line=None):
         """Why this step may not fire yet, or None when it may.
@@ -158,6 +165,17 @@ class Step(object):
             return ('This lesson needs what that command was meant to leave '
                     'behind, so the tutorial stays where it is.')
         return None
+
+    def get_aside(self, interface=None, line=None):
+        """What to say about `line`, a command that ran but is not the one
+        this step waits for, or None.  An aside which raises says nothing."""
+
+        if not callable(self.aside):
+            return None
+        try:
+            return self.aside(interface, line) or None
+        except Exception:
+            return None
 
     def get_failure_advice(self, interface=None):
         """What to say when a command meant for this step did not run."""

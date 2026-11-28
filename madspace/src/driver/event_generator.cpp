@@ -989,8 +989,12 @@ void EventGenerator::combine_to_lhe_npy(
     MixMaxRandom rand_gen(DerivedSeed(seed, DerivedSeed::lhe_complete));
     auto [channel_data, particle_count, norm_factors] = init_combine();
     DataLayout in_layout = combined_layout();
-    DataLayout out_layout =
-        output_layout(EventRecord::f_lhe_event, ParticleRecord::f_lhe_particle);
+    // the <scales> attributes too: SCALUP is only the larger mu_F, and a
+    // reader that rebuilds the LHE events (MadSpin, npy_to_lhe) needs mu_R
+    DataLayout out_layout = output_layout(
+        EventRecord::f_lhe_event | EventRecord::f_lhe_scales,
+        ParticleRecord::f_lhe_particle
+    );
     EventBuffer buffer(0, particle_count, in_layout);
     EventBuffer buffer_out(0, lhe_completer.max_particle_count(), out_layout);
     EventFile event_file(
@@ -1022,6 +1026,7 @@ void EventGenerator::combine_to_lhe_npy(
                 _config
             );
             buffer_out.event(i).from_lhe_event(lhe_event);
+            buffer_out.event(i).from_lhe_scales(lhe_event);
             copy_event_fields(buffer, i, buffer_out, i, syst_weights);
             write_lhe_particles(lhe_event, buffer_out, i);
         }

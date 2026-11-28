@@ -13717,8 +13717,10 @@ class TestMg7IsOnlyDemotedForGridpack(unittest.TestCase):
     layout the refill path already expects, so that demotion is gone and the
     generator is what the card says it is.
 
-    Gridpack (ms_dir) is the one case left: it drives the decay directory
-    through run.sh, which the mg7 output does not provide.
+    Gridpack (ms_dir) used to be the one case left, since it drove the decay
+    directory through run.sh. It builds each decay directory as an mg7
+    gridpack now (MadSpinInterface._build_mg7_decay_gridpack); only an ms_dir
+    whose decay directories are madevent gridpacks keeps madevent.
     """
 
     def _decision(self, spinmode, nb_core, ms_dir='', madspace=True):
@@ -13737,6 +13739,7 @@ class TestMg7IsOnlyDemotedForGridpack(unittest.TestCase):
         class Stub(object):
             _split_group_tag = interface._split_group_tag
             _DECAY_GROUP_TAG = interface._DECAY_GROUP_TAG
+            _is_mg7_decay_gridpack = staticmethod(interface._is_mg7_decay_gridpack)
 
             def _resolve_nb_core(self):
                 return nb_core
@@ -13784,9 +13787,12 @@ class TestMg7IsOnlyDemotedForGridpack(unittest.TestCase):
                     self._decision(spinmode, nb_core), 'mg7',
                     'spinmode %s on %s cores' % (spinmode, nb_core))
 
-    def test_gridpack_still_forces_madevent(self):
+    def test_gridpack_builds_mg7_decay_gridpacks(self):
         self.assertEqual(self._decision('madspin', 18, ms_dir='/some/ms_dir'),
-                         'madevent')
+                         'mg7')
+        # ... as long as mg7 can run here at all
+        self.assertEqual(self._decision('madspin', 18, ms_dir='/some/ms_dir',
+                                        madspace=False), 'madevent')
 
     def test_madevent_when_madspace_is_not_built(self):
         """mg7 integrates through a compiled extension MadGraph builds on

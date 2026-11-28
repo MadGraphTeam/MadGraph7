@@ -1818,8 +1818,13 @@ class Cmd(CheckCmd, HelpCmd, CompleteCmd, BasicCmd):
         try:
             return self.onecmd_orig(line, **opt)
         except BaseException as error: 
-            Cmd.safe_notify_failed_command(self, line)
-            return self.error_handling(error, line)
+            # the error first, then what the interface has to say about it
+            # (the tutorial's "that command did not run"): the reason belongs
+            # before the advice
+            try:
+                return self.error_handling(error, line)
+            finally:
+                Cmd.safe_notify_failed_command(self, line)
             
     
     def stop_on_keyboard_stop(self):

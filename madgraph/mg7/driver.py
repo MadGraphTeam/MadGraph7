@@ -130,9 +130,15 @@ def _release_channel_generators(process) -> None:
     owning Python objects are collected, and process.event_generator /
     process.phasespaces sit in a reference cycle that plain refcounting
     never breaks -- only an explicit gc.collect() does, promptly, instead of
-    leaving it to whenever the cyclic GC next runs on its own."""
+    leaving it to whenever the cyclic GC next runs on its own.
+
+    The run's StatusFile goes too: it finishes info.json from its destructor,
+    which has to run while the run directory is still there. Left to the
+    cyclic GC, it can run after an 'output' in the same session has removed
+    the process directory, or at interpreter exit."""
     process.event_generator = None
     process.phasespaces = None
+    process.status_file = None
     gc.collect()
     if getattr(process, "auto_temp_path", False):
         shutil.rmtree(process.temp_path, ignore_errors=True)
@@ -552,6 +558,26 @@ def cluster_enabled() -> bool:
     return False
 
 
+def check_gridpack_madspin(switch=None) -> None:
+    """Before the run: when it makes a gridpack ([gridpack] save_gridpack, or
+    the cluster mode, which always merges one) that carries MadSpin, check the
+    madspin card now rather than once the gridpack is written (see
+    gridpack_madspin.check_madspin). Raises GridpackMadSpinError."""
+    from madgraph.mg7 import gridpack_madspin
+    path = os.path.join("Cards", "run_card.toml")
+    if not os.path.exists(path):
+        return
+    try:
+        card = RunCardMG7(path)
+    except Exception:
+        # a scan card: run_scan reads it point by point
+        return
+    if not (cluster_enabled() or card["gridpack"]["save_gridpack"]):
+        return
+    switch_on = None if not switch else not _off(switch.get("madspin"))
+    gridpack_madspin.check_madspin(card, switch_on)
+
+
 def run_cluster_job(job_dir: str) -> None:
     """One training job of the cluster mode: integrate the subprocesses of the
     card in job_dir, save the data of the gridpack and mark the job done. The
@@ -574,7 +600,18 @@ def run_single(switch=None, reweight=None) -> "MadgraphProcess":
     (systematics) and before the post-processing tools."""
     compute_auto_widths()
     process = MadgraphProcess()
+    try:
+        return _run_single(process, switch, reweight)
+    except BaseException:
+        # the traceback keeps the process alive: finish its info.json now
+        _release_channel_generators(process)
+        raise
+
+
+def _run_single(process, switch, reweight) -> "MadgraphProcess":
     process.store_matrix_elements = getattr(reweight, "backend", None) == "madtrex"
+    if switch:
+        process.madspin_switch = not _off(switch.get("madspin"))
     process.survey()
     process.train_madnis()
     process.lhe_from_binary = lhe_via_binary(process, reweight)

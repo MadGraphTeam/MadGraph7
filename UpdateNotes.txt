@@ -5,6 +5,17 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   OM: Bug fix (mg7): MadGraph could abort at exit ("filesystem error: in rename",
+       Abort trap) after an 'output' re-created the process directory of an earlier
+       launch in the same session: the info.json of that launch was finished from a
+       C++ destructor after its run directory was gone. A launch now finishes its
+       info.json before it returns, also when it fails, and a status file that
+       cannot be written is skipped instead of terminating the process.
+   OM: mg7 lhe_npy events keep the mur/muf of the LHE <scales> tag (new mu_r, mu_f1,
+       mu_f2 columns), and npy_to_lhe writes them and the MLM pt_clust back. MadSpin
+       reads lhe_npy production events directly (with the header.lhe next to them),
+       and a gridpack that decays its events hands them to MadSpin that way, without
+       writing and parsing an LHE file in between.
    OM: output warns when zerowidth_external (on by default) drops the width of an internal
        propagator that can go on shell inside phase space, e.g. the final-state W- > d u~ of
        p p > w+ w+ j j QCD=0 (the W+ being external, every internal W loses its width): the

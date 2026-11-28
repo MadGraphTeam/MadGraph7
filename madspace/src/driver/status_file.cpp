@@ -29,16 +29,40 @@ void StatusFile::write(const nlohmann::json& content, bool force_write) {
     _has_written = true;
     _last_write_time = now;
 
+    // The status file only reports progress: failing to write it never stops
+    // the run. Its directory can be gone by the time it is written, e.g. when
+    // the owner is collected after the run directory was removed or moved,
+    // which is also why the destructor must not throw.
     std::string status_tmp_file = std::format("{}.tmp", _file_name);
-    std::ofstream f(status_tmp_file);
-    f << _content.dump();
+    {
+        std::ofstream f(status_tmp_file);
+        if (!f) {
+            return;
+        }
+        f << _content.dump();
+        f.close();
+        if (!f) {
+            std::error_code ignored;
+            std::filesystem::remove(status_tmp_file, ignored);
+            return;
+        }
+    }
     // rename atomically deletes the old file and replaces it with the new one
     // such that the status file exists at all times
-    std::filesystem::rename(status_tmp_file, _file_name);
+    std::error_code error;
+    std::filesystem::rename(status_tmp_file, _file_name, error);
+    if (error) {
+        std::error_code ignored;
+        std::filesystem::remove(status_tmp_file, ignored);
+    }
 }
 
 StatusFile::~StatusFile() {
-    if (_has_written && _content.value("status", "") != "done") {
-        write({{"status", "done"}}, true);
+    try {
+        if (_has_written && _content.value("status", "") != "done") {
+            write({{"status", "done"}}, true);
+        }
+    } catch (...) {
+        // a destructor that throws terminates the process
     }
 }
