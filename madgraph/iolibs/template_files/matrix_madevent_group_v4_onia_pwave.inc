@@ -259,7 +259,16 @@ c         Set right sign for ANS, based on sign of chosen helicity
             endif	
         ENDDO
         IF (XTOT.NE.0D0) THEN
-		ANS=ANS*AMP2(channel)/XTOT
+C         A diagram that vanishes once projected onto the bound state
+C         (e.g. a P-wave or 1S0 colour octet from a single gluon, by
+C         parity) leaves rounding noise in AMP2: its channel is zero.
+C         Kept, its integrand is zero but at a few points (1e-90), and
+C         madevent stops on the empty grid of its grouped processes.
+          IF (AMP2(CHANNEL).LT.1D-20*XTOT) THEN
+            ANS=0D0
+          ELSE
+            ANS=ANS*AMP2(CHANNEL)/XTOT
+          ENDIF
         ELSE IF(ANS.ne.0d0) THEN
 	     IF(NB_FAIL.ge.10)then
 			write(*,*) "Problem in the multi-channeling. All amp2 are zero but not the total matrix-element"
@@ -353,6 +362,8 @@ C
     INTEGER DENOM, CF_INDEX
     COMMON /%(proc_prefix)scolor_matrix%(proc_id)s/ CF,DENOM
     TYPE(DUAL) AMP(NGRAPHS)
+    TYPE(DUAL) TERM
+    REAL*8 AMPREF, AMPNOISE
     COMPLEX*16 JAMP(NCOLOR,NAMPSO)
 %(jampflow_decl)s
     type(aloha) W(NWAVEFUNCS)
@@ -644,11 +655,14 @@ C     The amplitudes of the bound state
           AMP(J)%COMP(I) = (0D0,0D0)
         ENDDO
       ENDDO
+      AMPREF = 0D0
       DO H = -(3**(NPWAVE)-1)/2, (3**(NPWAVE)-1)/2
         IF (.NOT.IS_LZCOMB_ACCEPTED%(proc_id)s(H)) CYCLE
         DO J = 1, NGRAPHS
           DO I = 1, 4**NONIA
-            AMP(J) = AMP(J) + AMP_SAVED%(proc_id)s(J,I,K,H)*PROJ(I,H)
+            TERM = AMP_SAVED%(proc_id)s(J,I,K,H)*PROJ(I,H)
+            AMP(J) = AMP(J) + TERM
+            AMPREF = AMPREF + ABS(TERM%COMP(2**NPWAVE-1))**2
           ENDDO
         ENDDO
       ENDDO
@@ -657,6 +671,18 @@ C     The amplitudes of the bound state
 JAMP(:,:) = (0d0,0d0) 
 %(jamp_lines)s
 %(jampflow_lines)s
+C     A process that the bound state forbids (C parity, Landau-Yang:
+C     e.g. q q~ > 3S1[1] g, g g > 3P1[8]) leaves in JAMP only the
+C     rounding errors of the sums above, of order (1d-16)**2 of their
+C     terms (AMPREF). Such a helicity is zero: a cross section of
+C     rounding noise gives events of a vanishing process, or stops
+C     madevent's samplers. A genuine amplitude stays far above the
+C     threshold (1d-23 for e+ e- > Ps(1|1S0) a at 1 TeV).
+      AMPNOISE = SUM(ABS(JAMP)**2)
+      IF (AMPNOISE.LT.1D-28*AMPREF) THEN
+        JAMP(:,:) = (0D0,0D0)
+        %(jamp_flow)s(:,:) = (0D0,0D0)
+      ENDIF
 
     if(init_mode)then
       ampmax_zero = 0d0

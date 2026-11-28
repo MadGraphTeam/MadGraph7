@@ -232,10 +232,22 @@ class SubProcessGroup(base_objects.PhysicsObject):
         """Generate a convenient name for the group, based on  and
         masses"""
 
-        beam = [l.get('id') for l in process.get('legs') if not l.get('state')]
+        beam_legs = [l for l in process.get('legs') if not l.get('state')]
         fs = [(l.get('id'), l) for l in process.get('legs') if l.get('state')]
         name = ""
-        for i, beam in enumerate(beam):
+        onium_named = False
+        for i, beam_leg in enumerate(beam_legs):
+            beam = beam_leg.get('id')
+            if beam_leg.get('onium'):
+                # a decaying bound state is named after its Fock state, as in
+                # the final state, once for its two constituents: named after
+                # the constituents, every Fock state of a hadron (Jpsi > mu+ mu-
+                # decays six) got the same P directory, which each group
+                # overwrote in turn
+                if not onium_named:
+                    name += beam_leg.get('onium').get('name').replace('(','').replace(')','').replace('|','')
+                onium_named = not onium_named
+                continue
             part = process.get('model').get_particle(beam)
 
             if criteria == 'gpu':

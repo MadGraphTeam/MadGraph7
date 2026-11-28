@@ -918,6 +918,10 @@ class ColorBasis(dict):
             for part in model.get('particles'):
                 if part.get('pdg_code') == l.get('id'): color = part.get('color')
                 if part.get('pdg_code') == -l.get('id'): color = -part.get('color')
+            if not l.get('state'):
+                # an incoming (anti)quark carries the index of an outgoing
+                # (anti)antiquark in the colour strings
+                color = -color
             if not onium:
                 onium = True
                 # an incoming (anti)quark carries the index of an

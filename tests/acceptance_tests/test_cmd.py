@@ -4936,6 +4936,356 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
 
             self.assertTrue(passed)
 
+
+    def test_quarkonium_loop_standalone(self):
+        """MadLoop one-loop QCD virtuals of 2 -> 1 processes with S-wave
+        quarkonia (loop_sm_onia, TIRust) against their analytic values, in
+        units of Born * alpha_s/(2 pi) at mu = M (onia_fks normalisation):
+        Petrelli et al. (hep-ph/9707223) for g g > 1S0[1,8] and
+        q q~ > 3S1[8] (with the bound charm bubble of Hagiwara et al.,
+        0804.1014, plus the massive b and t bubbles of the model), and the
+        textbook eta_c > a a, J/psi > e+ e- corrections."""
+
+        import sys
+        import math
+        sys.path.insert(0, pjoin(MG5DIR, 'tools'))
+        import onia_loop_check
+
+        tirust = self.cmd.options.get('tirust')
+        if not tirust or str(tirust) == 'None' or not os.path.isdir(str(tirust)):
+            self.skipTest('TIRust is not installed (install tirust)')
+
+        pi2, CF, CA, TF, nl = math.pi**2, 4./3., 3., 0.5, 3
+        log2 = math.log(2.)
+
+        def vp(r):
+            # finite heavy-quark vacuum polarisation integral of the bubbles
+            n = 4000
+            return sum((x*(1-x))*math.log(1-x*(1-x)*r) for x in
+                       ((i+0.5)/n for i in range(n)))/n
+
+        Bn_1S0_1 = CF*(-5+pi2/4) + CA*(1+5*pi2/12)
+        Bn_1S0_8 = CF*(-5+pi2/4) + CA*(2+7*pi2/24)
+        Bn_3S1_8 = CF*(-8+2*pi2/3) + CA*(50./9+2./3*log2-pi2/4)
+        mass_b, mass_t, M = 4.7, 173., 3.1
+        qq8 = 2*(Bn_3S1_8 - 10./9*nl*TF - 16./9*TF) - CF*pi2/3 + \
+              4*vp((M/mass_b)**2) + 4*vp((M/mass_t)**2)
+        processes = [
+            ('a a > etac(1|1S01) [virt=QCD]', 2*CF*(pi2/4-5), 0., 0.),
+            ('e+ e- > Jpsi(1|3S11) [virt=QCD]', -32./3, 0., 0.),
+            ('g g > etac(1|1S01) [virt=QCD]', 2*Bn_1S0_1 - CA*pi2/3, -9., -6.),
+            ('g g > etac(1|1S08) [virt=QCD]', 2*Bn_1S0_8 - CA*pi2/3, -12., -6.),
+            ('u u~ > Jpsi(1|3S18) [virt=QCD]', qq8, -7., -8./3),
+        ]
+        for i, (process, finite, single, double) in enumerate(processes):
+            outdir = onia_loop_check.output_process(
+                'loop_sm_onia-c_mass', process, pjoin(self.tmpdir, 'onia_%d' % i),
+                regenerate=True)
+            pdir = onia_loop_check.subprocess_dir(outdir)
+            onia_loop_check.build_driver(pdir)
+            masses = onia_loop_check.driver_masses(pdir)
+            self.assertAlmostEqual(masses[2], M, 12)
+            points = onia_loop_check.points_lib.generate_points(
+                masses[2:], count=3, incoming_masses=tuple(masses[:2]))
+            onia_loop_check.set_reduction(outdir, [9])
+            results = onia_loop_check.run_points(pdir, [p['momenta'] for p in points])
+            self.assertEqual(len(results), 3)
+            for r in results:
+                # stable in double precision with TIRust, and right within
+                # MadLoop's own accuracy estimate (about 1e-8 for the boosted
+                # q q~ > 3S1[8] points, 1e-15 at rest)
+                self.assertEqual(r['ret_code'] // 100, 2, process)
+                self.assertLess(abs(r['finite_norm']/finite - 1.),
+                                max(5e-9, r['accuracy']), process)
+                self.assertAlmostEqual(r['single_norm'], single, 8, process)
+                self.assertAlmostEqual(r['double_norm'], double, 8, process)
+
+    def test_quarkonium_decay_loop_standalone(self):
+        """MadLoop one-loop QCD virtuals of bound-state decays (a colour
+        singlet in the initial state), in units of Born * alpha_s/(2 pi):
+        - the textbook corrections of eta_c > a a (-(20-pi^2)/3 alpha_s/pi),
+          J/psi > e+ e- (-16/3), chi_c0 > a a (pi^2/3-28/9) and chi_c2 > a a
+          (-16/3), with vanishing poles, at rest and boosted;
+        - the Born of eta_c > a a and chi_c0 > a a: the LO widths
+          3 e_c^4 alpha^2 |R(0)|^2/m_c^2 and 27 e_c^4 alpha^2 |R'(0)|^2/m_c^4,
+          with the decay LDMEs of the onia card (Block ldme_decay, <O_H> =
+          2 Nc |R(0)|^2/(4 pi) and 2 Nc 3 |R'(0)|^2/(4 pi)), averaged over the
+          2J+1 states of the bound state;
+        - eta_c > g g and chi_c1 > u u~ g (boosted): the poles are those of
+          ONIA_IR_POLES, with the P -> S term of the decaying P wave."""
+
+        import sys
+        import math
+        import re
+        sys.path.insert(0, pjoin(MG5DIR, 'tools'))
+        import onia_loop_check
+
+        tirust = self.cmd.options.get('tirust')
+        if not tirust or str(tirust) == 'None' or not os.path.isdir(str(tirust)):
+            self.skipTest('TIRust is not installed (install tirust)')
+
+        pi2, CF = math.pi**2, 4./3.
+        ec = 2./3.
+        # (process, finite, poles predicted, LO width(alpha, LDME, m_c), P wave)
+        processes = [
+            ('etac(1|1S01) > a a [virt=QCD]', 2*CF*(pi2/4-5), False,
+             lambda a, L, m: 3*ec**4*a**2*(L*4*math.pi/6)/m**2, False),
+            ('Jpsi(1|3S11) > e+ e- / z [virt=QCD]', -32./3, False, None, False),
+            ('etac(1|1S01) > g g [virt=QCD]', None, True, None, False),
+            ('chic0(1|3P01) > a a [virt=QCD]', 2*(pi2/3-28./9), False,
+             lambda a, L, m: 27*ec**4*a**2*(L*4*math.pi/18)/m**4, True),
+            ('chic1(1|3P11) > u u~ g [virt=QCD]', None, True, None, True),
+        ]
+        for i, (process, finite, predicted, width, pwave) in enumerate(processes):
+            extra = ['set tirust %s --no_save' % self.raised_power_tirust()] if pwave else []
+            outdir = onia_loop_check.output_process(
+                'loop_sm_onia-c_mass', process, pjoin(self.tmpdir, 'onia_decay_%d' % i),
+                extra=extra, regenerate=True)
+            pdir = onia_loop_check.subprocess_dir(outdir)
+            onia_loop_check.build_driver(pdir)
+            masses = onia_loop_check.driver_masses(pdir)
+            points = onia_loop_check.decay_points(masses[1:], masses[0], count=1,
+                                                  boost=onia_loop_check.DECAY_BOOST)
+            if not predicted:
+                # and at rest (a P wave at rest only for 1 -> 2)
+                points = onia_loop_check.decay_points(masses[1:], masses[0], count=1) + points
+            onia_loop_check.set_reduction(outdir, [9])
+            results = onia_loop_check.run_points(pdir, points, mu=masses[0])
+            self.assertEqual(len(results), len(points))
+            for r in results:
+                self.assertEqual(r['ret_code'] // 100, 2, process)
+                if predicted:
+                    self.assertLess(abs(r['single_norm'] - r['predicted_single_norm']),
+                                    1e-8 * max(1., abs(r['single_norm'])), process)
+                    self.assertLess(abs(r['double_norm'] - r['predicted_double_norm']),
+                                    1e-8 * max(1., abs(r['double_norm'])), process)
+                    continue
+                self.assertLess(abs(r['finite_norm']/finite - 1.),
+                                max(5e-9, r['accuracy']), process)
+                self.assertLess(abs(r['single_norm']), 1e-8, process)
+                self.assertLess(abs(r['double_norm']), 1e-8, process)
+            if width:
+                cards = pjoin(outdir, 'Cards')
+                ldme = float(re.search(r'(?im)^block\s+ldme_decay\s*\n\s*\d+\s+(\S+)',
+                                       open(pjoin(cards, 'onia_card.dat')).read()).group(1))
+                param = open(pjoin(cards, 'param_card.dat')).read()
+                aewm1 = float(re.search(r'(?m)^\s*1\s+(\S+)\s+#\s*aEWM1', param).group(1))
+                mc = masses[0] / 2
+                for r in results:
+                    # Gamma = |M|^2/(16 pi M), the photon symmetry factor in IDEN
+                    self.assertAlmostEqual(r['born']/(16*math.pi*masses[0]) /
+                                           width(1/aewm1, ldme, mc), 1., 12, process)
+
+    def test_quarkonium_loop_helicities(self):
+        """SLOOPMATRIXHEL for bound states (the MC over helicities of MadFKS)
+        on g g > Jpsi(1|3S11) g [virt=QCD]: its 24 physical configurations
+        (the J/psi with J_z = -1, 0, 1) are numbered as the helicity matrix of
+        the tree-level output, each one's Born is that of the tree-level
+        SMATRIXHEL, and they add up to 4 times the summed result (as MadLoop,
+        a selected configuration is not averaged over the initial helicities).
+        MadLoop5_resources/<prefix>HelFilter.dat lists every configuration."""
+
+        import sys
+        import re
+        sys.path.insert(0, pjoin(MG5DIR, 'tools'))
+        import onia_loop_check
+
+        tirust = self.cmd.options.get('tirust')
+        if not tirust or str(tirust) == 'None' or not os.path.isdir(str(tirust)):
+            self.skipTest('TIRust is not installed (install tirust)')
+
+        process = 'g g > Jpsi(1|3S11) g'
+        outdir = onia_loop_check.output_process(
+            'loop_sm_onia-c_mass', process + ' [virt=QCD]', pjoin(self.tmpdir, 'onia_hel'),
+            regenerate=True)
+        pdir = onia_loop_check.subprocess_dir(outdir)
+        onia_loop_check.build_driver(pdir)
+        masses = onia_loop_check.driver_masses(pdir)
+        points = [p['momenta'] for p in onia_loop_check.points_lib.generate_points(
+            masses[2:], count=2, energy=20., seed=5, incoming_masses=tuple(masses[:2]))]
+        onia_loop_check.set_reduction(outdir, [9])
+        results = onia_loop_check.run_points_hel(pdir, points)
+        prefix = open(pjoin(pdir, 'proc_prefix.txt')).read().strip()
+        hel_filter = open(pjoin(outdir, 'SubProcesses', 'MadLoop5_resources',
+                                prefix + 'HelFilter.dat')).read().split()
+        self.assertEqual(hel_filter, ['1'] * 24)
+        for r in results:
+            self.assertEqual((len(r['configs']), r['helavg']), (24, 4))
+            for key, tol in (('born', 1e-13), ('finite', 1e-9), ('single', 1e-11),
+                             ('double', 1e-11)):
+                total = sum(c[key] for c in r['configs']) / r['helavg']
+                self.assertLess(abs(total / r['sum'][key] - 1.), tol, key)
+                # the split-order column that MadFKS reads (one split order:
+                # column 1 = column 0), scaled like column 0
+                total = sum(c['last_column'][key] for c in r['configs']) / r['helavg']
+                self.assertLess(abs(total / r['sum']['last_column'][key] - 1.), tol, key)
+                for c in [r['sum']] + r['configs']:
+                    self.assertEqual(c['last_column'][key], c[key], key)
+
+        # MadLoop's own helicity filter stays off for bound states even when
+        # MadLoopParams.dat asks for it: it would learn the filter in the
+        # constituent numbering and write it to HelFilter.dat
+        onia_loop_check.set_reduction(outdir, [9], {'HelicityFilterLevel': 2})
+        again = onia_loop_check.run_points_hel(pdir, points[:1])[0]
+        self.assertEqual(open(pjoin(outdir, 'SubProcesses', 'MadLoop5_resources',
+                                    prefix + 'HelFilter.dat')).read().split(), ['1'] * 24)
+        for a, b in zip([again['sum']] + again['configs'],
+                        [results[0]['sum']] + results[0]['configs']):
+            for key in ('born', 'finite'):
+                self.assertLessEqual(abs(a[key] - b[key]), 1e-14 * abs(b[key]), key)
+
+        # the tree-level output of the same process: its helicity table and
+        # SMATRIXHEL
+        treedir = pjoin(self.tmpdir, 'onia_hel_tree')
+        onia_loop_check.run_madgraph(['import model sm_onia-c_mass', 'generate %s' % process,
+                                      'output standalone_fortran %s -f' % treedir],
+                                     pjoin(self.tmpdir, 'onia_hel_tree.log'))
+        tdir = onia_loop_check.subprocess_dir(treedir)
+        tree_table = [tuple(int(x) for x in m.group(1).split(','))
+                      for m in re.finditer(r'DATA \(NHEL\(I,\s*\d+\),I=1,\d+\) /([^/]*)/',
+                                           open(pjoin(tdir, 'matrix.f')).read())]
+        data = open(pjoin(pdir, 'onia_loop_data.inc')).read()
+        values = [int(x) for x in re.search(r'DATA ONIA_PHYS_HEL/([^/]*)/', data, re.S)
+                  .group(1).replace('$', ' ').split(',')]
+        self.assertEqual(tree_table, [tuple(values[4 * i:4 * i + 4]) for i in range(24)])
+        with open(pjoin(tdir, 'treehel.f'), 'w') as f:
+            f.write('\n'.join([
+                '      PROGRAM TREEHEL', '      IMPLICIT NONE',
+                '      REAL*8 P(0:3,4), ANS', '      INTEGER NPOINTS, K, I, J, H',
+                "      CALL SETPARA('param_card.dat')", "      CALL SETONIA('onia_card.dat')",
+                '      READ(*,*) NPOINTS', '      DO K=1,NPOINTS', '        DO I=1,4',
+                '          READ(*,*) (P(J,I),J=0,3)', '        ENDDO',
+                '        CALL SMATRIX(P,1,ANS)',
+                "        WRITE(*,'(A,2I6,ES26.17E3)') 'TREE',K,0,ANS",
+                '        DO H=1,24', '          CALL SMATRIXHEL(P,H,1,ANS)',
+                "          WRITE(*,'(A,2I6,ES26.17E3)') 'TREE',K,H,ANS",
+                '        ENDDO', '      ENDDO', '      END', '']))
+        with open(pjoin(tdir, 'treehel.mk'), 'w') as f:
+            f.write('include makefile\ntreehel: $(LIBS) $(PROCESS) treehel.o\n'
+                    '\t$(FC) $(FFLAGS) -o treehel $(PROCESS) treehel.o $(LINKLIBS)\n')
+        onia_loop_check.make(tdir, 'treehel', 'treehel.mk')
+        lines = [str(len(points))] + [' '.join('%.17e' % c for c in v)
+                                      for p in points for v in p]
+        out = subprocess.run([pjoin(tdir, 'treehel')], cwd=tdir, input='\n'.join(lines) + '\n',
+                             capture_output=True, text=True, check=True).stdout
+        tree = {}
+        for line in out.splitlines():
+            if line.startswith('TREE'):
+                f = line.split()
+                tree.setdefault(int(f[1]), {})[int(f[2])] = float(f[3])
+        for k, r in enumerate(results):
+            # the share of each configuration in the summed Born (both without
+            # the helicity average)
+            for h, c in enumerate(r['configs']):
+                self.assertAlmostEqual(c['born'] / r['sum']['born'],
+                                       tree[k + 1][h + 1] / tree[k + 1][0], 10)
+
+    def raised_power_tirust(self):
+        """The TIRust library directory for P-wave virtuals: $TIRUST_LIB, else
+        the configured installation. Skips the test unless it has raised
+        propagator powers (the pinned installation does not yet)."""
+        import madgraph.various.tirust_install as tirust_install
+        tirust = os.environ.get('TIRUST_LIB') or self.cmd.options.get('tirust')
+        if not tirust or str(tirust) == 'None' or not os.path.isdir(str(tirust)):
+            self.skipTest('TIRust is not installed (install tirust)')
+        try:
+            raised = tirust_install.supports_raised_powers(str(tirust))
+        except MadGraph5Error:
+            raised = False
+        if not raised:
+            self.skipTest('TIRust in %s has no raised propagator powers (set '
+                          'TIRUST_LIB to an installation that has them)' % tirust)
+        return str(tirust)
+
+    def run_two_pwave(self, process, name, energy, npoints):
+        """Output, build and run a two-P-wave process at the seed-1 points of
+        the two-P-wave benchmark (docs/benchmarkfolder/data/raw/two_pwave),
+        with TIRust and MadLoop's default stability test."""
+        import sys
+        sys.path.insert(0, pjoin(MG5DIR, 'tools'))
+        import onia_loop_check
+        tirust = self.raised_power_tirust()
+        outdir = onia_loop_check.output_process(
+            'loop_sm_onia-c_mass', process, pjoin(self.tmpdir, name),
+            extra=['set tirust %s --no_save' % tirust], regenerate=True)
+        pdir = onia_loop_check.subprocess_dir(outdir)
+        onia_loop_check.build_driver(pdir)
+        masses = onia_loop_check.driver_masses(pdir)
+        points = onia_loop_check.points_lib.generate_points(
+            masses[2:], count=npoints, energy=energy, seed=1,
+            incoming_masses=tuple(masses[:2]))
+        onia_loop_check.set_reduction(outdir, [9])
+        results = onia_loop_check.run_points(
+            pdir, [p['momenta'] for p in points], warmup=0)
+        self.assertEqual(len(results), npoints)
+        return results
+
+    def test_two_pwave_loop_standalone(self):
+        """One-loop QCD virtual of e+ e- > chic0 hc: two P-wave bound states
+        (loop_sm_onia, m_c = 1.55 GeV). No parton is coloured, so there is
+        no 1/eps^2, and the whole 1/eps is the dipole-dipole term of He,
+        Kniehl and Wang (arXiv:1809.07993). Per Born * alpha_s/(2 pi) at
+        mu = sqrt(s):
+        - the prediction of ONIA_IR_POLES against the analytic value of the
+          pole derivation (research/two_pwave, sigma3_check.py);
+        - the computed 1/eps against the prediction;
+        - the finite part against the benchmark (at 10.58 GeV, the value of
+          quadruple precision, which is the same at both points).
+        Needs TIRust with raised propagator powers, two of them dotted
+        (TIRUST_LIB)."""
+        cases = [(7.0, 1, 0.7215546628699606, 21.9602612422),
+                 (10.58, 2, 0.7116719452362145, 38.381344559631)]
+        for i, (energy, npoints, pole, finite) in enumerate(cases):
+            results = self.run_two_pwave(
+                'e+ e- > chic0(1|3P01) hc(1|1P11) [virt=QCD]', 'twopw_ee_%d' % i,
+                energy, npoints)
+            for r in results:
+                tag = '%g GeV' % energy
+                self.assertEqual(r['ret_code'] // 100, 2, tag)
+                self.assertLess(abs(r['predicted_single_norm'] / pole - 1.), 1e-12, tag)
+                self.assertLess(abs(r['single_norm'] / r['predicted_single_norm'] - 1.),
+                                1e-8, tag)
+                self.assertLess(abs(r['double_norm']), 1e-9, tag)
+                self.assertLess(abs(r['finite_norm'] / finite - 1.),
+                                max(5e-9, r['accuracy']), tag)
+
+    def test_two_pwave_gg_loop_standalone(self):
+        """One-loop QCD virtual of g g > chic0 chic0 (two P-wave bound
+        states with gluon partons: the massive soft terms, the P -> S term of
+        each state and the dipole-dipole term) at 8 GeV, point 0 of the
+        benchmark: 1/eps^2 = -2 C_A, the computed 1/eps against
+        ONIA_IR_POLES (whose terms are checked against app. B of the
+        two-P-wave manuscript in research/two_pwave/appendix_b.py) and the
+        finite part against the benchmark. Needs TIRust with raised
+        propagator powers, two of them dotted (TIRUST_LIB); the output
+        takes a few minutes to build."""
+        r, = self.run_two_pwave('g g > chic0(1|3P01) chic0(1|3P01) [virt=QCD]',
+                                'twopw_gg', 8.0, 1)
+        self.assertEqual(r['ret_code'] // 100, 2)
+        self.assertLess(abs(r['predicted_single_norm'] / -2.1119773787306015 - 1.), 1e-12)
+        self.assertLess(abs(r['single_norm'] / r['predicted_single_norm'] - 1.), 1e-8)
+        self.assertLess(abs(r['double_norm'] / -6. - 1.), 1e-9)
+        self.assertLess(abs(r['finite_norm'] / 128.62581220811 - 1.),
+                        max(5e-9, r['accuracy']))
+
+    def test_two_pwave_singlet_octet_loop_standalone(self):
+        """One-loop QCD virtual of u u~ > chic0 + 3P0[8]: a P-wave colour
+        singlet with a P-wave colour octet, so every part of the single pole
+        contributes (the massive soft terms with the octet's monopole, the
+        P -> S term of each state and the dipole-dipole term). At 8 GeV,
+        point 0: 1/eps^2 = -2 C_F, the computed 1/eps against ONIA_IR_POLES,
+        and the finite part against its value on TIRust da7902b (the two
+        loop directions agree to 8e-13 there). Needs TIRust with raised
+        propagator powers, two of them dotted (TIRUST_LIB)."""
+        r, = self.run_two_pwave('u u~ > chic0(1|3P01) Jpsi(1|3P08) [virt=QCD]',
+                                'twopw_uu', 8.0, 1)
+        self.assertEqual(r['ret_code'] // 100, 2)
+        self.assertLess(abs(r['predicted_single_norm'] / -5.72504550760606 - 1.), 1e-12)
+        self.assertLess(abs(r['single_norm'] / r['predicted_single_norm'] - 1.), 1e-8)
+        self.assertLess(abs(r['double_norm'] / (-8. / 3.) - 1.), 1e-9)
+        self.assertLess(abs(r['finite_norm'] / -31.1590105103 - 1.),
+                        max(5e-9, r['accuracy']))
+
          
     @staticmethod
     def _onia_check_me(proc_dir, momenta=None):
@@ -5489,280 +5839,6 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
                     self.assertEqual(props[(-ivert, iconf)], 'ABS(MDL_MC)')
                 elif pdg == 21:
                     self.assertEqual(props[(-ivert, iconf)], 'ZERO')
-
-
-    def test_quarkonium_loop_standalone(self):
-        """MadLoop one-loop QCD virtuals of 2 -> 1 processes with S-wave
-        quarkonia (loop_sm_onia, TIRust) against their analytic values, in
-        units of Born * alpha_s/(2 pi) at mu = M (onia_fks normalisation):
-        Petrelli et al. (hep-ph/9707223) for g g > 1S0[1,8] and
-        q q~ > 3S1[8] (with the bound charm bubble of Hagiwara et al.,
-        0804.1014, plus the massive b and t bubbles of the model), and the
-        textbook eta_c > a a, J/psi > e+ e- corrections."""
-
-        import sys
-        import math
-        sys.path.insert(0, pjoin(MG5DIR, 'tools'))
-        import onia_loop_check
-
-        tirust = self.cmd.options.get('tirust')
-        if not tirust or str(tirust) == 'None' or not os.path.isdir(str(tirust)):
-            self.skipTest('TIRust is not installed (install tirust)')
-
-        pi2, CF, CA, TF, nl = math.pi**2, 4./3., 3., 0.5, 3
-        log2 = math.log(2.)
-
-        def vp(r):
-            # finite heavy-quark vacuum polarisation integral of the bubbles
-            n = 4000
-            return sum((x*(1-x))*math.log(1-x*(1-x)*r) for x in
-                       ((i+0.5)/n for i in range(n)))/n
-
-        Bn_1S0_1 = CF*(-5+pi2/4) + CA*(1+5*pi2/12)
-        Bn_1S0_8 = CF*(-5+pi2/4) + CA*(2+7*pi2/24)
-        Bn_3S1_8 = CF*(-8+2*pi2/3) + CA*(50./9+2./3*log2-pi2/4)
-        mass_b, mass_t, M = 4.7, 173., 3.1
-        qq8 = 2*(Bn_3S1_8 - 10./9*nl*TF - 16./9*TF) - CF*pi2/3 + \
-              4*vp((M/mass_b)**2) + 4*vp((M/mass_t)**2)
-        processes = [
-            ('a a > etac(1|1S01) [virt=QCD]', 2*CF*(pi2/4-5), 0., 0.),
-            ('e+ e- > Jpsi(1|3S11) [virt=QCD]', -32./3, 0., 0.),
-            ('g g > etac(1|1S01) [virt=QCD]', 2*Bn_1S0_1 - CA*pi2/3, -9., -6.),
-            ('g g > etac(1|1S08) [virt=QCD]', 2*Bn_1S0_8 - CA*pi2/3, -12., -6.),
-            ('u u~ > Jpsi(1|3S18) [virt=QCD]', qq8, -7., -8./3),
-        ]
-        for i, (process, finite, single, double) in enumerate(processes):
-            outdir = onia_loop_check.output_process(
-                'loop_sm_onia-c_mass', process, pjoin(self.tmpdir, 'onia_%d' % i),
-                regenerate=True)
-            pdir = onia_loop_check.subprocess_dir(outdir)
-            onia_loop_check.build_driver(pdir)
-            masses = onia_loop_check.driver_masses(pdir)
-            self.assertAlmostEqual(masses[2], M, 12)
-            points = onia_loop_check.points_lib.generate_points(
-                masses[2:], count=3, incoming_masses=tuple(masses[:2]))
-            onia_loop_check.set_reduction(outdir, [9])
-            results = onia_loop_check.run_points(pdir, [p['momenta'] for p in points])
-            self.assertEqual(len(results), 3)
-            for r in results:
-                # stable in double precision with TIRust, and right within
-                # MadLoop's own accuracy estimate (about 1e-8 for the boosted
-                # q q~ > 3S1[8] points, 1e-15 at rest)
-                self.assertEqual(r['ret_code'] // 100, 2, process)
-                self.assertLess(abs(r['finite_norm']/finite - 1.),
-                                max(5e-9, r['accuracy']), process)
-                self.assertAlmostEqual(r['single_norm'], single, 8, process)
-                self.assertAlmostEqual(r['double_norm'], double, 8, process)
-
-    def test_quarkonium_loop_helicities(self):
-        """SLOOPMATRIXHEL for bound states (the MC over helicities of MadFKS)
-        on g g > Jpsi(1|3S11) g [virt=QCD]: its 24 physical configurations
-        (the J/psi with J_z = -1, 0, 1) are numbered as the helicity matrix of
-        the tree-level output, each one's Born is that of the tree-level
-        SMATRIXHEL, and they add up to 4 times the summed result (as MadLoop,
-        a selected configuration is not averaged over the initial helicities).
-        MadLoop5_resources/<prefix>HelFilter.dat lists every configuration."""
-
-        import sys
-        import re
-        sys.path.insert(0, pjoin(MG5DIR, 'tools'))
-        import onia_loop_check
-
-        tirust = self.cmd.options.get('tirust')
-        if not tirust or str(tirust) == 'None' or not os.path.isdir(str(tirust)):
-            self.skipTest('TIRust is not installed (install tirust)')
-
-        process = 'g g > Jpsi(1|3S11) g'
-        outdir = onia_loop_check.output_process(
-            'loop_sm_onia-c_mass', process + ' [virt=QCD]', pjoin(self.tmpdir, 'onia_hel'),
-            regenerate=True)
-        pdir = onia_loop_check.subprocess_dir(outdir)
-        onia_loop_check.build_driver(pdir)
-        masses = onia_loop_check.driver_masses(pdir)
-        points = [p['momenta'] for p in onia_loop_check.points_lib.generate_points(
-            masses[2:], count=2, energy=20., seed=5, incoming_masses=tuple(masses[:2]))]
-        onia_loop_check.set_reduction(outdir, [9])
-        results = onia_loop_check.run_points_hel(pdir, points)
-        prefix = open(pjoin(pdir, 'proc_prefix.txt')).read().strip()
-        hel_filter = open(pjoin(outdir, 'SubProcesses', 'MadLoop5_resources',
-                                prefix + 'HelFilter.dat')).read().split()
-        self.assertEqual(hel_filter, ['1'] * 24)
-        for r in results:
-            self.assertEqual((len(r['configs']), r['helavg']), (24, 4))
-            for key, tol in (('born', 1e-13), ('finite', 1e-9), ('single', 1e-11),
-                             ('double', 1e-11)):
-                total = sum(c[key] for c in r['configs']) / r['helavg']
-                self.assertLess(abs(total / r['sum'][key] - 1.), tol, key)
-                # the split-order column that MadFKS reads (one split order:
-                # column 1 = column 0), scaled like column 0
-                total = sum(c['last_column'][key] for c in r['configs']) / r['helavg']
-                self.assertLess(abs(total / r['sum']['last_column'][key] - 1.), tol, key)
-                for c in [r['sum']] + r['configs']:
-                    self.assertEqual(c['last_column'][key], c[key], key)
-
-        # MadLoop's own helicity filter stays off for bound states even when
-        # MadLoopParams.dat asks for it: it would learn the filter in the
-        # constituent numbering and write it to HelFilter.dat
-        onia_loop_check.set_reduction(outdir, [9], {'HelicityFilterLevel': 2})
-        again = onia_loop_check.run_points_hel(pdir, points[:1])[0]
-        self.assertEqual(open(pjoin(outdir, 'SubProcesses', 'MadLoop5_resources',
-                                    prefix + 'HelFilter.dat')).read().split(), ['1'] * 24)
-        for a, b in zip([again['sum']] + again['configs'],
-                        [results[0]['sum']] + results[0]['configs']):
-            for key in ('born', 'finite'):
-                self.assertLessEqual(abs(a[key] - b[key]), 1e-14 * abs(b[key]), key)
-
-        # the tree-level output of the same process: its helicity table and
-        # SMATRIXHEL
-        treedir = pjoin(self.tmpdir, 'onia_hel_tree')
-        onia_loop_check.run_madgraph(['import model sm_onia-c_mass', 'generate %s' % process,
-                                      'output standalone_fortran %s -f' % treedir],
-                                     pjoin(self.tmpdir, 'onia_hel_tree.log'))
-        tdir = onia_loop_check.subprocess_dir(treedir)
-        tree_table = [tuple(int(x) for x in m.group(1).split(','))
-                      for m in re.finditer(r'DATA \(NHEL\(I,\s*\d+\),I=1,\d+\) /([^/]*)/',
-                                           open(pjoin(tdir, 'matrix.f')).read())]
-        data = open(pjoin(pdir, 'onia_loop_data.inc')).read()
-        values = [int(x) for x in re.search(r'DATA ONIA_PHYS_HEL/([^/]*)/', data, re.S)
-                  .group(1).replace('$', ' ').split(',')]
-        self.assertEqual(tree_table, [tuple(values[4 * i:4 * i + 4]) for i in range(24)])
-        with open(pjoin(tdir, 'treehel.f'), 'w') as f:
-            f.write('\n'.join([
-                '      PROGRAM TREEHEL', '      IMPLICIT NONE',
-                '      REAL*8 P(0:3,4), ANS', '      INTEGER NPOINTS, K, I, J, H',
-                "      CALL SETPARA('param_card.dat')", "      CALL SETONIA('onia_card.dat')",
-                '      READ(*,*) NPOINTS', '      DO K=1,NPOINTS', '        DO I=1,4',
-                '          READ(*,*) (P(J,I),J=0,3)', '        ENDDO',
-                '        CALL SMATRIX(P,1,ANS)',
-                "        WRITE(*,'(A,2I6,ES26.17E3)') 'TREE',K,0,ANS",
-                '        DO H=1,24', '          CALL SMATRIXHEL(P,H,1,ANS)',
-                "          WRITE(*,'(A,2I6,ES26.17E3)') 'TREE',K,H,ANS",
-                '        ENDDO', '      ENDDO', '      END', '']))
-        with open(pjoin(tdir, 'treehel.mk'), 'w') as f:
-            f.write('include makefile\ntreehel: $(LIBS) $(PROCESS) treehel.o\n'
-                    '\t$(FC) $(FFLAGS) -o treehel $(PROCESS) treehel.o $(LINKLIBS)\n')
-        onia_loop_check.make(tdir, 'treehel', 'treehel.mk')
-        lines = [str(len(points))] + [' '.join('%.17e' % c for c in v)
-                                      for p in points for v in p]
-        out = subprocess.run([pjoin(tdir, 'treehel')], cwd=tdir, input='\n'.join(lines) + '\n',
-                             capture_output=True, text=True, check=True).stdout
-        tree = {}
-        for line in out.splitlines():
-            if line.startswith('TREE'):
-                f = line.split()
-                tree.setdefault(int(f[1]), {})[int(f[2])] = float(f[3])
-        for k, r in enumerate(results):
-            # the share of each configuration in the summed Born (both without
-            # the helicity average)
-            for h, c in enumerate(r['configs']):
-                self.assertAlmostEqual(c['born'] / r['sum']['born'],
-                                       tree[k + 1][h + 1] / tree[k + 1][0], 10)
-
-    def raised_power_tirust(self):
-        """The TIRust library directory for P-wave virtuals: $TIRUST_LIB, else
-        the configured installation. Skips the test unless it has raised
-        propagator powers (the pinned installation does not yet)."""
-        import madgraph.various.tirust_install as tirust_install
-        tirust = os.environ.get('TIRUST_LIB') or self.cmd.options.get('tirust')
-        if not tirust or str(tirust) == 'None' or not os.path.isdir(str(tirust)):
-            self.skipTest('TIRust is not installed (install tirust)')
-        try:
-            raised = tirust_install.supports_raised_powers(str(tirust))
-        except MadGraph5Error:
-            raised = False
-        if not raised:
-            self.skipTest('TIRust in %s has no raised propagator powers (set '
-                          'TIRUST_LIB to an installation that has them)' % tirust)
-        return str(tirust)
-
-    def run_two_pwave(self, process, name, energy, npoints):
-        """Output, build and run a two-P-wave process at the seed-1 points of
-        the two-P-wave benchmark (docs/benchmarkfolder/data/raw/two_pwave),
-        with TIRust and MadLoop's default stability test."""
-        import sys
-        sys.path.insert(0, pjoin(MG5DIR, 'tools'))
-        import onia_loop_check
-        tirust = self.raised_power_tirust()
-        outdir = onia_loop_check.output_process(
-            'loop_sm_onia-c_mass', process, pjoin(self.tmpdir, name),
-            extra=['set tirust %s --no_save' % tirust], regenerate=True)
-        pdir = onia_loop_check.subprocess_dir(outdir)
-        onia_loop_check.build_driver(pdir)
-        masses = onia_loop_check.driver_masses(pdir)
-        points = onia_loop_check.points_lib.generate_points(
-            masses[2:], count=npoints, energy=energy, seed=1,
-            incoming_masses=tuple(masses[:2]))
-        onia_loop_check.set_reduction(outdir, [9])
-        results = onia_loop_check.run_points(
-            pdir, [p['momenta'] for p in points], warmup=0)
-        self.assertEqual(len(results), npoints)
-        return results
-
-    def test_two_pwave_loop_standalone(self):
-        """One-loop QCD virtual of e+ e- > chic0 hc: two P-wave bound states
-        (loop_sm_onia, m_c = 1.55 GeV). No parton is coloured, so there is
-        no 1/eps^2, and the whole 1/eps is the dipole-dipole term of He,
-        Kniehl and Wang (arXiv:1809.07993). Per Born * alpha_s/(2 pi) at
-        mu = sqrt(s):
-        - the prediction of ONIA_IR_POLES against the analytic value of the
-          pole derivation (research/two_pwave, sigma3_check.py);
-        - the computed 1/eps against the prediction;
-        - the finite part against the benchmark (at 10.58 GeV, the value of
-          quadruple precision, which is the same at both points).
-        Needs TIRust with raised propagator powers, two of them dotted
-        (TIRUST_LIB)."""
-        cases = [(7.0, 1, 0.7215546628699606, 21.9602612422),
-                 (10.58, 2, 0.7116719452362145, 38.381344559631)]
-        for i, (energy, npoints, pole, finite) in enumerate(cases):
-            results = self.run_two_pwave(
-                'e+ e- > chic0(1|3P01) hc(1|1P11) [virt=QCD]', 'twopw_ee_%d' % i,
-                energy, npoints)
-            for r in results:
-                tag = '%g GeV' % energy
-                self.assertEqual(r['ret_code'] // 100, 2, tag)
-                self.assertLess(abs(r['predicted_single_norm'] / pole - 1.), 1e-12, tag)
-                self.assertLess(abs(r['single_norm'] / r['predicted_single_norm'] - 1.),
-                                1e-8, tag)
-                self.assertLess(abs(r['double_norm']), 1e-9, tag)
-                self.assertLess(abs(r['finite_norm'] / finite - 1.),
-                                max(5e-9, r['accuracy']), tag)
-
-    def test_two_pwave_gg_loop_standalone(self):
-        """One-loop QCD virtual of g g > chic0 chic0 (two P-wave bound
-        states with gluon partons: the massive soft terms, the P -> S term of
-        each state and the dipole-dipole term) at 8 GeV, point 0 of the
-        benchmark: 1/eps^2 = -2 C_A, the computed 1/eps against
-        ONIA_IR_POLES (whose terms are checked against app. B of the
-        two-P-wave manuscript in research/two_pwave/appendix_b.py) and the
-        finite part against the benchmark. Needs TIRust with raised
-        propagator powers, two of them dotted (TIRUST_LIB); the output
-        takes a few minutes to build."""
-        r, = self.run_two_pwave('g g > chic0(1|3P01) chic0(1|3P01) [virt=QCD]',
-                                'twopw_gg', 8.0, 1)
-        self.assertEqual(r['ret_code'] // 100, 2)
-        self.assertLess(abs(r['predicted_single_norm'] / -2.1119773787306015 - 1.), 1e-12)
-        self.assertLess(abs(r['single_norm'] / r['predicted_single_norm'] - 1.), 1e-8)
-        self.assertLess(abs(r['double_norm'] / -6. - 1.), 1e-9)
-        self.assertLess(abs(r['finite_norm'] / 128.62581220811 - 1.),
-                        max(5e-9, r['accuracy']))
-
-    def test_two_pwave_singlet_octet_loop_standalone(self):
-        """One-loop QCD virtual of u u~ > chic0 + 3P0[8]: a P-wave colour
-        singlet with a P-wave colour octet, so every part of the single pole
-        contributes (the massive soft terms with the octet's monopole, the
-        P -> S term of each state and the dipole-dipole term). At 8 GeV,
-        point 0: 1/eps^2 = -2 C_F, the computed 1/eps against ONIA_IR_POLES,
-        and the finite part against its value on TIRust da7902b (the two
-        loop directions agree to 8e-13 there). Needs TIRust with raised
-        propagator powers, two of them dotted (TIRUST_LIB)."""
-        r, = self.run_two_pwave('u u~ > chic0(1|3P01) Jpsi(1|3P08) [virt=QCD]',
-                                'twopw_uu', 8.0, 1)
-        self.assertEqual(r['ret_code'] // 100, 2)
-        self.assertLess(abs(r['predicted_single_norm'] / -5.72504550760606 - 1.), 1e-12)
-        self.assertLess(abs(r['single_norm'] / r['predicted_single_norm'] - 1.), 1e-8)
-        self.assertLess(abs(r['double_norm'] / (-8. / 3.) - 1.), 1e-9)
-        self.assertLess(abs(r['finite_norm'] / -31.1590105103 - 1.),
-                        max(5e-9, r['accuracy']))
 
     def test_standalone_density(self):
         """test that standalone density is working"""

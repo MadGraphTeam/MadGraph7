@@ -147,6 +147,54 @@ class TestLoopOniaGeneration(unittest.TestCase):
             self.assertRaises(madgraph.InvalidCmd, lambda p=process: self.cmd.exec_cmd(
                               'generate %s' % p, printcmd=False, errorhandling=False))
 
+    def test_decays_refused(self):
+        """The one-loop virtual of a decaying bound state: a colour singlet
+        alone in the initial state, not decaying into a P-wave state if it
+        is one itself."""
+        refused = ['etac(1|1S08) > g g [virt=QCD]',
+                   'chic0(1|3P01) > hc(1|1P11) a [virt=QCD]',
+                   'etac(1|1S01) g > g g [virt=QCD]']
+        for process in refused:
+            self.assertRaises(madgraph.InvalidCmd, lambda p=process: self.cmd.exec_cmd(
+                              'generate %s' % p, printcmd=False, errorhandling=False))
+
+    def test_decay_projection_data(self):
+        """etac > a a and chic1 > u u~ g: the decaying bound state is one
+        incoming particle (its two constituent legs are MadLoop's incoming
+        legs), averaged over its 2J+1 states, and its octet index in the
+        colour strings is that of its antiquark (the leg of colour 3 once
+        crossed)."""
+        me = self.matrix_element('etac(1|1S01) > a a [virt=QCD]')
+        self.assertEqual(me.get_nexternal_ninitial(), (4, 2))
+        self.assertEqual(me.get_physical_nexternal_ninitial(), (3, 1))
+        self.assertEqual(me.get_denominator_factor(), 2)
+        self.assertEqual(me.get_hel_avg_factor(), 1)
+        info = loop_onia.onia_loop_info(me)
+        self.assertEqual((info['ninitial'], info['ninitial_phys'], info['ninitial_onia']),
+                         (2, 1, 1))
+        self.assertEqual(info['mapping'], [1, 1, 2, 3])
+        onium = info['onia'][0]
+        self.assertTrue(onium['initial'])
+        self.assertEqual((onium['q1'], onium['q2']), (1, 2))
+        self.assertEqual(loop_onia.octet_leg(onium), 2)
+        self.assertEqual(info['phys_helc'], [(0, -1, -1), (0, -1, 1), (0, 1, -1), (0, 1, 1)])
+        self.assertTrue(loop_onia.has_initial_onia(me))
+        me = self.matrix_element('chic1(1|3P11) > u u~ g [virt=QCD]')
+        self.assertEqual(me.get_physical_nexternal_ninitial(), (4, 1))
+        self.assertEqual(me.get_hel_avg_factor(), 3)
+        self.assertEqual(me.get_denominator_factor(), 3)
+        info = loop_onia.onia_loop_info(me)
+        self.assertEqual(info['ipwaves'], [1])
+        # the soft current of the P -> S pole: the 3S1[8] state, with the
+        # colour charges of the final partons
+        soft = loop_onia.pwave_soft_current(me, info, self.exporter().get_amp_to_jamp_map)
+        self.assertEqual([(s['colour'], s['label']) for s in soft], [(8, '18')])
+        self.assertEqual(sorted(set(k for k, kind in soft[0]['links'])), [2, 3, 4])
+        # a bound state produced is not affected
+        me = self.matrix_element('g g > etac(1|1S01) [virt=QCD]')
+        self.assertFalse(loop_onia.has_initial_onia(me))
+        self.assertEqual(loop_onia.octet_leg(loop_onia.onia_loop_info(me)['onia'][0]), 3)
+
     def test_massless_constituents_are_refused(self):
         cmd = MGCmd.MasterCmd()
         cmd.no_notification()

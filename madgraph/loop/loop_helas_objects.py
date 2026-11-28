@@ -2253,7 +2253,11 @@ class LoopHelasMatrixElement(helas_objects.HelasMatrixElement):
         each bound state counted once, as the users of MadLoop see them."""
 
         nexternal, ninitial = self.get_nexternal_ninitial()
-        return nexternal - self.get_nonia(), ninitial
+        # a decaying bound state (two incoming constituents) is one particle
+        initial_onia = set(leg.get('onium').get('index') for leg in
+                           self.get('processes')[0].get('legs')
+                           if leg.get('onium') and not leg.get('state'))
+        return nexternal - self.get_nonia(), ninitial - len(initial_onia)
 
     def get_helicity_combinations(self, onia_physical=False):
         """Number of helicity combinations of the external legs. MadLoop

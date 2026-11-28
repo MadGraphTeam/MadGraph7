@@ -7708,13 +7708,22 @@ This implies that with decay chains:
         """Refuse the perturbed processes with bound states that MadLoop does
         not support: it computes the one-loop QCD virtual ([virt=QCD]) of
         processes with S-wave bound states, and at most two P-wave bound
-        states, in the final state, as the interference with the Born of the
-        projected amplitudes (colour, spin, orbital and total angular
+        states, in the final state, and of the decay of a colour-singlet bound
+        state (alone in the initial state), as the interference with the Born
+        of the projected amplitudes (colour, spin, orbital and total angular
         momentum projectors of arXiv:2510.26773, at zero relative momentum of
         the constituents)."""
 
         # [QCD], [real=QCD] and [LOonly=QCD] with a Born go to the FKS checks
         # (fks_onia.check_nlo_onia), see extract_process
+        initial = [leg for leg in legs if not leg.get('state')]
+        if any(leg.get('onium') for leg in initial) and \
+           (len(initial) != 2 or not all(leg.get('onium') for leg in initial)):
+            raise self.InvalidCmd(
+                "The one-loop virtual of a bound state in the initial state is "
+                "supported for its decay only, the bound state alone in the initial "
+                "state (1 > N).")
+
         if loop_option != 'virt':
             raise self.InvalidCmd(
                 "Bound states are not supported in the '%s' loop mode: MadLoop "
@@ -7744,6 +7753,17 @@ This implies that with decay chains:
                     raise self.InvalidCmd(
                         "The one-loop virtual of processes with more than two P-wave "
                         "bound states is not supported (%s)." % onium.get('name'))
+                if len(pwave) > 1 and any(l.get('onium') and not l.get('state') and
+                                          l.get('onium').get('L', 0) == 1 for l in legs):
+                    raise self.InvalidCmd(
+                        "The one-loop virtual of the decay of a P-wave bound state into "
+                        "another P-wave bound state is not supported (%s)."
+                        % onium.get('name'))
+            if not leg.get('state') and onium.get('C') != 1:
+                raise self.InvalidCmd(
+                    "The one-loop virtual of the decay of a colour-octet bound state "
+                    "(%s) is not supported: only colour-singlet bound states decay at "
+                    "one loop." % onium.get('name'))
             if leg.get('polarization'):
                 raise self.InvalidCmd(
                     "Polarised bound states (%s) are not supported at one loop."
@@ -14958,7 +14978,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # generated propagator routines carry the runtime sign check. A 1->N decay
         # has no t-channel, so keep every width there (as the legacy code did).
         zerowidth_tchannel = self.options['zerowidth_tchannel']
-        if self._curr_amps and self._curr_amps[0].get_ninitial() == 1:
+        if self._curr_amps and self._curr_amps[0].get_ninitial_physical() == 1:
             zerowidth_tchannel = False
         # The output option --zerowidth_tchannel=True|False of the standalone
         # Fortran outputs overrides it for that output (MadSpin passes True).
@@ -14975,7 +14995,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
            and not isinstance(self._curr_exporter,
                               loop_exporters.LoopExporterFortran) \
            and 'zerowidth_tchannel' in output_options \
-           and not (self._curr_amps and self._curr_amps[0].get_ninitial() == 1):
+           and not (self._curr_amps and
+                    self._curr_amps[0].get_ninitial_physical() == 1):
             zerowidth_tchannel = banner_module.ConfigFile.format_variable(
                 output_options['zerowidth_tchannel'], bool, 'zerowidth_tchannel')
         aloha.t_channel_width = not zerowidth_tchannel

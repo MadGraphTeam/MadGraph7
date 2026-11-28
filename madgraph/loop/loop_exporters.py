@@ -965,6 +965,7 @@ class LoopProcessExporterFortranSA(LoopExporterFortran,
                 'Onia': loop_onia.has_onia(matrix_element),
                 'OniaPwave': loop_onia.has_pwave(matrix_element),
                 'OniaPwave2': loop_onia.npwave(matrix_element) == 2,
+                'OniaInitial': loop_onia.has_initial_onia(matrix_element),
                 'OniaPwaveEP': False}
 
 
@@ -2137,6 +2138,13 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                           ('ONIA_J', 'J'), ('ONIA_C', 'C')]:
             lines.append('DATA %s/%s/' % (key, ints([o[attr] for o in info['onia']])))
         lines.append('DATA ONIA_JZ/%s/' % ints([j for t in info['jz'] for j in t]))
+        if info['ninitial_onia']:
+            # a decaying bound state (its incoming spin projector, its decay
+            # LDME): 1 for it, 0 for the others
+            lines.append('C     1 for a decaying (initial-state) bound state')
+            lines.append('INTEGER ONIA_IN(%d)' % nonia)
+            lines.append('DATA ONIA_IN/%s/' % ints([1 if o['initial'] else 0
+                                                    for o in info['onia']]))
         lines.append('DATA ONIA_HELC/%s/' % ints([h for hel in info['helc'] for h in hel]))
         lines.append('DATA ONIA_OTHERS/%s/' % ints(info['others']))
         nphys, nphyscomb = info['nexternal_phys'], len(info['phys_helc'])
@@ -2239,7 +2247,9 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
             'onia_ldme_perturbative': self.get_ldme_perturbative(matrix_element)})
         if ncomb != matrix_element.get_helicity_combinations():
             raise loop_onia.OniaLoopError('Inconsistent helicity configurations.')
-        replace_dict['nincoming'] = info['ninitial']
+        # the physical incoming particles (ONIA_IR_POLES,
+        # MP_IMPROVE_PS_POINT_PRECISION): a decaying bound state is one
+        replace_dict['nincoming'] = info['ninitial_phys']
         self.write_onia_loop_links(matrix_element, info, model)
         file = open(os.path.join(self.template_dir, 'onia_loop.inc')).read() % replace_dict
         writers.FortranWriter('onia_loop.f').writelines(file, context=context)

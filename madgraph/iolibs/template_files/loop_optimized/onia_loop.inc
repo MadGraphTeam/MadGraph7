@@ -455,6 +455,80 @@ C     The spin projector of a bound state, in quadruple precision
       PROJ = 0.5E0_16/SQRT(2.0E0_16*M1*M2)*TMP
       END
 
+## if(OniaInitial){
+
+      SUBROUTINE %(proc_prefix)sONIA_LOOP_PROJ_IN(P1,M1,NHEL1,P2,M2,NHEL2,P3,M3,NHEL3,SPIN,PROJ)
+C     The spin projector of a decaying (initial-state) bound state,
+C     as ONIA_PROJ_IN of the tree-level output. The amplitude
+C     carries u(p1) and vbar(p2) of the incoming constituents; the
+C     projector is ubar(p1) Gamma' v(p2)/(2 sqrt(2 m1 m2)), with
+C     Gamma' = gamma0 Gamma^+ gamma0: -gamma5 for spin 0, an
+C     incoming polarisation for spin 1.
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+      %(real_dp_format)s P1(0:3), P2(0:3), P3(0:3), M1, M2, M3
+      %(complex_dp_format)s TMP
+      INTEGER NHEL1, NHEL2, NHEL3, SPIN
+      %(complex_dp_format)s PROJ
+      TYPE(ALOHA) FI, FO, VC
+      %(complex_dp_format)s CI
+      PARAMETER (CI=(0D0,1D0))
+      CALL OXXXXX(P1,M1,NHEL1,+1,1,FO)
+      CALL IXXXXX(P2,M2,NHEL2,-1,1,FI)
+      IF (SPIN.EQ.0) THEN
+        TMP = FI%%W(1)*FO%%W(1)+FI%%W(2)*FO%%W(2)-FI%%W(3)*FO%%W(3)
+     &        -FI%%W(4)*FO%%W(4)
+      ELSEIF (SPIN.EQ.1) THEN
+        CALL VXXXXX(P3,M3,NHEL3,-1,VC)
+        TMP = (FI%%W(1)*FO%%W(4)-FI%%W(3)*FO%%W(2))*(VC%%W(2)+CI*VC%%W(3))
+     &      + (FI%%W(2)*FO%%W(3)-FI%%W(4)*FO%%W(1))*(VC%%W(2)-CI*VC%%W(3))
+     &      + (FI%%W(1)*FO%%W(3)+FI%%W(4)*FO%%W(2))*(VC%%W(1)+VC%%W(4))
+     &      + (FI%%W(2)*FO%%W(4)+FI%%W(3)*FO%%W(1))*(VC%%W(1)-VC%%W(4))
+      ELSE
+        WRITE(*,*) 'ERROR:: spin projector not implemented for spin',SPIN
+        STOP 1
+      ENDIF
+      PROJ = 0.5D0/SQRT(2D0*M1*M2)*TMP
+      END
+## }
+
+## if(OniaInitial){
+
+      SUBROUTINE %(proc_prefix)sMP_ONIA_LOOP_PROJ_IN(P1,M1,NHEL1,P2,M2,NHEL2,P3,M3,NHEL3,SPIN,PROJ)
+C     The spin projector of a decaying (initial-state) bound state
+C     in quadruple precision, as ONIA_PROJ_IN of the tree-level output. The amplitude
+C     carries u(p1) and vbar(p2) of the incoming constituents; the
+C     projector is ubar(p1) Gamma' v(p2)/(2 sqrt(2 m1 m2)), with
+C     Gamma' = gamma0 Gamma^+ gamma0: -gamma5 for spin 0, an
+C     incoming polarisation for spin 1.
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+      %(real_mp_format)s P1(0:3), P2(0:3), P3(0:3), M1, M2, M3
+      %(complex_mp_format)s TMP
+      INTEGER NHEL1, NHEL2, NHEL3, SPIN
+      %(complex_mp_format)s PROJ
+      TYPE(MP_ALOHA) FI, FO, VC
+      %(complex_mp_format)s CI
+      PARAMETER (CI=(0.0E0_16,1.0E0_16))
+      CALL MP_OXXXXX(P1,M1,NHEL1,+1,1,FO)
+      CALL MP_IXXXXX(P2,M2,NHEL2,-1,1,FI)
+      IF (SPIN.EQ.0) THEN
+        TMP = FI%%W(1)*FO%%W(1)+FI%%W(2)*FO%%W(2)-FI%%W(3)*FO%%W(3)
+     &        -FI%%W(4)*FO%%W(4)
+      ELSEIF (SPIN.EQ.1) THEN
+        CALL MP_VXXXXX(P3,M3,NHEL3,-1,VC)
+        TMP = (FI%%W(1)*FO%%W(4)-FI%%W(3)*FO%%W(2))*(VC%%W(2)+CI*VC%%W(3))
+     &      + (FI%%W(2)*FO%%W(3)-FI%%W(4)*FO%%W(1))*(VC%%W(2)-CI*VC%%W(3))
+     &      + (FI%%W(1)*FO%%W(3)+FI%%W(4)*FO%%W(2))*(VC%%W(1)+VC%%W(4))
+     &      + (FI%%W(2)*FO%%W(4)+FI%%W(3)*FO%%W(1))*(VC%%W(1)-VC%%W(4))
+      ELSE
+        WRITE(*,*) 'ERROR:: spin projector not implemented for spin',SPIN
+        STOP 1
+      ENDIF
+      PROJ = 0.5E0_16/SQRT(2.0E0_16*M1*M2)*TMP
+      END
+## }
+
       SUBROUTINE %(proc_prefix)sONIA_BORN_AMPS(P,NHEL,H,IC)
 C     The Born amplitudes (AMP) of the constituent helicity configuration
 C     NHEL, without the counterterms
@@ -541,6 +615,11 @@ C     The normalisation of the colour projectors and the LDMEs
         ELSE
           FACT=FACT/8D0/(2D0*ONIA_J(K)+1D0)
         ENDIF
+## if(OniaInitial){
+C       a decaying bound state: its decay LDME <O_H> (Block ldme_decay),
+C       the average over its 2J+1 states in ONIA_IDEN (as at tree level)
+        IF (ONIA_IN(K).EQ.1) FACT=FACT*(2D0*ONIA_J(K)+1D0)
+## }
       ENDDO
 %(onia_ldme_perturbative)s
       FACT=FACT*%(onia_ldme_product)s
@@ -553,10 +632,21 @@ C     The spin projectors of the constituent helicity configurations
             Q1=ONIA_Q1(K)
             Q2=ONIA_Q2(K)
             KQ(0:3)=P(0:3,Q1)+P(0:3,Q2)
+## if(OniaInitial){
+            IF (ONIA_IN(K).EQ.1) THEN
+            CALL %(proc_prefix)sONIA_LOOP_PROJ_IN(P(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
+     &       P(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KQ,
+     &       SQRT(MAX(KQ(0)**2-KQ(1)**2-KQ(2)**2-KQ(3)**2,0D0)),
+     &       ONIA_JZ(K,T),ONIA_S(K),PRK)
+            ELSE
+## }
             CALL %(proc_prefix)sONIA_LOOP_PROJ(P(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
      &       P(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KQ,
      &       SQRT(MAX(KQ(0)**2-KQ(1)**2-KQ(2)**2-KQ(3)**2,0D0)),
      &       ONIA_JZ(K,T),ONIA_S(K),PRK)
+## if(OniaInitial){
+            ENDIF
+## }
             PR=PR*PRK
           ENDDO
           PROJW(T,H)=PR
@@ -667,6 +757,11 @@ C     precision
         ELSE
           FACT=FACT/8.0E0_16/(2.0E0_16*ONIA_J(K)+1.0E0_16)
         ENDIF
+## if(OniaInitial){
+C       a decaying bound state: its decay LDME <O_H> (Block ldme_decay),
+C       the average over its 2J+1 states in ONIA_IDEN (as at tree level)
+        IF (ONIA_IN(K).EQ.1) FACT=FACT*(2.0E0_16*ONIA_J(K)+1.0E0_16)
+## }
       ENDDO
 %(onia_ldme_perturbative)s
       FACT=FACT*%(onia_ldme_product)s
@@ -678,10 +773,21 @@ C     precision
             Q1=ONIA_Q1(K)
             Q2=ONIA_Q2(K)
             KQ(0:3)=P(0:3,Q1)+P(0:3,Q2)
+## if(OniaInitial){
+            IF (ONIA_IN(K).EQ.1) THEN
+            CALL %(proc_prefix)sMP_ONIA_LOOP_PROJ_IN(P(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
+     &       P(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KQ,
+     &       SQRT(MAX(KQ(0)**2-KQ(1)**2-KQ(2)**2-KQ(3)**2,0.0E0_16)),
+     &       ONIA_JZ(K,T),ONIA_S(K),PRK)
+            ELSE
+## }
             CALL %(proc_prefix)sMP_ONIA_LOOP_PROJ(P(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
      &       P(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KQ,
      &       SQRT(MAX(KQ(0)**2-KQ(1)**2-KQ(2)**2-KQ(3)**2,0.0E0_16)),
      &       ONIA_JZ(K,T),ONIA_S(K),PRK)
+## if(OniaInitial){
+            ENDIF
+## }
             PR=PR*PRK
           ENDDO
           PROJW(T,H)=PR
@@ -834,7 +940,12 @@ C     level, for ILZ = L_z+2
         KD(I)=P(I,Q1)+P(I,Q2)
       ENDDO
       DO ILZ=1,3
+## if(OniaInitial){
+        CALL VXXXXX(KD,CMASS(Q1)+CMASS(Q2),ILZ-2,1-2*ONIA_IN(ONIA_IPW),
+     &   EPSW)
+## } else {
         CALL VXXXXX(KD,CMASS(Q1)+CMASS(Q2),ILZ-2,+1,EPSW)
+## }
         DO I=0,3
           EPSLZ(I,ILZ)=EPSW%%W(I+1)%%COMP(0)
         ENDDO
@@ -900,6 +1011,42 @@ C     formula of ONIA_PROJ_DUAL of the tree-level output)
       ENDIF
       PROJ = 0.5D0/SQRT(2D0*M1*M2)*TMP
       END
+
+## if(OniaInitial){
+
+      SUBROUTINE %(proc_prefix)sONIA_PW_PROJ_IN(P1,M1,NHEL1,P2,M2,NHEL2,P3,M3,NHEL3,SPIN,PROJ)
+C     The spin projector of a decaying (initial-state) bound state,
+C     as ONIA_PROJ_IN (ONIA_PROJ_DUAL_IN) of the tree-level output. The amplitude
+C     carries u(p1) and vbar(p2) of the incoming constituents; the
+C     projector is ubar(p1) Gamma' v(p2)/(2 sqrt(2 m1 m2)), with
+C     Gamma' = gamma0 Gamma^+ gamma0: -gamma5 for spin 0, an
+C     incoming polarisation for spin 1.
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+      TYPE(DUAL) P1(0:3), P2(0:3), P3(0:3), PROJ, TMP
+      %(real_dp_format)s M1, M2, M3
+      INTEGER NHEL1, NHEL2, NHEL3, SPIN
+      TYPE(ALOHA) FI, FO, VC
+      %(complex_dp_format)s CI
+      PARAMETER (CI=(0D0,1D0))
+      CALL OXXXXX(P1,M1,NHEL1,+1,1,FO)
+      CALL IXXXXX(P2,M2,NHEL2,-1,1,FI)
+      IF (SPIN.EQ.0) THEN
+        TMP = FI%%W(1)*FO%%W(1)+FI%%W(2)*FO%%W(2)-FI%%W(3)*FO%%W(3)
+     &        -FI%%W(4)*FO%%W(4)
+      ELSEIF (SPIN.EQ.1) THEN
+        CALL VXXXXX(P3,M3,NHEL3,-1,VC)
+        TMP = (FI%%W(1)*FO%%W(4)-FI%%W(3)*FO%%W(2))*(VC%%W(2)+CI*VC%%W(3))
+     &      + (FI%%W(2)*FO%%W(3)-FI%%W(4)*FO%%W(1))*(VC%%W(2)-CI*VC%%W(3))
+     &      + (FI%%W(1)*FO%%W(3)+FI%%W(4)*FO%%W(2))*(VC%%W(1)+VC%%W(4))
+     &      + (FI%%W(2)*FO%%W(4)+FI%%W(3)*FO%%W(1))*(VC%%W(1)-VC%%W(4))
+      ELSE
+        WRITE(*,*) 'ERROR:: spin projector not implemented for spin',SPIN
+        STOP 1
+      ENDIF
+      PROJ = 0.5D0/SQRT(2D0*M1*M2)*TMP
+      END
+## }
 
       SUBROUTINE %(proc_prefix)sONIA_BORN_AMPS(P,NHEL,H,IC)
 C     The (dual) Born amplitudes of the constituent helicity configuration
@@ -988,6 +1135,11 @@ C     The normalisation of the colour projectors and the LDMEs
         ELSE
           FACT=FACT/8D0/(2D0*ONIA_J(K)+1D0)
         ENDIF
+## if(OniaInitial){
+C       a decaying bound state: its decay LDME <O_H> (Block ldme_decay),
+C       the average over its 2J+1 states in ONIA_IDEN (as at tree level)
+        IF (ONIA_IN(K).EQ.1) FACT=FACT*(2D0*ONIA_J(K)+1D0)
+## }
       ENDDO
 %(onia_ldme_perturbative)s
       FACT=FACT*%(onia_ldme_product)s
@@ -1019,9 +1171,19 @@ C     derivatives along each direction
                 SZ=ONIA_JZ(K,T)
                 CG=1D0
               ENDIF
+## if(OniaInitial){
+              IF (ONIA_IN(K).EQ.1) THEN
+              CALL %(proc_prefix)sONIA_PW_PROJ_IN(PD(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
+     &         PD(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KD,CMASS(Q1)+CMASS(Q2),
+     &         SZ,ONIA_S(K),PRK)
+              ELSE
+## }
               CALL %(proc_prefix)sONIA_PW_PROJ(PD(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
      &         PD(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KD,CMASS(Q1)+CMASS(Q2),
      &         SZ,ONIA_S(K),PRK)
+## if(OniaInitial){
+              ENDIF
+## }
               PR=PR*PRK*CG
             ENDDO
             PR0(T,H,ILZ)=PR%%COMP(0)
@@ -1199,6 +1361,12 @@ C     sect. 5.2.1.)
       ENDDO
       IPHYS=ONIA_MAPPING(ONIA_Q1(ONIA_IPW))
       K(0:3)=P_PHYS(0:3,IPHYS)
+## if(OniaInitial){
+C     all momenta outgoing: a decaying P-wave state has momentum -P (the
+C     terms k.VEC(k)/(P.k) change sign with P, not with k, so the incoming
+C     partons k need no sign)
+      IF (ONIA_IN(ONIA_IPW).EQ.1) K(0:3)=-K(0:3)
+## }
       KTOT2=K(0)**2-K(1)**2-K(2)**2-K(3)**2
       MQ=CMASS(ONIA_Q1(ONIA_IPW))
       MQB=CMASS(ONIA_Q2(ONIA_IPW))
@@ -1758,6 +1926,11 @@ C     The normalisation of the colour projectors and the LDMEs
         ELSE
           FACT=FACT/8D0/(2D0*ONIA_J(K)+1D0)
         ENDIF
+## if(OniaInitial){
+C       a decaying bound state: its decay LDME <O_H> (Block ldme_decay),
+C       the average over its 2J+1 states in ONIA_IDEN (as at tree level)
+        IF (ONIA_IN(K).EQ.1) FACT=FACT*(2D0*ONIA_J(K)+1D0)
+## }
       ENDDO
 %(onia_ldme_perturbative)s
       FACT=FACT*%(onia_ldme_product)s
@@ -1795,9 +1968,19 @@ C     coefficients of both P-wave states) and their dual components
                 SZ=ONIA_JZ(K,T)
                 CG=1D0
               ENDIF
+## if(OniaInitial){
+              IF (ONIA_IN(K).EQ.1) THEN
+              CALL %(proc_prefix)sONIA_PW_PROJ_IN(PD(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
+     &         PD(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KD,CMASS(Q1)+CMASS(Q2),
+     &         SZ,ONIA_S(K),PRK)
+              ELSE
+## }
               CALL %(proc_prefix)sONIA_PW_PROJ(PD(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
      &         PD(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KD,CMASS(Q1)+CMASS(Q2),
      &         SZ,ONIA_S(K),PRK)
+## if(OniaInitial){
+              ENDIF
+## }
               PR=PR*PRK*CG
             ENDDO
             DO C=0,3
@@ -2687,7 +2870,12 @@ C     The directions eps(L_z) of the relative momentum, ILZ = L_z+2
         KD(I)=P(I,Q1)+P(I,Q2)
       ENDDO
       DO ILZ=1,3
+## if(OniaInitial){
+        CALL MP_VXXXXX(KD,CMASS(Q1)+CMASS(Q2),ILZ-2,1-2*ONIA_IN(ONIA_IPW),
+     &   EPSW)
+## } else {
         CALL MP_VXXXXX(KD,CMASS(Q1)+CMASS(Q2),ILZ-2,+1,EPSW)
+## }
         DO I=0,3
           EPSLZ(I,ILZ)=EPSW%%W(I+1)%%COMP(0)
         ENDDO
@@ -2751,6 +2939,42 @@ C     The spin projector of a bound state for dual constituent momenta
       ENDIF
       PROJ = 0.5E0_16/SQRT(2.0E0_16*M1*M2)*TMP
       END
+
+## if(OniaInitial){
+
+      SUBROUTINE %(proc_prefix)sMP_ONIA_PW_PROJ_IN(P1,M1,NHEL1,P2,M2,NHEL2,P3,M3,NHEL3,SPIN,PROJ)
+C     The spin projector of a decaying (initial-state) bound state
+C     in quadruple precision, as ONIA_PROJ_IN (ONIA_PROJ_DUAL_IN) of the tree-level output. The amplitude
+C     carries u(p1) and vbar(p2) of the incoming constituents; the
+C     projector is ubar(p1) Gamma' v(p2)/(2 sqrt(2 m1 m2)), with
+C     Gamma' = gamma0 Gamma^+ gamma0: -gamma5 for spin 0, an
+C     incoming polarisation for spin 1.
+      USE ALOHA_OBJECT
+      IMPLICIT NONE
+      TYPE(MP_DUAL) P1(0:3), P2(0:3), P3(0:3), PROJ, TMP
+      %(real_mp_format)s M1, M2, M3
+      INTEGER NHEL1, NHEL2, NHEL3, SPIN
+      TYPE(MP_ALOHA) FI, FO, VC
+      %(complex_mp_format)s CI
+      PARAMETER (CI=(0.0E0_16,1.0E0_16))
+      CALL MP_OXXXXX(P1,M1,NHEL1,+1,1,FO)
+      CALL MP_IXXXXX(P2,M2,NHEL2,-1,1,FI)
+      IF (SPIN.EQ.0) THEN
+        TMP = FI%%W(1)*FO%%W(1)+FI%%W(2)*FO%%W(2)-FI%%W(3)*FO%%W(3)
+     &        -FI%%W(4)*FO%%W(4)
+      ELSEIF (SPIN.EQ.1) THEN
+        CALL MP_VXXXXX(P3,M3,NHEL3,-1,VC)
+        TMP = (FI%%W(1)*FO%%W(4)-FI%%W(3)*FO%%W(2))*(VC%%W(2)+CI*VC%%W(3))
+     &      + (FI%%W(2)*FO%%W(3)-FI%%W(4)*FO%%W(1))*(VC%%W(2)-CI*VC%%W(3))
+     &      + (FI%%W(1)*FO%%W(3)+FI%%W(4)*FO%%W(2))*(VC%%W(1)+VC%%W(4))
+     &      + (FI%%W(2)*FO%%W(4)+FI%%W(3)*FO%%W(1))*(VC%%W(1)-VC%%W(4))
+      ELSE
+        WRITE(*,*) 'ERROR:: spin projector not implemented for spin',SPIN
+        STOP 1
+      ENDIF
+      PROJ = 0.5E0_16/SQRT(2.0E0_16*M1*M2)*TMP
+      END
+## }
 
       SUBROUTINE %(proc_prefix)sMP_ONIA_BORN_AMPS(P,NHEL,H,IC)
 C     The (dual) Born amplitudes for the dual momenta P, quadruple precision
@@ -2816,6 +3040,11 @@ C     ONIA_PREPARE, without the Born matrix element)
         ELSE
           FACT=FACT/8.0E0_16/(2.0E0_16*ONIA_J(K)+1.0E0_16)
         ENDIF
+## if(OniaInitial){
+C       a decaying bound state: its decay LDME <O_H> (Block ldme_decay),
+C       the average over its 2J+1 states in ONIA_IDEN (as at tree level)
+        IF (ONIA_IN(K).EQ.1) FACT=FACT*(2.0E0_16*ONIA_J(K)+1.0E0_16)
+## }
       ENDDO
 %(onia_ldme_perturbative)s
       FACT=FACT*%(onia_ldme_product)s
@@ -2844,9 +3073,19 @@ C     ONIA_PREPARE, without the Born matrix element)
                 SZ=ONIA_JZ(K,T)
                 CG=1.0E0_16
               ENDIF
+## if(OniaInitial){
+              IF (ONIA_IN(K).EQ.1) THEN
+              CALL %(proc_prefix)sMP_ONIA_PW_PROJ_IN(PD(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
+     &         PD(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KD,CMASS(Q1)+CMASS(Q2),
+     &         SZ,ONIA_S(K),PRK)
+              ELSE
+## }
               CALL %(proc_prefix)sMP_ONIA_PW_PROJ(PD(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
      &         PD(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KD,CMASS(Q1)+CMASS(Q2),
      &         SZ,ONIA_S(K),PRK)
+## if(OniaInitial){
+              ENDIF
+## }
               PR=PR*PRK*CG
             ENDDO
             PR0(T,H,ILZ)=PR%%COMP(0)
@@ -3432,6 +3671,11 @@ C     The normalisation of the colour projectors and the LDMEs
         ELSE
           FACT=FACT/8.0E0_16/(2.0E0_16*ONIA_J(K)+1.0E0_16)
         ENDIF
+## if(OniaInitial){
+C       a decaying bound state: its decay LDME <O_H> (Block ldme_decay),
+C       the average over its 2J+1 states in ONIA_IDEN (as at tree level)
+        IF (ONIA_IN(K).EQ.1) FACT=FACT*(2.0E0_16*ONIA_J(K)+1.0E0_16)
+## }
       ENDDO
 %(onia_ldme_perturbative)s
       FACT=FACT*%(onia_ldme_product)s
@@ -3469,9 +3713,19 @@ C     coefficients of both P-wave states) and their dual components
                 SZ=ONIA_JZ(K,T)
                 CG=1.0E0_16
               ENDIF
+## if(OniaInitial){
+              IF (ONIA_IN(K).EQ.1) THEN
+              CALL %(proc_prefix)sMP_ONIA_PW_PROJ_IN(PD(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
+     &         PD(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KD,CMASS(Q1)+CMASS(Q2),
+     &         SZ,ONIA_S(K),PRK)
+              ELSE
+## }
               CALL %(proc_prefix)sMP_ONIA_PW_PROJ(PD(0,Q1),CMASS(Q1),ONIA_HELC(Q1,H),
      &         PD(0,Q2),CMASS(Q2),ONIA_HELC(Q2,H),KD,CMASS(Q1)+CMASS(Q2),
      &         SZ,ONIA_S(K),PRK)
+## if(OniaInitial){
+              ENDIF
+## }
               PR=PR*PRK*CG
             ENDDO
             DO C=0,3

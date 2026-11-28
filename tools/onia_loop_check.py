@@ -44,14 +44,15 @@ sys.path.insert(0, os.path.join(ROOT, 'tools'))
 import tirust_benchmark_points as points_lib
 
 DRIVER = """\
-C     Reads NPOINTS, then per point MU_R (<= 0: sqrt(s)) and the momenta of
-C     the NEXTERNAL physical legs; writes one RESULT line per point.
+C     Reads NPOINTS, then per point MU_R (<= 0: sqrt(s), the mass of the
+C     decaying particle of a decay) and the momenta of the NEXTERNAL
+C     physical legs; writes one RESULT line per point.
 C     With --masses, writes the masses of pmass.inc. With --jz K N JZ1 ...
 C     JZN (bound states), only those J_z of bound state K (ONIA_SELECT_JZ).
       PROGRAM ML_POINTS_DRIVER
       IMPLICIT NONE
-      INTEGER NEXTERNAL
-      PARAMETER (NEXTERNAL=@NEXTERNAL@)
+      INTEGER NEXTERNAL, NINCOMING
+      PARAMETER (NEXTERNAL=@NEXTERNAL@, NINCOMING=@NINCOMING@)
       REAL*8 ZERO
       PARAMETER (ZERO=0D0)
       INCLUDE 'coupl.inc'
@@ -86,7 +87,8 @@ C     JZN (bound states), only those J_z of bound state K (ONIA_SELECT_JZ).
           READ(*,*) (P(J,I),J=0,3)
         ENDDO
         IF (MU.LE.0D0) THEN
-          PIN(0:3)=P(0:3,1)+P(0:3,2)
+          PIN(0:3)=P(0:3,1)
+          IF (NINCOMING.EQ.2) PIN(0:3)=PIN(0:3)+P(0:3,2)
           MU=DSQRT(DABS(PIN(0)**2-PIN(1)**2-PIN(2)**2-PIN(3)**2))
         ENDIF
         MU_R=MU
@@ -126,6 +128,36 @@ def run_madgraph(commands, log):
         raise RuntimeError('MadGraph failed, see %s' % log)
 
 
+# a generic boost (velocity 0.6 along (1, 2, 3)/sqrt(14)) for decay points:
+# the virtual of a decay summed over the polarisations is Lorentz invariant,
+# and a P-wave bound state exactly at rest is a degenerate configuration for
+# TIRust's reduction (wrong DP integrals for 1 -> 3; the QP pass refuses the
+# threshold Coulomb boxes of incoming constituents)
+DECAY_BOOST = tuple(0.6 * x / math.sqrt(14.) for x in (1., 2., 3.))
+
+
+def boost_vector(p, beta):
+    """The 4-vector p boosted with the velocity beta (a 3-vector)."""
+    b2 = sum(b * b for b in beta)
+    g = 1. / math.sqrt(1. - b2)
+    bp = sum(beta[i] * p[i + 1] for i in range(3))
+    f = (g - 1.) * bp / b2 + g * p[0]
+    return [g * (p[0] + bp)] + [p[i + 1] + f * beta[i] for i in range(3)]
+
+
+def decay_points(final_masses, mass, count=2, seed=7, boost=None):
+    """Phase-space points of the decay of a particle of mass `mass` at rest
+    (RAMBO for the final state), the decaying particle first; with boost (a
+    velocity, e.g. DECAY_BOOST), every momentum boosted."""
+    import random
+    rng = random.Random(seed)
+    points = []
+    for _ in range(count):
+        point = [[mass, 0., 0., 0.]] + points_lib._rambo(list(final_masses), mass, rng)
+        points.append([boost_vector(v, boost) for v in point] if boost else point)
+    return points
+
+
 def output_process(model, process, outdir, extra=(), regenerate=False):
     """Generate and write out the process (standalone MadLoop output)."""
     outdir = os.path.abspath(outdir)
@@ -158,6 +190,18 @@ def make(pdir, target, makefile=None):
         raise RuntimeError('make %s failed in %s' % (target, pdir))
 
 
+def driver_nincoming(pdir):
+    """The number of physical incoming particles of the P* directory: 1 for
+    a decay (of a bound state too: its two constituents are one particle)."""
+    path = os.path.join(pdir, 'onia_loop.f')
+    if os.path.isfile(path):
+        found = re.search(r'NINCOMING=(\d+)', open(path).read())
+        if found:
+            return int(found.group(1))
+    found = re.search(r'NINCOMING=(\d+)', open(os.path.join(pdir, 'nexternal.inc')).read())
+    return int(found.group(1)) if found else 2
+
+
 def build_driver(pdir):
     """Compile ml_points_driver in the P* directory."""
     prefix = open(os.path.join(pdir, 'proc_prefix.txt')).read().strip()
@@ -169,6 +213,7 @@ def build_driver(pdir):
         nexternal = int(re.search(r'NEXTERNAL=(\d+)',
                                   open(os.path.join(pdir, 'nexternal.inc')).read()).group(1))
     source = DRIVER.replace('@NEXTERNAL@', str(nexternal)).replace('@PREFIX@', prefix)
+    source = source.replace('@NINCOMING@', str(driver_nincoming(pdir)))
     source = source.replace('@SETONIA@', "      CALL SETONIA('onia_card.dat')" if onia else '')
     source = source.replace('@IRPOLES@', ("        CALL %sONIA_IR_POLES(P,POLES)" % prefix)
                             if onia else '')

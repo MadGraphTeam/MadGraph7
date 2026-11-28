@@ -6689,6 +6689,41 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             raise InvalidCmd(text)
         logger.warning(text)
 
+    # the blocks of the onia_card
+    onia_blocks = ['ldme', 'ldme_decay', 'onium_mass']
+
+    def unused_onia_set(self, line, block=None, key=None):
+        """Skip an onia_card setting for a bound state (or a block) that the
+        process does not have. Launch scripts are shared between processes, so
+        this only warns, also in scripted runs."""
+        if not self.onia_card:
+            logger.warning('This process has no bound state (no onia_card): '
+                           '"set %s" is ignored.' % line)
+        elif block not in self.onia_card:
+            logger.warning('The onia_card of this process has no Block %s: '
+                           '"set %s" is ignored.' % (block, line))
+        else:
+            # the names of the bound states, from the comments of the default
+            # card (ParamCard lower-cases them, also in the card it writes)
+            names, current = {}, None
+            path = self.paths.get('onia_default', '')
+            if os.path.exists(path):
+                for text in open(path):
+                    found = re.match(r'\s*block\s+(\S+)', text, re.I)
+                    if found:
+                        current = found.group(1).lower()
+                        continue
+                    found = re.match(r'\s*(-?\d+)\s+\S+\s*#\s*(.*\S)', text)
+                    if found and current == block:
+                        names[(int(found.group(1)),)] = found.group(2)
+            entries = ', '.join('%s (%s)' % (' '.join(str(i) for i in k),
+                                             names.get(k, p.comment.strip()))
+                     for k, p in sorted(self.onia_card[block].param_dict.items()))
+            logger.warning('Block %s of the onia_card has no entry %s: this '
+                           'process has no such bound state, "set %s" is ignored. '
+                           'Its entries: %s.' % (block, ' '.join(str(i) for i in key),
+                                                 line, entries))
+
     def do_set(self, line):
         """ edit the value of one parameter in the card"""
 
@@ -6840,6 +6875,10 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 self.invalid_set('Invalid Command: No Reweight card defined')
                 return
             args[0] = 'reweight_card'
+
+        if args[0] == 'onia_card' and not self.onia_card:
+            self.unused_onia_set(line)
+            return
 
         if args[0] == 'delphes_card':
             if not self.has_delphes:
@@ -7090,8 +7129,11 @@ class AskforEditCard(cmd.OneLinePathCompletion):
                 logger.warning('all listed variables have been modified')
 
         ### ONIA_CARD WITH BLOCK NAME -----------------------------------------
-        elif self.onia_card and (args[start] in self.onia_card or args[start] == 'ldme') \
-                                                  and card in ['','onia_card']:
+        elif card in ['', 'onia_card'] and (args[start] in self.onia_blocks or
+                                 (self.onia_card and args[start] in self.onia_card)):
+            if not self.onia_card:
+                self.unused_onia_set(line)
+                return
             #special treatment for scan
             if any(t.startswith('scan') for t in args):
                 index = [i for i,t in enumerate(args) if t.startswith('scan')][0]
@@ -7108,21 +7150,25 @@ class AskforEditCard(cmd.OneLinePathCompletion):
             except ValueError:
                 self.invalid_set('invalid set command %s, onia_card can not be updated' % line)
                 return
-
-            if key in self.onia_card[args[start]].param_dict:
-                if args[-1].lower() in ['default', 'auto', 'auto@nlo'] or args[-1].startswith('scan'):
-                    self.setO(args[start], key, args[-1])
-                else:
-                    try:
-                        value = float(args[-1])
-                    except Exception:
-                        self.invalid_set('Invalid input: Expected number and not \'%s\'' \
-                                                                     % args[-1])
-                        return
-                    self.setO(args[start], key, value)
-            else:
-                self.invalid_set('invalid set command %s' % line)
+            if not key:
+                self.invalid_set('invalid set command %s: no PDG code given' % line)
                 return
+
+            if args[-1].lower() in ['default', 'auto', 'auto@nlo'] or args[-1].startswith('scan'):
+                value = args[-1]
+            else:
+                try:
+                    value = float(args[-1])
+                except Exception:
+                    self.invalid_set('Invalid input: Expected number and not \'%s\'' \
+                                                                 % args[-1])
+                    return
+
+            if args[start] not in self.onia_card or \
+                                    key not in self.onia_card[args[start]].param_dict:
+                self.unused_onia_set(line, args[start], key)
+                return
+            self.setO(args[start], key, value)
             self.modified_card.add('onia')
                 
         # MadWeight_card with block name ---------------------------------------
