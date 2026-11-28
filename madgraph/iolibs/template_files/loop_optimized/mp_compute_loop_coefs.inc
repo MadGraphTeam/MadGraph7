@@ -15,7 +15,12 @@ C
 ## if(OniaPwave) {
 C     A P-wave bound state: the dual momenta and loop momenta (polynomial.f;
 C     the double-precision calls, not used here, take PWPD)
-      USE %(proc_prefix)sPW_DUAL, ONLY: PWPD, MPPWPD, MPPWPL, %(proc_prefix)sPW_DUAL_INIT
+      USE %(proc_prefix)sPW_DUAL, ONLY: PWPD, MPPWPD, MPPWPL, %(proc_prefix)sPW_DUAL_INIT,
+     &  DWL => MPPWDWL, PCOEFS => MPPWPCOEFS
+## if(OniaPwave2) {
+      USE %(proc_prefix)sPW_DUAL, ONLY: DWL2 => MPPWDWL2, D2WL => MPPWD2WL,
+     &  PW2_P1 => MPPW2P1, PW2_P2 => MPPW2P2, PW2_PX => MPPW2PX, PW2_PT => MPPW2PT
+## }
 ## }
 C
       IMPLICIT NONE
@@ -102,22 +107,14 @@ C
       INTEGER ONIA_ILZ
 C     the derivatives of the loop wavefunctions and the polynomials of the
 C     propagator derivatives
-	  %(complex_mp_format)s DWL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
-	  common/%(proc_prefix)sMP_PW_DWL/DWL
-	  %(complex_mp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-	  common/%(proc_prefix)sMP_PW_PCOEFS/PCOEFS
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
 ## if(OniaPwave2) {
 C     Two P-wave bound states: the derivatives DWL2 (second state) and D2WL
 C     (mixed) of the loop wavefunctions, and the polynomials of the
 C     propagator derivatives
-	  %(complex_mp_format)s DWL2(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
-	  %(complex_mp_format)s D2WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
-	  common/%(proc_prefix)sMP_PW_DWL2/DWL2,D2WL
-	  %(complex_mp_format)s PW2_P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-	  %(complex_mp_format)s PW2_P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-	  %(complex_mp_format)s PW2_PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-	  %(complex_mp_format)s PW2_PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
-	  common/%(proc_prefix)sMP_PW2_PCOEFS/PW2_P1,PW2_P2,PW2_PX,PW2_PT
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
 ## }
 ## }
       INTEGER %(proc_prefix)sML5SOINDEX_FOR_BORN_AMP

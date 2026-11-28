@@ -17,7 +17,11 @@ C
 C     A P-wave bound state: the dual momenta and loop momenta
 C      (polynomial.f;
 C     the double-precision calls, not used here, take PWPD)
-      USE ML5_0_PW_DUAL, ONLY: PWPD, MPPWPD, MPPWPL, ML5_0_PW_DUAL_INIT
+      USE ML5_0_PW_DUAL, ONLY: PWPD, MPPWPD, MPPWPL,
+     $  ML5_0_PW_DUAL_INIT,
+     &  DWL => MPPWDWL, PCOEFS => MPPWPCOEFS
+      USE ML5_0_PW_DUAL, ONLY: DWL2 => MPPWDWL2, D2WL => MPPWD2WL,
+     &  PW2_P1 => MPPW2P1, PW2_P2 => MPPW2P2, PW2_PX => MPPW2PX, PW2_PT => MPPW2PT
 C     
       IMPLICIT NONE
 C     
@@ -85,26 +89,14 @@ C
 C     the derivatives of the loop wavefunctions and the polynomials of
 C      the
 C     propagator derivatives
-      COMPLEX*32 DWL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,
-     $ -1:NLOOPWAVEFUNCS)
-      COMMON/ML5_0_MP_PW_DWL/DWL
-      COMPLEX*32 PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMMON/ML5_0_MP_PW_PCOEFS/PCOEFS
+C     (allocated in module ML5_0_PW_DUAL, polynomial.f)
+C     (allocated in module ML5_0_PW_DUAL, polynomial.f)
 C     Two P-wave bound states: the derivatives DWL2 (second state) and
 C      D2WL
 C     (mixed) of the loop wavefunctions, and the polynomials of the
 C     propagator derivatives
-      COMPLEX*32 DWL2(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,
-     $ -1:NLOOPWAVEFUNCS)
-      COMPLEX*32 D2WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,
-     $ -1:NLOOPWAVEFUNCS)
-      COMMON/ML5_0_MP_PW_DWL2/DWL2,D2WL
-      COMPLEX*32 PW2_P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMPLEX*32 PW2_P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMPLEX*32 PW2_PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-      COMPLEX*32 PW2_PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3
-     $ ,0:3)
-      COMMON/ML5_0_MP_PW2_PCOEFS/PW2_P1,PW2_P2,PW2_PX,PW2_PT
+C     (allocated in module ML5_0_PW_DUAL, polynomial.f)
+C     (allocated in module ML5_0_PW_DUAL, polynomial.f)
       INTEGER ML5_0_ML5SOINDEX_FOR_BORN_AMP
       INTEGER ML5_0_ML5SOINDEX_FOR_LOOP_AMP
       INTEGER ML5_0_ML5SQSOINDEX

@@ -47,7 +47,12 @@ C
       use %(proc_prefix)sPOLYNOMIAL_CONSTANTS
       USE ALOHA_OBJECT
 ## if(OniaPwave) {
-      USE %(proc_prefix)sPW_DUAL, ONLY: PWPL, PWPD, %(proc_prefix)sPW_DUAL_INIT
+      USE %(proc_prefix)sPW_DUAL, ONLY: PWPL, PWPD, %(proc_prefix)sPW_DUAL_INIT,
+     &  DWL => PWDWL, PCOEFS => PWPCOEFS
+## if(OniaPwave2) {
+      USE %(proc_prefix)sPW_DUAL, ONLY: DWL2 => PWDWL2, D2WL => PWD2WL,
+     &  PW2_P1 => PW2P1, PW2_P2 => PW2P2, PW2_PX => PW2PX, PW2_PT => PW2PT
+## }
 ## }
 ## if(OniaPwaveEP) {
       USE EP_PRECISION
@@ -494,22 +499,14 @@ C     the current direction of the relative momentum, the derivatives DWL of
 C     the loop wavefunctions, the dual momenta of the loop lines, and the
 C     polynomials PCOEFS of the propagator derivatives
       INTEGER ONIA_ILZ, ONIA_PASS
-	  %(complex_dp_format)s DWL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
-	  common/%(proc_prefix)sPW_DWL/DWL
-	  %(complex_dp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-	  common/%(proc_prefix)sPW_PCOEFS/PCOEFS
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
 ## if(OniaPwave2) {
 C     Two P-wave bound states: the derivatives DWL2 (second state) and D2WL
 C     (mixed) of the loop wavefunctions, and the polynomials of the
 C     propagator derivatives
-	  %(complex_dp_format)s DWL2(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
-	  %(complex_dp_format)s D2WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
-	  common/%(proc_prefix)sPW_DWL2/DWL2,D2WL
-	  %(complex_dp_format)s PW2_P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-	  %(complex_dp_format)s PW2_P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-	  %(complex_dp_format)s PW2_PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-	  %(complex_dp_format)s PW2_PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
-	  common/%(proc_prefix)sPW2_PCOEFS/PW2_P1,PW2_P2,PW2_PX,PW2_PT
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
 ## }
 ## }
 

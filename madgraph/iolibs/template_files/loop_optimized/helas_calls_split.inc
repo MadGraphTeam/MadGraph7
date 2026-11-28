@@ -6,7 +6,11 @@ C
       USE ALOHA_OBJECT
 ## if(OniaPwave) {
 C     the dual wavefunctions, amplitudes and loop momenta (polynomial.f)
-      USE %(proc_prefix)sPW_DUAL, ONLY: PWW, PWAMP, PWAMPL, PWPL
+      USE %(proc_prefix)sPW_DUAL, ONLY: PWW, PWAMP, PWAMPL, PWPL,
+     &  DWL => PWDWL
+## if(OniaPwave2) {
+      USE %(proc_prefix)sPW_DUAL, ONLY: DWL2 => PWDWL2, D2WL => PWD2WL
+## }
 ## }
 C 
       IMPLICIT NONE
@@ -102,13 +106,7 @@ C     the loop wavefunctions WL (value) and DWL (derivative)
 	  %(complex_dp_format)s WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
 	  %(complex_dp_format)s PLC(0:3,-1:NLOOPWAVEFUNCS)
 	  common/%(proc_prefix)sWL/WL,PLC
-	  %(complex_dp_format)s DWL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
-	  common/%(proc_prefix)sPW_DWL/DWL
-## if(OniaPwave2) {
-	  %(complex_dp_format)s DWL2(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
-	  %(complex_dp_format)s D2WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS)
-	  common/%(proc_prefix)sPW_DWL2/DWL2,D2WL
-## }
+C     (DWL, DWL2, D2WL: allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
 ## } else {
 ## if(not LoopInduced) {
 	  %(complex_dp_format)s AMP(NBORNAMPS)

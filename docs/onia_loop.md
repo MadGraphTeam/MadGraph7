@@ -127,8 +127,13 @@ acceptance tests `test_two_pwave_loop_standalone`,
 poles and finite parts of three of these processes. They take the TIRust of
 `$TIRUST_LIB`, or the configured one, and are skipped without raised powers.
 
-Such outputs are built with the medium code model on x86-64, since their loop
-arrays can exceed 2 GB. Their loop numerators reach rank R+2, and the
+Such outputs are built with the medium code model on x86-64. The derivative
+arrays of the P-wave layer (DWL, and with two P-wave states DWL2 and D2WL,
+and the polynomials of the propagator derivatives, in double and quadruple
+precision) are allocated at the first evaluation (module PW_DUAL of
+polynomial.f), not static: g g > chic0 chic0 has 0.8 GB of static data
+(MadLoop's own WL arrays) instead of 3.5 GB, which macOS arm64 could not
+load. Their loop numerators reach rank R+2, and the
 polynomial routines are written for that rank (`loop_onia.loop_rank_increase`).
 
 Refused with an explanatory error:

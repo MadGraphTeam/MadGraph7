@@ -6,7 +6,9 @@ C
       USE ALOHA_OBJECT
 C     the dual wavefunctions, amplitudes and loop momenta
 C      (polynomial.f)
-      USE ML5_0_PW_DUAL, ONLY: PWW, PWAMP, PWAMPL, PWPL
+      USE ML5_0_PW_DUAL, ONLY: PWW, PWAMP, PWAMPL, PWPL,
+     &  DWL => PWDWL
+      USE ML5_0_PW_DUAL, ONLY: DWL2 => PWDWL2, D2WL => PWD2WL
 C     
       IMPLICIT NONE
 C     
@@ -95,14 +97,8 @@ C     the loop wavefunctions WL (value) and DWL (derivative)
      $ -1:NLOOPWAVEFUNCS)
       COMPLEX*16 PLC(0:3,-1:NLOOPWAVEFUNCS)
       COMMON/ML5_0_WL/WL,PLC
-      COMPLEX*16 DWL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,
-     $ -1:NLOOPWAVEFUNCS)
-      COMMON/ML5_0_PW_DWL/DWL
-      COMPLEX*16 DWL2(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,
-     $ -1:NLOOPWAVEFUNCS)
-      COMPLEX*16 D2WL(MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,
-     $ -1:NLOOPWAVEFUNCS)
-      COMMON/ML5_0_PW_DWL2/DWL2,D2WL
+C     (DWL, DWL2, D2WL: allocated in module ML5_0_PW_DUAL,
+C      polynomial.f)
 
 C     
 C     ----------

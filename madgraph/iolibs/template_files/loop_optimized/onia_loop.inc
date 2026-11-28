@@ -1611,6 +1611,7 @@ C     The closed loop of the current direction: its derivative DWL with W2
 C     into the loop coefficients, and on the first direction its value WL
 C     with W1 and with V (the propagator derivatives, PCOEFS)
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: PCOEFS => PWPCOEFS
       IMPLICIT NONE
       INTEGER NBORNAMPS, NCOMB, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NBORNAMPS=%(nbornamps)d, NCOMB=%(ncomb)d)
@@ -1620,8 +1621,7 @@ C     with W1 and with V (the propagator derivatives, PCOEFS)
       INTEGER RANK, LCUT_SIZE, LOOP_GROUP_NUMBER, SYMFACT, MULTIPLIER, COLOR_ID, HELCONFIG
       %(complex_dp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
       COMMON/%(proc_prefix)sLCOEFS/LOOPCOEFS
-      %(complex_dp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMMON/%(proc_prefix)sPW_PCOEFS/PCOEFS
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_dp_format)s WEFF(NBORNAMPS,NCOMB)
       %(real_dp_format)s BORN2
       COMMON/%(proc_prefix)sONIA_EFFECTIVE/WEFF,BORN2
@@ -1656,6 +1656,7 @@ C     derivatives of PL those of the last LOOP_n (PW_DPL), along the last
 C     direction PW_EPS. The shifts are those of TIRust: S_1 the sum of PL,
 C     S_J the sum of the first J-1.
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: PCOEFS => PWPCOEFS
       IMPLICIT NONE
       INTEGER NEXTERNAL, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -1665,8 +1666,7 @@ C     S_J the sum of the first J-1.
       %(mass_dp_format)s M2L(NLOOPLINE)
       %(complex_dp_format)s RES(3)
       LOGICAL STABLE
-      %(complex_dp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMMON/%(proc_prefix)sPW_PCOEFS/PCOEFS
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_dp_format)s PW_DPL(0:3,NEXTERNAL)
       COMMON/%(proc_prefix)sPW_DPL/PW_DPL
       INTEGER PW_ILZ
@@ -1778,7 +1778,7 @@ C  the pair. A propagator of line i with shift S_i(q1,q2) contributes
 C  through 1/D_i = 1/D - (D_1 e1 + D_2 e2 + D_12 e1 e2)/D^2
 C  + 2 D_1 D_2 e1 e2/D^3, with D_a = 2 (S_i-l).dS_ia, dS_ia = c_ia eps_a
 C  and D_12 = 2 dS_i1.dS_i2: the polynomials merged with the direction
-C  sums of the weights (PW2_PCOEFS)
+C  sums of the weights (PW2P1..PW2PT of module PW_DUAL)
 C     P1(mu) = N0 x VW1 + N2 x V3B,   P2(mu) = N0 x VW2 + N1 x V3A,
 C     PX = N0 x XW,                   PT(mu,nu) = N0 x TW
 C  (N_c the loop numerators) are reduced with raised propagator powers
@@ -2542,6 +2542,7 @@ C     and with V3A into P2 (once per ILZ1); its d/d eps2 component DWL2 with
 C     W2 and with V3B into P1 (once per ILZ2); its value WL with W0, with
 C     VW1 into P1, VW2 into P2, XW into PX and TW into PT (first pair)
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: P1 => PW2P1, P2 => PW2P2, PX => PW2PX, PT => PW2PT
       IMPLICIT NONE
       INTEGER NBORNAMPS, NCOMB, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NBORNAMPS=%(nbornamps)d, NCOMB=%(ncomb)d)
@@ -2553,11 +2554,7 @@ C     VW1 into P1, VW2 into P2, XW into PX and TW into PT (first pair)
       INTEGER RANK, LCUT_SIZE, LOOP_GROUP_NUMBER, SYMFACT, MULTIPLIER, COLOR_ID, HELCONFIG
       %(complex_dp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
       COMMON/%(proc_prefix)sLCOEFS/LOOPCOEFS
-      %(complex_dp_format)s P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_dp_format)s P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_dp_format)s PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-      %(complex_dp_format)s PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
-      COMMON/%(proc_prefix)sPW2_PCOEFS/P1,P2,PX,PT
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_dp_format)s WEFF(NBORNAMPS,NCOMB)
       %(real_dp_format)s BORN2
       COMMON/%(proc_prefix)sONIA_EFFECTIVE/WEFF,BORN2
@@ -2621,6 +2618,7 @@ C     (onia_loop.f header). PL and M2L are the lines and masses of the loop
 C     (TIR_interface.f), the derivatives of PL those of the last LOOP_n
 C     (PW_DPL along PW_EPS1, PW_DPL2 along PW_EPS2).
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: P1 => PW2P1, P2 => PW2P2, PX => PW2PX, PT => PW2PT
       IMPLICIT NONE
       INTEGER NEXTERNAL, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -2630,11 +2628,7 @@ C     (PW_DPL along PW_EPS1, PW_DPL2 along PW_EPS2).
       %(complex_dp_format)s M2L(NLOOPLINE)
       %(complex_dp_format)s RES(3)
       LOGICAL STABLE
-      %(complex_dp_format)s P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_dp_format)s P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_dp_format)s PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-      %(complex_dp_format)s PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
-      COMMON/%(proc_prefix)sPW2_PCOEFS/P1,P2,PX,PT
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_dp_format)s PW_DPL(0:3,NEXTERNAL)
       COMMON/%(proc_prefix)sPW_DPL/PW_DPL
       %(complex_dp_format)s PW_DPL2(0:3,NEXTERNAL)
@@ -3400,6 +3394,7 @@ C     TARGET in place of AMP and LOOPCOEFS
      & SYMFACT,MULTIPLIER,COLOR_ID,HELCONFIG)
 C     As PW_CREATE_LOOP_COEFS, in quadruple precision
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: PCOEFS => MPPWPCOEFS
       IMPLICIT NONE
       INTEGER NBORNAMPS, NCOMB, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NBORNAMPS=%(nbornamps)d, NCOMB=%(ncomb)d)
@@ -3409,8 +3404,7 @@ C     As PW_CREATE_LOOP_COEFS, in quadruple precision
       INTEGER RANK, LCUT_SIZE, LOOP_GROUP_NUMBER, SYMFACT, MULTIPLIER, COLOR_ID, HELCONFIG
       %(complex_mp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
       COMMON/%(proc_prefix)sMP_LCOEFS/LOOPCOEFS
-      %(complex_mp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMMON/%(proc_prefix)sMP_PW_PCOEFS/PCOEFS
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_mp_format)s WEFF(NBORNAMPS,NCOMB)
       COMMON/%(proc_prefix)sMP_ONIA_EFFECTIVE/WEFF
       %(complex_mp_format)s W2(NBORNAMPS,NCOMB,3), VW(NBORNAMPS,0:3,NCOMB)
@@ -3437,6 +3431,7 @@ C     As PW_CREATE_LOOP_COEFS, in quadruple precision
       SUBROUTINE %(proc_prefix)sMP_ONIA_PW_DOUBLED(I_SQSO,I_LOOPGROUP,CTMODE,NLOOPLINE,RANK,PL,M2L,RES,STABLE)
 C     As ONIA_PW_DOUBLED, in quadruple precision
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: PCOEFS => MPPWPCOEFS
       IMPLICIT NONE
       INTEGER NEXTERNAL, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -3446,8 +3441,7 @@ C     As ONIA_PW_DOUBLED, in quadruple precision
       %(mass_dp_format)s M2L(NLOOPLINE)
       %(complex_mp_format)s RES(3)
       LOGICAL STABLE
-      %(complex_mp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMMON/%(proc_prefix)sMP_PW_PCOEFS/PCOEFS
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_mp_format)s MP_PW_DPL(0:3,NEXTERNAL)
       COMMON/%(proc_prefix)sMP_PW_DPL/MP_PW_DPL
       INTEGER PW_ILZ
@@ -3944,6 +3938,7 @@ C     As PW_SPLIT_COEFS2, in quadruple precision
      & LOOP_GROUP_NUMBER,SYMFACT,MULTIPLIER,COLOR_ID,HELCONFIG)
 C     As PW_CREATE_LOOP_COEFS2, in quadruple precision
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: P1 => MPPW2P1, P2 => MPPW2P2, PX => MPPW2PX, PT => MPPW2PT
       IMPLICIT NONE
       INTEGER NBORNAMPS, NCOMB, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NBORNAMPS=%(nbornamps)d, NCOMB=%(ncomb)d)
@@ -3955,11 +3950,7 @@ C     As PW_CREATE_LOOP_COEFS2, in quadruple precision
       INTEGER RANK, LCUT_SIZE, LOOP_GROUP_NUMBER, SYMFACT, MULTIPLIER, COLOR_ID, HELCONFIG
       %(complex_mp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
       COMMON/%(proc_prefix)sMP_LCOEFS/LOOPCOEFS
-      %(complex_mp_format)s P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_mp_format)s P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_mp_format)s PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-      %(complex_mp_format)s PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
-      COMMON/%(proc_prefix)sMP_PW2_PCOEFS/P1,P2,PX,PT
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_mp_format)s WEFF(NBORNAMPS,NCOMB)
       COMMON/%(proc_prefix)sMP_ONIA_EFFECTIVE/WEFF
       %(complex_mp_format)s W1(NBORNAMPS,NCOMB,3), W2(NBORNAMPS,NCOMB,3)
@@ -4010,6 +4001,7 @@ C     As PW_CREATE_LOOP_COEFS2, in quadruple precision
       SUBROUTINE %(proc_prefix)sMP_ONIA_PW_DOUBLED(I_SQSO,I_LOOPGROUP,CTMODE,NLOOPLINE,RANK,PL,M2L,RES,STABLE)
 C     As ONIA_PW_DOUBLED (two P-wave states), in quadruple precision
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: P1 => MPPW2P1, P2 => MPPW2P2, PX => MPPW2PX, PT => MPPW2PT
       IMPLICIT NONE
       INTEGER NEXTERNAL, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -4019,11 +4011,7 @@ C     As ONIA_PW_DOUBLED (two P-wave states), in quadruple precision
       %(mass_dp_format)s M2L(NLOOPLINE)
       %(complex_mp_format)s RES(3)
       LOGICAL STABLE
-      %(complex_mp_format)s P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_mp_format)s P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_mp_format)s PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-      %(complex_mp_format)s PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
-      COMMON/%(proc_prefix)sMP_PW2_PCOEFS/P1,P2,PX,PT
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_mp_format)s MP_PW_DPL(0:3,NEXTERNAL)
       COMMON/%(proc_prefix)sMP_PW_DPL/MP_PW_DPL
       %(complex_mp_format)s MP_PW_DPL2(0:3,NEXTERNAL)
