@@ -1037,6 +1037,10 @@ c Include the FxFx Sudakovs into the prefactors
                call set_FxFx_scale(2,p1_cnt(0,1,0))
                call set_cms_stuff(mohdr)
                if (p(0,1).gt.0d0) call set_FxFx_scale(3,p)
+c Keep this fold's real clustering record with its owner (as the H
+c colours): the common one is overwritten by later folds.
+               call save_event_clustering_H(iFKS,ifold_counter,
+     $              p(0,1).gt.0d0)
             endif
 c check if event or counter-event passes cuts
             call set_cms_stuff(izero)
@@ -2221,7 +2225,7 @@ c     if there are no soft singularities at all, just do something trivial
       include 'nexternal.inc'
       include 'fks_info.inc'
       include 'orders.inc'
-      integer i_soft,isoft,i,i_S
+      integer i_soft,isoft,i,i_S,n_before
       integer orders(nsplitorders)
       integer get_orders_tag
       logical found_S
@@ -2251,7 +2255,16 @@ c which passed the coupling-order selection of add_wgt.
          if (cpower_pos.gt.0) wgtcpower=dble(orders(max(1,cpower_pos)))
          orders_tag=get_orders_tag(orders)
          amp_pos=amppos(i_S)
+         n_before=icontr
          call add_wgt(2,orders,1d-199,0d0,0d0)
+c It is added after all folds: give it the scales and coupling of the S
+c record i_S, not those left over from the last phase-space evaluation.
+c AQCDUP takes them only if all S records have real-emission scales
+c (types 11 and 12): then there is no Born-scale record to report.
+         if (icontr.gt.n_before) then
+            scales2(:,icontr)=scales2(:,i_S)
+            g_strong(icontr)=g_strong(i_S)
+         endif
       endif
       return
       end

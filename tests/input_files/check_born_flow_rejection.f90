@@ -124,6 +124,29 @@ program check_born_flow_rejection
       enddo
     enddo
     call deallocate_weight_lines()
+  elseif(trim(mode).eq.'fxfx_records')then
+    ! FxFx keeps the real clustering record of each sector and fold that can
+    ! own an H event (the common one holds only the last fold evaluated). A
+    ! fold whose real momenta could not be generated has none.
+    nndim=5
+    ickkw=3
+    mcatnlo_delta=.false.
+    ifks=5
+    jfks=3
+    abrv='all'
+    x=0.5d0
+    invalid_real_fold=2
+    call weight_lines_allocated(5,32,1,1)
+    dummy=sigintF(x,1d0,0,answer)
+    dummy=sigintF(x,1d0,1,answer)
+    dummy=sigintF(x,1d0,1,answer)
+    dummy=sigintF(x,1d0,2,answer)
+    if(nclustering_saves.ne.3)error stop 'missing FxFx clustering records'
+    if(any(saved_clustering(1,1:3).ne.1).or.any(saved_clustering(2,1:3).ne.[1,2,3])) &
+         error stop 'FxFx clustering record of another sector or fold'
+    if(any(saved_clustering_valid(1:3).neqv.[.true.,.false.,.true.])) &
+         error stop 'FxFx clustering record without real momenta'
+    call deallocate_weight_lines()
   elseif(trim(mode).eq.'massive_unfolded')then
     ! One unfolded massive sector without a soft endpoint. No other fold or
     ! sector can give an S event at this Born, so its flow stays negative.

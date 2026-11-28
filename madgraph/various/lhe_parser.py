@@ -49,6 +49,17 @@ except Exception as error:
 
 
 logger = logging.getLogger("madgraph.lhe_parser")
+
+# A Fortran D or E field with a two-digit exponent writes an exponent beyond
+# 99 without its letter (0.389379660000-190), which float() refuses.
+_letterless_exponent = re.compile(r'(?<=\d)([+-]\d{3}\b)')
+
+
+def _fortran_reals(text):
+    """Fortran numbers in text as float() reads them: D exponents as e,
+    and the exponent letter restored where Fortran dropped it."""
+    return _letterless_exponent.sub(r'e\1', text.lower().replace('d', 'e'))
+
 # Parsing/writing timers. Off by default (the perf_counter calls are not free
 # on the per-particle path); set MG_LHE_TIMERS=1 in the environment to collect
 # them. MadSpin prints the summary through _log_lhe_timers at the end of a run.
@@ -3036,7 +3047,7 @@ class Event(list):
         if start != -1 != stop:
             text = self.tag[start+8:stop]
             all_line = text.split('\n')
-            text = text.lower().replace('d','e')
+            text = _fortran_reals(text)
             all_line = text.split('\n')
             for line in all_line:
                 data = line.split()
@@ -3049,7 +3060,7 @@ class Event(list):
         start, stop = self.tag.find('<mgrwgt>'), self.tag.find('</mgrwgt>')
         if start != -1 != stop:
             text = self.tag[start+8:stop]
-            text = text.lower().replace('d','e')
+            text = _fortran_reals(text)
             all_line = text.split('\n')
             for line in all_line:
                 data = line.split()
@@ -6424,7 +6435,7 @@ class NLO_PARTIALWEIGHT(object):
 #0.929944817736d-03 0.000000000000d+00 0.000000000000d+00  5 21 3 -11 11 3 2 0.12112732d-02 0.45047393d-01 0.58606724d+03 0.58606724d+03 0.58606724d+03  2 11  3 0.835109616010d+02
         
         
-        text = text.lower().replace('d','e')
+        text = _fortran_reals(text)
         all_line = text.split('\n')
         #get global information
         first_line =''

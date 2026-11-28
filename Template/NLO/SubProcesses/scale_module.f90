@@ -13,6 +13,11 @@ module scale_module
   double precision,public :: shower_scale_hard,showerscaleS_hard
   ! The H colour assignment and its dipole scales must have the same owner.
   integer,public,allocatable :: event_colour_H(:,:,:,:)
+  ! FxFx: so must the real-emission clustering written with the H event.
+  type :: clustering_record
+     character(len=:),allocatable :: line
+  end type clustering_record
+  type(clustering_record),allocatable :: event_clustering_H(:,:)
 !  double precision,public :: SCALUP
   double precision,private :: global_ref_scale,shower_scale_factor
   double precision,private,parameter :: frac_low=0.1d0,frac_upp=1.0d0
@@ -23,7 +28,8 @@ module scale_module
   public :: compute_shower_scale_nbody,compute_shower_scale_n1body, &
        init_scale_module,Bornonly_shower_scale,get_random_shower_dipole_scale, &
        determine_partner,save_shower_scale_nbody,pythia8_S_scales, &
-       herwig7_S_scales,scalar_S_scales,set_FxFx_shower_scale_nbody
+       herwig7_S_scales,scalar_S_scales,set_FxFx_shower_scale_nbody, &
+       save_event_clustering_H,restore_event_clustering_H
   private
 contains
   
@@ -46,12 +52,43 @@ contains
          allocate(emsca_H(nfks,nfold,ndelH,ndelH))
     if (.not.allocated(event_colour_H)) &
          allocate(event_colour_H(2,nexternal,nfks,nfold))
+    if (ickkw_mod.eq.3 .and. .not.allocated(event_clustering_H)) &
+         allocate(event_clustering_H(nfks,nfold))
     if (.not.allocated(showerscaleS)) &
          allocate(showerscaleS(ndelS,ndelS))
     if (.not.allocated(showerscaleH)) &
          allocate(showerscaleH(ndelH,ndelH))
     shower_scale_factor=shower_scale_factor_in
   end subroutine init_scale_module
+
+  subroutine save_event_clustering_H(ifks,ifold,valid)
+    ! FxFx: the common record holds only the last real-emission clustering
+    ! evaluated, i.e. of the last fold. Keep this one with its owner and
+    ! fold; without (valid) real momenta there is none.
+    implicit none
+    integer,intent(in) :: ifks,ifold
+    logical,intent(in) :: valid
+    integer,parameter :: maxfksloc=512
+    character(len=2000) :: clusterstrings(0:maxfksloc)
+    common /c_clusterstrings/ clusterstrings
+    if (valid) then
+       event_clustering_H(ifks,ifold)%line=trim(clusterstrings(ifks))
+    else
+       event_clustering_H(ifks,ifold)%line=''
+    endif
+  end subroutine save_event_clustering_H
+
+  subroutine restore_event_clustering_H(ifks,ifold)
+    ! Write the real-emission clustering of the picked H owner and fold.
+    implicit none
+    integer,intent(in) :: ifks,ifold
+    integer,parameter :: maxfksloc=512
+    character(len=2000) :: clusterstrings(0:maxfksloc)
+    common /c_clusterstrings/ clusterstrings
+    clusterstrings(ifks)=''
+    if (allocated(event_clustering_H(ifks,ifold)%line)) &
+         clusterstrings(ifks)=event_clustering_H(ifks,ifold)%line
+  end subroutine restore_event_clustering_H
 
   logical function pythia8_S_scales()
     ! FxFx has its own clustering-scale prescription.

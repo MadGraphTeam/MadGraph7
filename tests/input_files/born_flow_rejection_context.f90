@@ -9,6 +9,8 @@ module flow_fixture
   logical :: no_event_projection=.false.
   logical :: fail_kinematics=.false.
   integer :: fail_weight_fold=0,fail_weight_stage=0
+  ! A fold whose real-emission momenta could not be generated.
+  integer :: invalid_real_fold=0
   double precision :: bad_weight=0d0
 contains
   subroutine add_record(value)
@@ -28,7 +30,7 @@ end module
 
 module fks_phase_space
   use fks_phase_space_data
-  use flow_fixture, only: outer_no_endpoint,real_no_endpoint,no_event_projection
+  use flow_fixture, only: outer_no_endpoint,real_no_endpoint,no_event_projection,invalid_real_fold
   implicit none
   type born_fixture
     logical :: valid=.false.,event_projection=.true.
@@ -56,10 +58,12 @@ contains
     integer :: ndim,config
     double precision :: jac,x(99)
     type(fks_phase_space_point) :: point
-    integer :: i_fks,j_fks
+    integer :: i_fks,j_fks,fold,ifold_counter
     common/fks_indices/i_fks,j_fks
+    common/cfl/fold,ifold_counter
     point=fks_phase_space_point()
     point%born%event_projection=.not.no_event_projection
+    if(ifold_counter.eq.invalid_real_fold)point%p(0,1)=-99d0
     p1_cnt(:,:,0)=1d0
     p1_cnt(:,i_fks,0)=0d0
     ! The reference sector itself, at the same radiation coordinates.
@@ -118,4 +122,15 @@ module scale_module
   integer :: born_flow_picked=0
   double precision :: emsca_H(1,8,5,5)=1d0
   double precision :: shower_scale_n1body(5,5)=1d0,shower_scale_nbody(4,4)=1d0
+  ! The FxFx real clustering records kept: (sector, fold) and validity.
+  integer :: nclustering_saves=0,saved_clustering(2,8)=0
+  logical :: saved_clustering_valid(8)=.false.
+contains
+  subroutine save_event_clustering_H(ifks,ifold,valid)
+    integer,intent(in) :: ifks,ifold
+    logical,intent(in) :: valid
+    nclustering_saves=nclustering_saves+1
+    saved_clustering(:,nclustering_saves)=[ifks,ifold]
+    saved_clustering_valid(nclustering_saves)=valid
+  end subroutine
 end module

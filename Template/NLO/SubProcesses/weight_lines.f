@@ -67,6 +67,29 @@
          group_member=group_members(group_start(igroup)+imember-1)
          end function group_member
 
+         integer function picked_scale_contr()
+! The contribution whose scales and strong coupling are those of the
+! event picked for writing. The summed contributions need not share
+! their scales: take the first one evaluated at the scales of the event
+! kinematics.
+! S events: an n-body term, not the real emission or MC term with
+!           n-body kinematics (types 11 and 12, real-emission scales).
+! H events: the real emission or MC term (types 1 and 13). Outside FxFx
+!           the G-function terms (8-10) use their counterevent scales.
+         integer k,ict
+         picked_scale_contr=icontr_picked
+         do k=1,group_size(icontr_picked)
+            ict=group_member(k,icontr_picked)
+            if (H_event(ict)) then
+               if (itype(ict).ne.1 .and. itype(ict).ne.13) cycle
+            elseif (itype(ict).eq.11 .or. itype(ict).eq.12) then
+               cycle
+            endif
+            picked_scale_contr=ict
+            return
+         enddo
+         end function picked_scale_contr
+
          subroutine allocate_born_spread_lines(nfolds)
          integer, intent(in) :: nfolds
          double precision, allocatable :: temp(:,:)

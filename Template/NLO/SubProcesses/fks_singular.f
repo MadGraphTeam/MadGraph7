@@ -3960,6 +3960,8 @@ c found the contribution that should be written:
          showerscaleH(1:ndelH,1:ndelH)=emsca_H(iFKS_picked,ifold_picked
      $        ,1:ndelH,1:ndelH)
          colour_connections=event_colour_H(:,:,iFKS_picked,ifold_picked)
+         if (ickkw_mod.eq.3)
+     $        call restore_event_clustering_H(iFKS_picked,ifold_picked)
       else
          Hevents=.false.
          i_process_addwrite=etoi(iproc_picked,nFKS(icontr_picked))

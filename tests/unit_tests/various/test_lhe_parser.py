@@ -81,6 +81,29 @@ class TestEvent(unittest.TestCase):
         event = lhe_parser.Event(self.mgrwt_event)
         self.assertIsNone(event.parse_beamstrahlung())
 
+    def test_nlo_weight_letterless_exponent(self):
+        """Fortran writes a D field with an exponent beyond 99 without its
+        letter (0.389379660000-190, e.g. the negligible weight of the soft
+        Born that aMC@NLO adds to some S events): <mgrwgt> must still parse."""
+
+        self.assertEqual(lhe_parser._fortran_reals(' 0.12D-03 -.5-120 21 -6 1.0e+100'),
+                         ' 0.12e-03 -.5e-120 21 -6 1.0e+100')
+        lhe = lhe_parser.EventFile(pjoin(MG5DIR, 'tests', 'input_files',
+                                         'ttbar_nlo.lhe.gz'))
+        try:
+            event = next(iter(lhe))
+        finally:
+            lhe.close()
+        start, stop = event.tag.index('<mgrwgt>'), event.tag.index('</mgrwgt>')
+        lines = event.tag[start:stop].split('\n')
+        icontr = next(i for i, line in enumerate(lines) if len(line.split()) > 16)
+        lines[icontr] = lines[icontr].replace(lines[icontr].split()[0],
+                                              '0.389379660000-190', 1)
+        event.tag = event.tag[:start] + '\n'.join(lines) + event.tag[stop:]
+        wgts = [w for cevent in event.parse_nlo_weight().cevents for w in cevent.wgts]
+        self.assertTrue(any(abs(w.pwgt[0] * w.bias_wgt / 3.8937966e-191 - 1) < 1e-12
+                            for w in wgts))
+
     def test_reconstruct_lo_weight(self):
         """The LO reweighting info (<mgrwt>) can be reconstructed from the event
         for a single-alpha_s process, matching what MadEvent writes."""

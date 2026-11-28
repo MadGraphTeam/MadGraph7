@@ -33,6 +33,8 @@ program check_mc_event_colours
   common /c_split_type/split_type
   integer :: colour_connections(2,nexternal)
   common /colour_connections_to_write/colour_connections
+  character(len=2000) :: clusterstrings(0:512)
+  common /c_clusterstrings/clusterstrings
   integer :: saved(2,nexternal),picked,fold_picked,draws_before
   integer, parameter :: ntest=257
   integer :: i,j,ii,mode,soft,reference(0:ntest,ntest),provenance(3,ntest)
@@ -99,6 +101,36 @@ program check_mc_event_colours
   call pick_unweight_contr(picked,fold_picked)
   if (picked.ne.1.or.fold_picked.ne.1) error stop 'wrong event owner'
   if (any(saved.ne.colour_connections)) error stop 'colours from a later sector'
+
+  ! FxFx: the clustering written with an H event belongs to the same
+  ! owner and fold, not to the last real clustering evaluated.
+  ickkw_mod=3
+  call init_scale_module(5,1d0,2,2)
+  clusterstrings(1)='<clustering type="real" iproc="1" fold 1>'
+  call save_event_clustering_H(1,1,.true.)
+  clusterstrings(2)='<clustering type="real" iproc="2" fold 1>'
+  call save_event_clustering_H(2,1,.true.)
+  call save_event_clustering_H(2,2,.false.)
+  clusterstrings(1)='<clustering type="real" iproc="1" fold 2>'
+  call save_event_clustering_H(1,2,.true.)
+  call pick_unweight_contr(picked,fold_picked)
+  if (clusterstrings(1).ne.'<clustering type="real" iproc="1" fold 1>') &
+       error stop 'clustering from a later fold'
+  ifold_cnt(1)=2
+  call pick_unweight_contr(picked,fold_picked)
+  if (fold_picked.ne.2.or.clusterstrings(1).ne. &
+       '<clustering type="real" iproc="1" fold 2>') &
+       error stop 'clustering not from the picked fold'
+  event_nFKS(1)=2
+  call pick_unweight_contr(picked,fold_picked)
+  if (picked.ne.2.or.clusterstrings(2).ne.'') &
+       error stop 'clustering without real momenta'
+  ifold_cnt(1)=1
+  call pick_unweight_contr(picked,fold_picked)
+  if (clusterstrings(2).ne.'<clustering type="real" iproc="2" fold 1>') &
+       error stop 'clustering from another sector'
+  event_nFKS(1)=1
+  ickkw_mod=0
 
   ! Equal momenta/scales with different colours are distinct events.
   icontr=2

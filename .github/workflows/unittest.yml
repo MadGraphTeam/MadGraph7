@@ -335,7 +335,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_allow_reversed_initial_state test_boost_to_restframe test_get_helicity_accepts_merged_map_kwarg test_identity_mapping test_merged_map_remapping test_out1_out2_are_inverse test_parse_event_nlo test_reordered_final_state test_y_eta_massless -t0
+            ./tests/test_manager.py test_allow_reversed_initial_state test_boost_to_restframe test_get_helicity_accepts_merged_map_kwarg test_identity_mapping test_merged_map_remapping test_out1_out2_are_inverse test_parse_event_nlo test_nlo_weight_letterless_exponent test_reordered_final_state test_y_eta_massless -t0
 
       # ---- unittest_config_location ----
       # tests/unit_tests/various/test_lhapdf_resolve.py: where the configuration
@@ -870,7 +870,7 @@ jobs:
       - uses: ./.github/actions/restore-pip-cache
       - name: Check shared Born providers and native subtraction
         run: |
-          ./tests/test_manager.py test_born_support test_born_amplitude_cache test_compact_model_state test_model_state_layout test_real_helicity_filter test_native_frame_masks TestPythia8FxFxPlugin test_amcatnlo_shower_preflight test_mcatnlo_delta_scales test_herwig7_scales test_soft_col_limits test_momentum_maps test_mc_dead_zones test_mc_kernels test_mc_event_colours test_mc_history_weights test_pdf_luminosity_cache test_cluster test_pythia8 test_pythia8_matching test_qed_mc_kernels test_pythia8_qed_dipoles test_qed_shower_scales test_pythia8_qed_support -t0
+          ./tests/test_manager.py test_born_support test_born_amplitude_cache test_compact_model_state test_model_state_layout test_real_helicity_filter test_native_frame_masks TestPythia8FxFxPlugin test_amcatnlo_shower_preflight test_mcatnlo_delta_scales test_herwig7_scales test_soft_col_limits test_momentum_maps test_mc_dead_zones test_mc_kernels test_mc_event_colours test_event_alphas test_mc_history_weights test_pdf_luminosity_cache test_cluster test_pythia8 test_pythia8_matching test_qed_mc_kernels test_pythia8_qed_dipoles test_qed_shower_scales test_pythia8_qed_support -t0
 
       # Leave /tmp empty for the next job on this self-hosted machine.
       - if: always()
