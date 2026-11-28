@@ -10,7 +10,7 @@ One proposal for how the NLO integrands get their matrix elements through UMAMI,
 - the survey of the providers `umami-nlo-providers.md` (4 November)
 - the key proposal "UMAMI keys for NLO, by correlation order" (14 November)
 
-It keeps what the integrands need for QCD, EW and mixed QCD-EW corrections, the keys and conventions, what the providers have and the open questions. [What changed from Theo's design](#what-changed-from-theos-design) is listed at the end. A local madspace prototype implements the NLO keys as provisional ([The prototype in madspace](#the-prototype-in-madspace)). Nothing of it is pushed.
+It keeps what the integrands need for QCD, EW and mixed QCD-EW corrections, the keys and conventions, what the providers have and the open questions. [What changed from Theo's design](#what-changed-from-theos-design) is listed at the end. A madspace prototype on the branch madspace-fks implements the NLO keys as provisional ([The prototype in madspace](#the-prototype-in-madspace)).
 
 ## Implemented real-provider scope
 
@@ -193,7 +193,7 @@ Gaps of the MadMatrix UMAMI implementation on Daniele's branch, as read on 1 Nov
 
 ## The prototype in madspace
 
-The NLO keys work end to end in a local prototype on madspace-fks, not pushed, in three commits:
+The NLO keys work end to end in a prototype on the branch madspace-fks, first in three commits:
 
 1. **Keys.** `IN_SPIN_LEGS`, `IN_SPIN_VECTORS`, `OUT_SQUARED_ORDERS`, `OUT_COLOR_CORRELATED`, `OUT_SPIN_CORRELATED`, `OUT_LOOP` and `META_SQUARED_ORDER_COUNT`, appended to the header of main and marked provisional. `MatrixElement` takes them, and `PythonFunction` gets outputs with shapes and reports its counts as metadata.
 2. **Adapter.** The Fortran provider of each subprocess as UMAMI libraries through `PythonFunction`: one Born, one real per real matrix element, one loop.
