@@ -57,6 +57,7 @@ C     times the unselected result.
       SAVE FAILED_WARNED
       INTEGER I
 ## if(OniaPwave){
+      %(real_dp_format)s P_REST(0:3,NEXTERNAL_PHYS)
       LOGICAL PW_REFUSED, PW_WARNED
       COMMON/%(proc_prefix)sPW_REFUSED/PW_REFUSED
       DATA PW_WARNED/.FALSE./
@@ -86,9 +87,13 @@ C     (ONIA_OTHERS_SEL); a J_z selection of the user is kept aside
 C       MadLoop sums over the selected constituent configurations
         USERHEL=-1
       ENDIF
-      CALL %(proc_prefix)sONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
 ## if(OniaPwave){
+C     a P-wave bound state almost at rest put exactly at rest
+      CALL %(proc_prefix)sONIA_PW_NEAR_REST(P_PHYS,P_REST)
+      CALL %(proc_prefix)sONIA_CONSTITUENT_MOMENTA(P_REST,P)
       PW_REFUSED=.FALSE.
+## } else {
+      CALL %(proc_prefix)sONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
 ## }
       CALL %(proc_prefix)sSLOOPMATRIX_CONSTITUENTS(P,ANS)
 C     At threshold only TIRust (MLReductionLib=9) reduces the integrals
@@ -234,6 +239,50 @@ C     boosted to the frame of the bound state
       ENDIF
       END
 
+## if(OniaPwave){
+      SUBROUTINE %(proc_prefix)sONIA_PW_NEAR_REST(P_IN,P_OUT)
+C     P_OUT: the physical momenta P_IN, with every P-wave bound state almost
+C     at rest (0 < |p| < 1E-6 E: e.g. the rounding of a boost to its rest
+C     frame) put exactly at rest. All momenta are boosted to its rest frame,
+C     then its 3-momentum is set to 0 (its mass kept). Near rest the
+C     helicity basis of its constituent spinors turns with the relative
+C     momentum like 1/|p|: the derivative of a P wave then loses
+C     eps_mach E/|p| in the cancellation between projector and amplitudes
+C     (chi_c0 > g g: 15%% at |p| = 1E-15 E, 1E-4 at 1E-12 E). Exactly at rest
+C     the spinors have a fixed axis. The results summed over the
+C     polarisations are Lorentz invariant, and the J_z axis of such a state
+C     (its direction of flight) would be the rounding of its momentum.
+      IMPLICIT NONE
+      INTEGER NEXTERNAL_PHYS
+      PARAMETER (NEXTERNAL_PHYS=%(onia_nexternal_phys)d)
+      %(real_dp_format)s P_IN(0:3,NEXTERNAL_PHYS), P_OUT(0:3,NEXTERNAL_PHYS)
+      INCLUDE 'onia_loop_data.inc'
+      %(real_dp_format)s B(3), B2, G, BP, F, PV2, Q(0:3)
+      INTEGER K, I, J
+      P_OUT(0:3,1:NEXTERNAL_PHYS)=P_IN(0:3,1:NEXTERNAL_PHYS)
+      DO K=1,ONIA_NONIA
+        IF (ONIA_L(K).NE.1) CYCLE
+        I=ONIA_MAPPING(ONIA_Q1(K))
+        PV2=P_OUT(1,I)**2+P_OUT(2,I)**2+P_OUT(3,I)**2
+        IF (PV2.EQ.0D0.OR.PV2.GE.(1D-6*P_OUT(0,I))**2) CYCLE
+        B(1:3)=-P_OUT(1:3,I)/P_OUT(0,I)
+        B2=B(1)**2+B(2)**2+B(3)**2
+        G=1D0/SQRT(1D0-B2)
+        DO J=1,NEXTERNAL_PHYS
+          IF (J.EQ.I) CYCLE
+C         (G-1)/B2 = G^2/(G+1), exact for a tiny velocity
+          BP=B(1)*P_OUT(1,J)+B(2)*P_OUT(2,J)+B(3)*P_OUT(3,J)
+          F=G**2/(G+1D0)*BP+G*P_OUT(0,J)
+          Q(0)=G*(P_OUT(0,J)+BP)
+          Q(1:3)=P_OUT(1:3,J)+F*B(1:3)
+          P_OUT(0:3,J)=Q(0:3)
+        ENDDO
+        P_OUT(0,I)=SQRT(P_OUT(0,I)**2-PV2)
+        P_OUT(1:3,I)=0D0
+      ENDDO
+      END
+
+## }
       SUBROUTINE %(proc_prefix)sONIA_SET_RELATIVE_MOMENTUM(Q)
 C     Diagnostic: give the constituents of every bound state the relative
 C     momentum +-Q (a 3-vector in the rest frame of the bound state, which
@@ -464,7 +513,8 @@ C     gives P itself)
       ENDIF
       G=1.0E0_16/SQRT(1.0E0_16-B2)
       BP=B(1)*P(1)+B(2)*P(2)+B(3)*P(3)
-      F=(G-1.0E0_16)*BP/B2+G*P(0)
+C     (G-1)/B2 = G^2/(G+1), exact for a tiny velocity
+      F=G**2/(G+1.0E0_16)*BP+G*P(0)
       Q(0)=G*(P(0)+BP)
       Q(1:3)=P(1:3)+F*B(1:3)
       END
@@ -1446,6 +1496,12 @@ C     partons k need no sign)
       MQ=CMASS(ONIA_Q1(ONIA_IPW))
       MQB=CMASS(ONIA_Q2(ONIA_IPW))
       R=MQ/MQB
+## if(OniaInitial){
+C     a decaying pair, crossed to all-outgoing momenta, is the produced pair
+C     of momentum -P with m_Q and m_Qbar exchanged: R -> 1/R (only the total
+C     charge part (1/R-R)/2 of Q_eff(88) changes, for unequal masses)
+      IF (ONIA_IN(ONIA_IPW).EQ.1) R=MQB/MQ
+## }
       MSUM=2D0+R+1D0/R
       FAC=FACT/DBLE(ONIA_IDEN)
 C     the cross vectors k.VEC(k)
@@ -2504,9 +2560,11 @@ C     dipole-dipole pole. It is not added to ANS.
       %(real_dp_format)s P_PHYS(0:3,NEXTERNAL_PHYS), MU_L, CT(2)
       INCLUDE 'coupl.inc'
       %(real_dp_format)s P(0:3,NEXTERNAL), CMASS(NEXTERNAL), PDD, AO2PI, PI
+      %(real_dp_format)s P_REST(0:3,NEXTERNAL_PHYS)
       PI=4D0*DATAN(1D0)
       AO2PI=G**2/(8D0*PI**2)
-      CALL %(proc_prefix)sONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
+      CALL %(proc_prefix)sONIA_PW_NEAR_REST(P_PHYS,P_REST)
+      CALL %(proc_prefix)sONIA_CONSTITUENT_MOMENTA(P_REST,P)
       CALL %(proc_prefix)sONIA_PREPARE(P)
       CALL %(proc_prefix)sONIA_MASSES(CMASS)
       CALL %(proc_prefix)sONIA_PW2_DIPOLE_DIPOLE(CMASS,PDD)
@@ -4427,7 +4485,11 @@ C     prepares the effective Born.
       ANSB(1)=BORN2
       END
 
+## if(OniaPwave){
+      SUBROUTINE %(proc_prefix)sONIA_IR_POLES(P_USER,POLES)
+## } else {
       SUBROUTINE %(proc_prefix)sONIA_IR_POLES(P_PHYS,POLES)
+## }
 C     The IR poles of the renormalised virtual predicted by the universal
 C     structure of the one-loop amplitudes (Catani, Dittmaier, Trocsanyi,
 C     hep-ph/0011222; arXiv:2402.19221 eqs. (216)-(217) for S waves): a
@@ -4441,6 +4503,9 @@ C     SLOOPMATRIX (alpha_s/(2 pi) (4 pi)^eps/Gamma(1-eps) at the scale MU_R).
       PARAMETER (NEXTERNAL=%(nexternal)d, NEXTERNAL_PHYS=%(onia_nexternal_phys)d)
       PARAMETER (NBORNAMPS=%(nbornamps)d, NINCOMING=%(nincoming)d)
       %(real_dp_format)s P_PHYS(0:3,NEXTERNAL_PHYS), POLES(2)
+## if(OniaPwave){
+      %(real_dp_format)s P_USER(0:3,NEXTERNAL_PHYS)
+## }
       INCLUDE 'onia_loop_data.inc'
       INCLUDE 'onia_loop_links.inc'
       INCLUDE 'coupl.inc'
@@ -4462,6 +4527,11 @@ C     SLOOPMATRIX (alpha_s/(2 pi) (4 pi)^eps/Gamma(1-eps) at the scale MU_R).
       PI=4D0*DATAN(1D0)
       MU2=MU_R**2
       AO2PI=G**2/(8D0*PI**2)
+## if(OniaPwave){
+C     a P-wave bound state almost at rest put exactly at rest, as in
+C     SLOOPMATRIX
+      CALL %(proc_prefix)sONIA_PW_NEAR_REST(P_USER,P_PHYS)
+## }
       CALL %(proc_prefix)sONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
       CALL %(proc_prefix)sONIA_PREPARE(P)
       CALL %(proc_prefix)sONIA_MASSES(CMASS)

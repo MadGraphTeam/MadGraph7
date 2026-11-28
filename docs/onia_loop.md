@@ -190,9 +190,16 @@ particle. The momenta are on shell with the bound-state mass m1 + m2: set its
   P-wave state at rest decaying into three particles was wrong in double
   precision with the static derivative arrays (chic1 > u u~ g, chic0 > e+ e-
   a; diagnosed with TIRust, `references/tirust_traces/onium_decay`); the
-  allocatable arrays give the boosted values at rest. A boost by a tiny
-  velocity (1e-12) is ill-conditioned (the result and the predicted poles
-  move by 1e-4 to 1e-1).
+  allocatable arrays give the boosted values at rest.
+- **Almost at rest.** A P-wave bound state almost at rest (0 < |p| < 1e-6 E,
+  e.g. the rounding of a boost to its rest frame, as in FKS) is put exactly
+  at rest by the wrapper (`ONIA_PW_NEAR_REST`; also in ONIA_IR_POLES): all
+  momenta are boosted by that tiny velocity. Near rest the helicity spinors
+  of the constituents turn with the relative momentum like 1/|p|, and the
+  P-wave derivative lost eps_mach E/|p| in cancellations (chi_c0 > g g: 15%
+  at |p| = 1e-15 E). The J_z axis of such a state, its direction of flight,
+  is the rounding of its momentum: at rest it is the z axis. This holds for
+  produced P waves too.
 - **Checks** (`test_quarkonium_decay_loop_standalone`):
   - The textbook corrections, at rest and boosted, with vanishing poles:
     eta_c > a a gives 1 - (20-pi^2)/3 alpha_s/pi, J/psi > e+ e- gives

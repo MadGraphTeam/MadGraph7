@@ -5016,7 +5016,9 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
           values of Petrelli et al. of test_quarkonium_loop_standalone;
         - eta_c > g g and chi_c1 > u u~ g: the poles are those of
           ONIA_IR_POLES, with the P -> S term of the decaying P wave;
-        - eta_c > a a in forced quadruple precision."""
+        - eta_c > a a in forced quadruple precision;
+        - the P-wave decays almost at rest (a 3-momentum of 1e-15 M): the
+          values at rest."""
 
         import sys
         import math
@@ -5070,6 +5072,18 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
             onia_loop_check.set_reduction(outdir, [9])
             results = onia_loop_check.run_points(pdir, points, mu=masses[0])
             self.assertEqual(len(results), len(points))
+            if pwave:
+                # a P wave almost at rest (the decaying momentum with a
+                # rounding-size 3-momentum, as after a boost to its rest
+                # frame): put exactly at rest (ONIA_PW_NEAR_REST), the
+                # result of the point at rest
+                near = [list(v) for v in points[0]]
+                near[0][1:] = [3e-16 * masses[0], -7e-16 * masses[0], 5e-16 * masses[0]]
+                r_near, = onia_loop_check.run_points(pdir, [near], mu=masses[0])
+                for key in ('born', 'finite', 'single', 'double'):
+                    self.assertLess(abs(r_near[key] - results[0][key]),
+                                    1e-12 * abs(results[0]['born']) + 1e-12 * abs(results[0][key]),
+                                    (process, key))
             if i == 0:
                 # forced quadruple precision: the decaying state on its mass
                 # shell at the QP rounding (MP_ONIA_DECAY_ON_SHELL), so that

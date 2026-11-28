@@ -68,6 +68,7 @@ C     times the unselected result.
       DATA FAILED_WARNED/.FALSE./
       SAVE FAILED_WARNED
       INTEGER I
+      REAL*8 P_REST(0:3,NEXTERNAL_PHYS)
       LOGICAL PW_REFUSED, PW_WARNED
       COMMON/ML5_0_PW_REFUSED/PW_REFUSED
       DATA PW_WARNED/.FALSE./
@@ -97,7 +98,9 @@ C     (ONIA_OTHERS_SEL); a J_z selection of the user is kept aside
 C       MadLoop sums over the selected constituent configurations
         USERHEL=-1
       ENDIF
-      CALL ML5_0_ONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
+C     a P-wave bound state almost at rest put exactly at rest
+      CALL ML5_0_ONIA_PW_NEAR_REST(P_PHYS,P_REST)
+      CALL ML5_0_ONIA_CONSTITUENT_MOMENTA(P_REST,P)
       PW_REFUSED=.FALSE.
       CALL ML5_0_SLOOPMATRIX_CONSTITUENTS(P,ANS)
 C     At threshold only TIRust (MLReductionLib=9) reduces the integrals
@@ -255,6 +258,54 @@ C     boosted to the frame of the bound state
           P(0:3,ONIA_Q2(K))=P(0:3,ONIA_Q2(K))-QLAB(0:3)
         ENDDO
       ENDIF
+      END
+
+      SUBROUTINE ML5_0_ONIA_PW_NEAR_REST(P_IN,P_OUT)
+C     P_OUT: the physical momenta P_IN, with every P-wave bound state
+C      almost
+C     at rest (0 < |p| < 1E-6 E: e.g. the rounding of a boost to its
+C      rest
+C     frame) put exactly at rest. All momenta are boosted to its rest
+C      frame,
+C     then its 3-momentum is set to 0 (its mass kept). Near rest the
+C     helicity basis of its constituent spinors turns with the relative
+C     momentum like 1/|p|: the derivative of a P wave then loses
+C     eps_mach E/|p| in the cancellation between projector and
+C      amplitudes
+C     (chi_c0 > g g: 15% at |p| = 1E-15 E, 1E-4 at 1E-12 E). Exactly
+C      at rest
+C     the spinors have a fixed axis. The results summed over the
+C     polarisations are Lorentz invariant, and the J_z axis of such a
+C      state
+C     (its direction of flight) would be the rounding of its momentum.
+      IMPLICIT NONE
+      INTEGER NEXTERNAL_PHYS
+      PARAMETER (NEXTERNAL_PHYS=4)
+      REAL*8 P_IN(0:3,NEXTERNAL_PHYS), P_OUT(0:3,NEXTERNAL_PHYS)
+      INCLUDE 'onia_loop_data.inc'
+      REAL*8 B(3), B2, G, BP, F, PV2, Q(0:3)
+      INTEGER K, I, J
+      P_OUT(0:3,1:NEXTERNAL_PHYS)=P_IN(0:3,1:NEXTERNAL_PHYS)
+      DO K=1,ONIA_NONIA
+        IF (ONIA_L(K).NE.1) CYCLE
+        I=ONIA_MAPPING(ONIA_Q1(K))
+        PV2=P_OUT(1,I)**2+P_OUT(2,I)**2+P_OUT(3,I)**2
+        IF (PV2.EQ.0D0.OR.PV2.GE.(1D-6*P_OUT(0,I))**2) CYCLE
+        B(1:3)=-P_OUT(1:3,I)/P_OUT(0,I)
+        B2=B(1)**2+B(2)**2+B(3)**2
+        G=1D0/SQRT(1D0-B2)
+        DO J=1,NEXTERNAL_PHYS
+          IF (J.EQ.I) CYCLE
+C         (G-1)/B2 = G^2/(G+1), exact for a tiny velocity
+          BP=B(1)*P_OUT(1,J)+B(2)*P_OUT(2,J)+B(3)*P_OUT(3,J)
+          F=G**2/(G+1D0)*BP+G*P_OUT(0,J)
+          Q(0)=G*(P_OUT(0,J)+BP)
+          Q(1:3)=P_OUT(1:3,J)+F*B(1:3)
+          P_OUT(0:3,J)=Q(0:3)
+        ENDDO
+        P_OUT(0,I)=SQRT(P_OUT(0,I)**2-PV2)
+        P_OUT(1:3,I)=0D0
+      ENDDO
       END
 
       SUBROUTINE ML5_0_ONIA_SET_RELATIVE_MOMENTUM(Q)
@@ -1543,9 +1594,11 @@ C     dipole-dipole pole. It is not added to ANS.
       REAL*8 P_PHYS(0:3,NEXTERNAL_PHYS), MU_L, CT(2)
       INCLUDE 'coupl.inc'
       REAL*8 P(0:3,NEXTERNAL), CMASS(NEXTERNAL), PDD, AO2PI, PI
+      REAL*8 P_REST(0:3,NEXTERNAL_PHYS)
       PI=4D0*DATAN(1D0)
       AO2PI=G**2/(8D0*PI**2)
-      CALL ML5_0_ONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
+      CALL ML5_0_ONIA_PW_NEAR_REST(P_PHYS,P_REST)
+      CALL ML5_0_ONIA_CONSTITUENT_MOMENTA(P_REST,P)
       CALL ML5_0_ONIA_PREPARE(P)
       CALL ML5_0_ONIA_MASSES(CMASS)
       CALL ML5_0_ONIA_PW2_DIPOLE_DIPOLE(CMASS,PDD)
@@ -3208,7 +3261,7 @@ C     prepares the effective Born.
       ANSB(1)=BORN2
       END
 
-      SUBROUTINE ML5_0_ONIA_IR_POLES(P_PHYS,POLES)
+      SUBROUTINE ML5_0_ONIA_IR_POLES(P_USER,POLES)
 C     The IR poles of the renormalised virtual predicted by the
 C      universal
 C     structure of the one-loop amplitudes (Catani, Dittmaier,
@@ -3228,6 +3281,7 @@ C      MU_R).
       PARAMETER (NEXTERNAL=6, NEXTERNAL_PHYS=4)
       PARAMETER (NBORNAMPS=16, NINCOMING=2)
       REAL*8 P_PHYS(0:3,NEXTERNAL_PHYS), POLES(2)
+      REAL*8 P_USER(0:3,NEXTERNAL_PHYS)
       INCLUDE 'onia_loop_data.inc'
       INCLUDE 'onia_loop_links.inc'
       INCLUDE 'coupl.inc'
@@ -3247,6 +3301,9 @@ C      MU_R).
       PI=4D0*DATAN(1D0)
       MU2=MU_R**2
       AO2PI=G**2/(8D0*PI**2)
+C     a P-wave bound state almost at rest put exactly at rest, as in
+C     SLOOPMATRIX
+      CALL ML5_0_ONIA_PW_NEAR_REST(P_USER,P_PHYS)
       CALL ML5_0_ONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
       CALL ML5_0_ONIA_PREPARE(P)
       CALL ML5_0_ONIA_MASSES(CMASS)
