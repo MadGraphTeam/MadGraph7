@@ -636,7 +636,7 @@ C     the S_z combinations with a non-zero Clebsch-Gordan weight
       DOUBLE PRECISION ONIA_ABSAMP(NGRAPHS)
       COMMON/ONIA_SOFT_AMPPRL/ONIA_RLAST
       DOUBLE PRECISION ONIA_FLUSH_REL
-      PARAMETER (ONIA_FLUSH_REL=1.0D-18)
+      PARAMETER (ONIA_FLUSH_REL=1.0D-24)
 C     ----------
 C     BEGIN CODE
 C     ----------
@@ -1290,7 +1290,7 @@ C     the S_z combinations with a non-zero Clebsch-Gordan weight
       DOUBLE PRECISION ONIA_ABSAMP(NGRAPHS)
       COMMON/ONIA_SOFT_AMPS1_1RL/ONIA_RLAST
       DOUBLE PRECISION ONIA_FLUSH_REL
-      PARAMETER (ONIA_FLUSH_REL=1.0D-18)
+      PARAMETER (ONIA_FLUSH_REL=1.0D-24)
 C     ----------
 C     BEGIN CODE
 C     ----------

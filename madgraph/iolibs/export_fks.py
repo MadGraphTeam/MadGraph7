@@ -2794,7 +2794,9 @@ As a result, the default card will not be tailored to the process generated.""")
         return text % kernel_dict + flush_routines
 
     # a helicity amplitude below this fraction of its bound is rounding noise
-    ONIA_FLUSH_REL = 1e-18
+    # (get_onia_flush): S-wave kernels, and P-wave kernels (the stencil)
+    ONIA_FLUSH_REL = 1e-28
+    ONIA_FLUSH_REL_PWAVE = 1e-24
 
     def get_onia_flush(self, matrix_element, kname, basis, state, pwave=False):
         """The numerical test of a Born-type onium kernel for amplitudes that
@@ -2807,11 +2809,18 @@ As a result, the default card will not be tailored to the process generated.""")
         A_d: open amplitudes times the moduli of the spin-projector,
         Clebsch-Gordan and stencil weights. The bound is thus taken before
         any cancellation, also when every diagram of a helicity vanishes
-        alone (angular momentum): rounding gives M2/SCALE ~ 1d-32, the
-        P-wave stencil (error (h/M)**7 against B) ~ 1d-28, a genuine
-        amplitude > 1d-8 ((h/M)**2 for a P wave): below ONIA_FLUSH_REL the
-        amplitudes of that helicity are set to zero, so that the Born, its
-        colour links and the soft currents built from them vanish together.
+        alone (angular momentum): rounding gives M2/SCALE ~ 1d-32 (measured
+        <= 1.5d-32 for every vanishing 2 -> 1 Born and auxiliary Born), the
+        P-wave stencil (error (h/M)**7 against B) at most ~ 1d-28. A genuine
+        amplitude is not bounded away from that: near a collinear limit the
+        t-channel diagrams grow like 1/t while their sum stays finite and
+        exact to rounding, so M2/SCALE falls like theta**4 (g g > J/psi g,
+        gluon at theta from the beam: 4.5d-3 theta**4, a Born exact to 1d-14
+        at theta = 1d-7). Below ONIA_FLUSH_REL (1d-28; P-wave kernels
+        ONIA_FLUSH_REL_PWAVE = 1d-24, above the stencil) the amplitudes of
+        that helicity are set to zero, so that the Born, its colour links and
+        the soft currents built from them vanish together. (A bound of 1d-18
+        zeroed the J/psi + jet Born within theta ~ 1.2d-4 of the beam.)
         M2/SCALE of the last call is kept in COMMON /<kname>RL/ (checks).
         Returns the declarations, the test, the initialisation and the
         accumulation of B for the kernel (pwave: the P-wave template, whose
@@ -2823,7 +2832,8 @@ As a result, the default card will not be tailored to the process generated.""")
             '      DOUBLE PRECISION ONIA_ABSAMP(NGRAPHS)',
             '      COMMON/%sRL/ONIA_RLAST' % kname,
             '      DOUBLE PRECISION ONIA_FLUSH_REL',
-            '      PARAMETER (ONIA_FLUSH_REL=%s)' % ('%.1e' % self.ONIA_FLUSH_REL).replace('e', 'D')])
+            '      PARAMETER (ONIA_FLUSH_REL=%s)' % ('%.1e' % (
+                self.ONIA_FLUSH_REL_PWAVE if pwave else self.ONIA_FLUSH_REL)).replace('e', 'D')])
         test = '\n'.join([
             'C     an amplitude that vanishes identically (symmetry, colour,',
             'C     helicity, dynamics) is rounding noise here: set to zero',

@@ -410,7 +410,15 @@ class TestFKSOniaGeneration(unittest.TestCase):
                 self.assertIn('SUBROUTINE KNJF(AMP,JAMP)', routines)
                 self.assertIn('NCOLOR=%d)' % ncolor, routines, line)
                 self.assertIn('CF(1,1) = ', routines)
-        self.assertLess(exporter.ONIA_FLUSH_REL, 1e-16)
+                self.assertIn('PARAMETER (ONIA_FLUSH_REL=1.0D-28)', decl)
+                decl = exporter.get_onia_flush(born_me, 'KN', born_me['color_basis'], None,
+                                               pwave=True)[0]
+                self.assertIn('PARAMETER (ONIA_FLUSH_REL=1.0D-24)', decl)
+        # above rounding (<= 1.5e-32 measured, the P-wave stencil <= 1e-28) and
+        # far below 1e-18, which zeroed the J/psi + jet Born near the beam
+        # (M2/SCALE = 4.5e-3 theta**4 there)
+        self.assertTrue(1e-30 <= exporter.ONIA_FLUSH_REL <= 1e-26)
+        self.assertTrue(exporter.ONIA_FLUSH_REL < exporter.ONIA_FLUSH_REL_PWAVE <= 1e-22)
 
     def test_missing_singular_borns(self):
         """A real whose soft or collinear region has no generated Born is
