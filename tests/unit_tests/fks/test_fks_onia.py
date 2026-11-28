@@ -747,6 +747,32 @@ class TestFKSOniaGeneration(unittest.TestCase):
         finally:
             shutil.rmtree(tmp)
 
+    def test_decay_flows_and_vanishing(self):
+        """A decaying octet in the event record: its (colour, anticolour)
+        take the LHE order of an incoming particle (its colour flows into
+        an outgoing colour, as for g g > 1S0[8]), which MadFKS's colour
+        checks require (check_QCD_flows). The vanishing 2 -> 1 Borns
+        (Landau-Yang, C, P, colour) vanish in the time-reversed decays."""
+        import madgraph.core.helas_objects as helas_objects
+        born, = self.generate('etac(1|1S08) > g g [real=QCD]')
+        me = helas_objects.HelasMatrixElement(born.born_amp)
+        ids, flows = fks_onia.leshouche_view(born.born_amp['process'], me['color_basis'], 1)
+        self.assertEqual(ids, [9941001, 21, 21])
+        for flow in flows:
+            (c1, a1), (c2, a2), (c3, a3) = flow
+            # incoming colour to an outgoing colour, incoming anticolour to
+            # an outgoing anticolour
+            self.assertIn(c1, (c2, c3))
+            self.assertIn(a1, (a2, a3))
+        model = born.born_amp['process']['model']
+        for line, zero in (('chic1(1|3P11) > g g', True), ('chic1(1|3P11) > u u~', True),
+                           ('chic0(1|3P01) > u u~', True), ('Jpsi(1|3S18) > g g', True),
+                           ('chic0(1|3P01) > g g', False), ('Jpsi(1|3S18) > u u~', False),
+                           ('etac(1|1S01) > g g', False)):
+            born = self.generate(line + ' [real=QCD]')[0]
+            self.assertEqual(fks_onia.vanishing_2to1(born.born_amp['process']['legs'], model),
+                             zero, line)
+
     def test_decay_born_onia(self):
         """born_onia.f of a decaying P wave: ISV = -1 (incoming orbital
         polarisation vectors, the sign of -P in the cross vectors and the

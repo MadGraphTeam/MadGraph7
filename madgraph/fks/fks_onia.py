@@ -374,6 +374,10 @@ def leshouche_view(proc, color_basis, ninitial):
     repr_dict = {}
     for l, n in zip(plegs, labels):
         repr_dict[n] = physical_colour(l, model) * (-1) ** (1 + l.get('state'))
+    # the keys are constituent numbers: the initial legs whose (colour,
+    # anticolour) take the LHE order are those of the constituent process
+    # (the two of a decaying onium, labelled by its antiquark)
+    ninitial = len([l for l in legs if not l.get('state')])
     flows = color_basis.get_flow_basis().color_flow_decomposition(repr_dict, ninitial)
     return ids, [[tuple(flow[n]) for n in labels] for flow in flows]
 
@@ -914,23 +918,30 @@ _ZERO_QQ = set([(0, 0, 0, 1), (0, 0, 0, 8), (0, 1, 1, 1), (1, 0, 1, 1), (1, 0, 1
 
 def vanishing_2to1(legs, model, state=None):
     """True when legs (the constituent legs of a Born) are a 2 -> 1
-    production of a quarkonium from g g or a massless q qbar whose amplitude
+    production of a quarkonium from g g or a massless q qbar, or its time
+    reverse, the decay of a quarkonium into g g or q qbar, whose amplitude
     vanishes identically (_ZERO_GG, _ZERO_QQ: Landau-Yang, C and P parity,
     helicity, colour). state = dict(L, S, J, C) replaces the quantum numbers
     of the quarkonium (the auxiliary S-wave Borns of a P-wave soft current).
     The projected amplitudes of such Borns are rounding noise, not zero
-    (the P-wave derivative is numerical): the generated kernels return zero
-    for them (export_fks.get_onia_kernel)."""
+    (the P-wave derivative is numerical): the generated kernels test them
+    against rounding (export_fks.get_onia_flush)."""
     phys = physical_legs(legs)
     initial = [l for l in phys if not l.get('state')]
     final = [l for l in phys if l.get('state')]
-    if len(initial) != 2 or len(final) != 1 or not onium_of(final[0]) \
-            or not is_quarkonium(final[0], model):
+    if len(initial) == 2 and len(final) == 1:
+        onium_leg, partons = final[0], initial
+    elif len(initial) == 1 and len(final) == 2:
+        onium_leg, partons = initial[0], final
+    else:
         return False
-    onium = dict(onium_of(final[0]))
+    if not onium_of(onium_leg) or not is_quarkonium(onium_leg, model) or \
+            any(onium_of(l) for l in partons):
+        return False
+    onium = dict(onium_of(onium_leg))
     if state:
         onium.update(state)
-    a, b = initial[0].get('id'), initial[1].get('id')
+    a, b = partons[0].get('id'), partons[1].get('id')
     pdict = model.get('particle_dict')
     key = (onium.get('L', 0), onium.get('S'), onium.get('J'), onium.get('C'))
     if a == b == 21:

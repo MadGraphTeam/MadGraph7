@@ -1,4 +1,4 @@
-      SUBROUTINE BORN_ONIA_SOFT(P,VEC,TEN,BAUX,DD,VPAR)
+      SUBROUTINE BORN_ONIA_SOFT(P_IN,VEC,TEN,BAUX,DD,VPAR)
 C
 %(info_lines)s
 C
@@ -55,7 +55,7 @@ C
 C
 C ARGUMENTS
 C
-      REAL*8 P(0:3,NB), VEC(0:3,NB,NPQ), BAUX(NAUXMAX,NPQ)
+      REAL*8 P_IN(0:3,NB), VEC(0:3,NB,NPQ), BAUX(NAUXMAX,NPQ)
       COMPLEX*16 TEN(0:3,0:3,NPQ)
       REAL*8 DD(0:3,0:3,NPAIRX)
       COMPLEX*16 VPAR(0:3,0:3,NPAIRX)
@@ -88,6 +88,7 @@ C
       COMPLEX*16 V(0:3,MAXCOLS,NAUXMAX,NPQ), Z, ZT(0:3,0:3)
       COMPLEX*16 W(0:3,0:3,MAXCOLS)
       TYPE(ALOHA) EPS, EPS1, EPS2
+      REAL*8 P(0:3,NB), PABS, BETA(3), B2, GAMB, BP, FB
       REAL*8 PLAST(0:3,NB), VEC_S(0:3,NB,NPQ), BAUX_S(NAUXMAX,NPQ)
       COMPLEX*16 TEN_S(0:3,0:3,NPQ), VPAR_S(0:3,0:3,NPAIRX)
       REAL*8 DD_S(0:3,0:3,NPAIRX)
@@ -104,6 +105,26 @@ C
 C ----------
 C BEGIN CODE
 C ----------
+C     A P-wave onium within rounding of rest (0 < |p| < 1d-6 E): all
+C     momenta boosted by its velocity, its 3-momentum set to zero, as in
+C     the kernels (onia_amp_kernel_fks_pwave.inc), so that the polarisation
+C     vectors here and the J_z of the kernels have the same axes
+      P(:,:) = P_IN(:,:)
+      DO H = 1, NPQ
+        PABS = SQRT(P(1,QQ(H))**2+P(2,QQ(H))**2+P(3,QQ(H))**2)
+        IF (PABS.GT.0D0 .AND. PABS.LT.1D-6*P(0,QQ(H))) THEN
+          BETA(1:3) = -P(1:3,QQ(H))/P(0,QQ(H))
+          B2 = BETA(1)**2+BETA(2)**2+BETA(3)**2
+          GAMB = 1D0/SQRT(1D0-B2)
+          DO K = 1, NB
+            BP = BETA(1)*P(1,K)+BETA(2)*P(2,K)+BETA(3)*P(3,K)
+            FB = (GAMB-1D0)*BP/B2+GAMB*P(0,K)
+            P(0,K) = GAMB*(P(0,K)+BP)
+            P(1:3,K) = P(1:3,K)+FB*BETA(1:3)
+          ENDDO
+          P(1:3,QQ(H)) = 0D0
+        ENDIF
+      ENDDO
       IF (FIRSTTIME) THEN
 %(pmassonia_lines)s
 C       the mass factors of Q_eff (r = m_Q/m_Qbar) and its Casimirs, per
