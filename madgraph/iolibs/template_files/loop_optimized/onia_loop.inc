@@ -373,7 +373,13 @@ C         the diagnostic relative momentum: 2 sqrt(m^2+q^2)
         PF(0:3)=PF(0:3)+P_PHYS(0:3,I)
       ENDDO
       IF (NINCOMING.EQ.1) THEN
+## if(OniaInitial){
+C       a decaying bound state: on its mass shell m1+m2 at the QP rounding,
+C       so that its constituents are exactly at threshold for TIRust
+        CALL %(proc_prefix)sMP_ONIA_DECAY_ON_SHELL(P_PHYS,PMASS,PF)
+## } else {
         P_PHYS(0:3,1)=PF(0:3)
+## }
       ELSE
         KMOM=SQRT(P_PHYS(1,1)**2+P_PHYS(2,1)**2+P_PHYS(3,1)**2)
         IF (KMOM.GT.0.0E0_16) THEN
@@ -394,6 +400,75 @@ C         p1 = (sqrt(k^2+m1^2), k n) with (PF-p1)^2 = m2^2
       ENDIF
       CALL %(proc_prefix)sMP_ONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
       END
+## if(OniaInitial){
+
+      SUBROUTINE %(proc_prefix)sMP_ONIA_DECAY_ON_SHELL(P_PHYS,PMASS,PF)
+C     The momenta of a decay of a bound state, in quadruple precision: the
+C     decaying state keeps its 3-momentum and gets the energy of its mass
+C     PMASS(1) = m1+m2, so that P^2 = (m1+m2)^2 and its constituents P/2 are
+C     at threshold at the QP rounding (a sum of the final momenta misses it
+C     by the rounding of their double-precision inputs, which TIRust's QP
+C     pass takes as a distance from threshold). The final momenta (on shell,
+C     summing to PF) are rescaled in their rest frame to the energy m1+m2,
+C     then boosted to the frame of the decaying state, so that they conserve
+C     momentum. A decaying state at rest stays exactly at rest.
+      IMPLICIT NONE
+      INTEGER NEXTERNAL_PHYS
+      PARAMETER (NEXTERNAL_PHYS=%(onia_nexternal_phys)d)
+      %(real_mp_format)s P_PHYS(0:3,NEXTERNAL_PHYS), PMASS(NEXTERNAL_PHYS), PF(0:3)
+      %(real_mp_format)s BF(3), BI(3), K(0:3,NEXTERNAL_PHYS), K2(NEXTERNAL_PHYS)
+      %(real_mp_format)s XI, TOT, DTOT, E, STEP, PIN(0:3), ONE
+      PARAMETER (ONE=1.0E0_16)
+      INTEGER I, IT
+      PIN(1:3)=P_PHYS(1:3,1)
+      PIN(0)=SQRT(PMASS(1)**2+PIN(1)**2+PIN(2)**2+PIN(3)**2)
+      BF(1:3)=PF(1:3)/PF(0)
+      BI(1:3)=PIN(1:3)/PIN(0)
+C     the final momenta in their rest frame
+      DO I=2,NEXTERNAL_PHYS
+        CALL %(proc_prefix)sMP_ONIA_BOOST(P_PHYS(0,I),-BF,K(0,I))
+        K2(I)=K(1,I)**2+K(2,I)**2+K(3,I)**2
+      ENDDO
+C     their 3-momenta scaled by XI: sum_i sqrt(m_i^2+XI^2 k_i^2) = m1+m2
+      XI=ONE
+      DO IT=1,100
+        TOT=0.0E0_16
+        DTOT=0.0E0_16
+        DO I=2,NEXTERNAL_PHYS
+          E=SQRT(PMASS(I)**2+XI**2*K2(I))
+          TOT=TOT+E
+          IF (E.GT.0.0E0_16) DTOT=DTOT+XI*K2(I)/E
+        ENDDO
+        IF (DTOT.LE.0.0E0_16) EXIT
+        STEP=(TOT-PMASS(1))/DTOT
+        XI=XI-STEP
+        IF (ABS(STEP).LE.4.0E0_16*EPSILON(ONE)*ABS(XI)) EXIT
+      ENDDO
+      DO I=2,NEXTERNAL_PHYS
+        K(1:3,I)=XI*K(1:3,I)
+        K(0,I)=SQRT(PMASS(I)**2+XI**2*K2(I))
+        CALL %(proc_prefix)sMP_ONIA_BOOST(K(0,I),BI,P_PHYS(0,I))
+      ENDDO
+      P_PHYS(0:3,1)=PIN(0:3)
+      END
+
+      SUBROUTINE %(proc_prefix)sMP_ONIA_BOOST(P,B,Q)
+C     Q: the 4-vector P boosted with the velocity B (a 3-vector; B = 0
+C     gives P itself)
+      IMPLICIT NONE
+      %(real_mp_format)s P(0:3), B(3), Q(0:3), B2, G, BP, F
+      B2=B(1)**2+B(2)**2+B(3)**2
+      IF (B2.EQ.0.0E0_16) THEN
+        Q(0:3)=P(0:3)
+        RETURN
+      ENDIF
+      G=1.0E0_16/SQRT(1.0E0_16-B2)
+      BP=B(1)*P(1)+B(2)*P(2)+B(3)*P(3)
+      F=(G-1.0E0_16)*BP/B2+G*P(0)
+      Q(0)=G*(P(0)+BP)
+      Q(1:3)=P(1:3)+F*B(1:3)
+      END
+## }
 
 ## if(not OniaPwave){
       SUBROUTINE %(proc_prefix)sONIA_PROJ(P1,M1,NHEL1,P2,M2,NHEL2,P3,M3,NHEL3,SPIN,PROJ)

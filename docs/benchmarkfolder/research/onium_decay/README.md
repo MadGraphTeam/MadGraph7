@@ -24,7 +24,7 @@ There are 384 points per channel, and every one is stable in double precision (c
 
 The virtual is linear in alpha_s, so NLO = LO + alpha_s C, with C = int Born * finite/(2 pi).
 
-The points are evaluated in a boosted frame (velocity 0.6 along (1,2,3)/sqrt(14)). For a P-wave state exactly at rest, TIRust (pin 6ba4b53) gives wrong DP integrals for 1 -> 3 decays, and the QP rescue refuses the threshold Coulomb boxes of incoming constituents. MadLoop reports those points unstable (420); see `references/tirust_traces/onium_decay`. The S-wave results are the same in both frames to every digit.
+The points of `data/` were evaluated in a boosted frame (velocity 0.6 along (1,2,3)/sqrt(14)). At the time (85c29a2be0), a P-wave state exactly at rest decaying into three particles was wrong in double precision, and the QP rescue of a decay was refused at threshold; MadLoop reported those points unstable (420). Both were MadLoop-side and are fixed: the allocatable derivative arrays (66554a1ba5) and the decaying state exactly on its mass shell in QP. With the fixes, chi_c0 > e+ e- a at rest gives 384 stable points and the boosted widths to every digit. `run_rest` evaluates at rest.
 
 ## Results
 

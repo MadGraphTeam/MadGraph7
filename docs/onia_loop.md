@@ -180,16 +180,19 @@ particle. The momenta are on shell with the bound-state mass m1 + m2: set its
   is that of the production with its momentum -P (all momenta outgoing). In
   the colour strings the octet index of an incoming pair is its antiquark
   (`loop_onia.octet_leg`).
-- **TIRust (pin 6ba4b53).** A P-wave state exactly at rest decaying into three
-  particles gets wrong double-precision integrals (none refused; seen for
-  `chic1 > u u~ g` and `chic0 > e+ e- a`), and the QP pass refuses the
-  threshold Coulomb boxes of incoming constituents, so a decay point is not
-  rescued in QP. MadLoop's stability test reports those points unstable
-  (return code 420); reported to TIRust
-  (`references/tirust_traces/onium_decay`). The width summed over the
-  polarisations is Lorentz invariant: evaluate the points in a boosted frame
-  (`onia_loop_check.DECAY_BOOST`, `decay_points(..., boost=...)`); 1 -> 2
-  decays and S waves are right at rest.
+- **Rest frame and QP.** A decay is right at rest and boosted, in double and
+  quadruple precision. The QP point improvement puts the decaying state
+  exactly on its mass shell m1+m2 (`MP_ONIA_DECAY_ON_SHELL`): it keeps its
+  3-momentum, and the final momenta are rescaled to its mass. The
+  constituents P/2 are then at threshold at the QP rounding, as in production;
+  a sum of the final momenta misses it by the rounding of their DP inputs,
+  and TIRust's QP pass then refuses the Coulomb boxes. Before 66554a1ba5 a
+  P-wave state at rest decaying into three particles was wrong in double
+  precision with the static derivative arrays (chic1 > u u~ g, chic0 > e+ e-
+  a; diagnosed with TIRust, `references/tirust_traces/onium_decay`); the
+  allocatable arrays give the boosted values at rest. A boost by a tiny
+  velocity (1e-12) is ill-conditioned (the result and the predicted poles
+  move by 1e-4 to 1e-1).
 - **Checks** (`test_quarkonium_decay_loop_standalone`):
   - The textbook corrections, at rest and boosted, with vanishing poles:
     eta_c > a a gives 1 - (20-pi^2)/3 alpha_s/pi, J/psi > e+ e- gives

@@ -129,10 +129,8 @@ def run_madgraph(commands, log):
 
 
 # a generic boost (velocity 0.6 along (1, 2, 3)/sqrt(14)) for decay points:
-# the virtual of a decay summed over the polarisations is Lorentz invariant,
-# and a P-wave bound state exactly at rest is a degenerate configuration for
-# TIRust's reduction (wrong DP integrals for 1 -> 3; the QP pass refuses the
-# threshold Coulomb boxes of incoming constituents)
+# the virtual of a decay summed over the polarisations is Lorentz invariant, so
+# the same at rest and boosted (a check of the frame independence)
 DECAY_BOOST = tuple(0.6 * x / math.sqrt(14.) for x in (1., 2., 3.))
 
 
