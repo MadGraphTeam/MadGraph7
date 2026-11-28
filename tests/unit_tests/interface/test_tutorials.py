@@ -24,6 +24,7 @@ what makes that safe.
 from __future__ import absolute_import
 
 import json
+import os
 import logging
 import re
 import sys
@@ -3148,6 +3149,15 @@ class GridpackSubprocessGateTest(unittest.TestCase):
             self.assertEqual(question.precmd(''), 'tutorial_wait')
             self.assertEqual(question.precmd('done'), 'tutorial_wait')
             self.assertEqual(question.precmd('set events 10'), 'set events 10')
+            # every spelling that closes the question is refused too
+            for closing in ('Done', 'DONE', ' 0 ', 'auto',
+                            'set events 10; done'):
+                self.assertEqual(question.precmd(closing), 'tutorial_wait')
+            self.assertEqual(question.precmd('done; set events 10'),
+                             'done; set events 10')
+            question.do_tutorial_wait('')
+            self.assertEqual(question.lastcmd, 'set events 10; done')
+            question.precmd('done')
             question.do_tutorial_wait('')
             self.assertEqual(question.lastcmd, 'done')
             extended_cmd.question_gate = lambda line: None
@@ -3196,3 +3206,61 @@ class GridpackSubprocessGateTest(unittest.TestCase):
         later = tutorials.get('gridpack').steps[5].text(None)
         self.assertIn('JOB_1/events.lhe.gz', later)
         self.assertIn('JOB_2/events.lhe.gz', later)
+
+
+class TutorialRunFilesTest(unittest.TestCase):
+    """The paths the gridpack and MLM lessons print follow what the run
+    really left on disk."""
+
+    def setUp(self):
+        import shutil
+        import tempfile
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir)
+        self.run = os.path.join(self.dir, 'Events', 'run_01')
+        os.makedirs(self.run)
+        self.interface = type('Interface', (), {
+            '_done_export': (self.dir, 'madevent')})()
+
+    def test_compressed_gridpack_commands_use_the_unpacked_directory(self):
+        """With `compress` on, the run leaves gridpack.tar.gz: the lesson
+        says how to unpack it, and every command runs the unpacked
+        directory, never a path inside the archive."""
+
+        import madgraph.interface.tutorials.gridpack as gridpack
+
+        open(os.path.join(self.run, 'gridpack.tar.gz'), 'w').close()
+        unpacked = os.path.join(self.run, 'gridpack')
+        self.assertIn('tar xzf', gridpack._gridpack_found(self.interface))
+        for text in (gridpack._run_gridpack(self.interface),
+                     gridpack._run_parallel(self.interface),
+                     gridpack._grid_run_card(self.interface),
+                     gridpack._gridpack_events(self.interface)):
+            self.assertNotIn('.tar.gz', text)
+            self.assertIn(gridpack._shown(unpacked), text)
+
+    def test_mlm_plot_missing_after_a_finished_shower(self):
+        """A shower that finished without a DJR plot (no matplotlib, no
+        gnuplot) is not reported as a failed shower, and the lesson does not
+        offer to open a file that does not exist."""
+
+        import madgraph.interface.tutorials.mlm as mlm
+
+        failed = mlm._plots_found(self.interface)
+        self.assertIn('did not finish', failed)
+
+        open(os.path.join(self.run, 'tag_1_djrs.dat'), 'w').close()
+        text = mlm._plots_found(self.interface)
+        self.assertNotIn('did not finish', text)
+        self.assertIn('could not draw', text)
+        self.assertIn('tag_1_djrs.dat', text)
+        step = [s for s in tutorials.get('mlm').steps
+                if s.title == 'the shower and the merging'][0]
+        self.assertNotIn(mlm.DJR_PLOT, step.text(self.interface))
+
+        plots = os.path.join(self.dir, 'HTML', 'run_01', 'tag_1_PY8_plots')
+        os.makedirs(plots)
+        open(os.path.join(plots, mlm.DJR_PLOT), 'w').close()
+        text = mlm._plots_found(self.interface)
+        self.assertIn('differential jet rates', text)
+        self.assertIn(mlm.DJR_PLOT, step.text(self.interface))

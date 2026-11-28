@@ -81,9 +81,20 @@ def _gridpack(interface):
                         'gridpack')
 
 
+def _gridpack_dir(interface=None):
+    """The gridpack directory to run, as typed at the prompt: the unpacked
+    directory when `compress` packed the gridpack (the archive holds the
+    `gridpack` directory, so `tar xzf ... -C run_XX` unpacks it there)."""
+
+    gridpack = _gridpack(interface)
+    if gridpack.endswith('.tar.gz'):
+        return gridpack[:-len('.tar.gz')]
+    return gridpack
+
+
 def _run_gridpack(interface=None):
     return ('shell %s/bin/generate_events --events 1000 --seed 42'
-            % _gridpack(interface))
+            % _gridpack_dir(interface))
 
 
 def _events_in(directory):
@@ -99,7 +110,7 @@ def _gridpack_events(interface=None):
     """The events of the newest run of the gridpack, as typed at the prompt;
     where the first run puts them before anything has run."""
 
-    events = os.path.join(_gridpack(interface), 'Events')
+    events = os.path.join(_gridpack_dir(interface), 'Events')
     try:
         runs = [os.path.join(events, name) for name in os.listdir(events)]
         runs = [d for d in runs if os.path.isdir(d)]
@@ -116,10 +127,8 @@ def _grid_run_card(interface=None):
     """The gridpack's own run card, as typed at the prompt (in the unpacked
     directory when `compress` packed the gridpack)."""
 
-    gridpack = _gridpack(interface)
-    if gridpack.endswith('.tar.gz'):
-        gridpack = os.path.join(os.path.dirname(gridpack), 'gridpack')
-    return os.path.join(gridpack, 'Cards', 'grid_run_card.toml')
+    return os.path.join(_gridpack_dir(interface), 'Cards',
+                        'grid_run_card.toml')
 
 
 def _cores_here():
@@ -142,7 +151,7 @@ def _run_parallel(interface=None):
 
     command = ('%s/bin/generate_events --events 10000 --seed %d '
                '--cpu_thread_pool_size %d --output_dir %s > %s.log')
-    gridpack = _gridpack(interface)
+    gridpack = _gridpack_dir(interface)
     # no `;`: the MG7 prompt splits a line on it, and `wait` would be read
     # as an MG7 command
     return 'shell %s & %s & wait' % tuple(
@@ -584,7 +593,7 @@ Step('launch', lambda interface: """
 It is self-contained.
 
   bin/generate_events    the event generator
-  Cards/                 grid_run_card.toml and param_card.dat
+  Cards/                 grid_run_card.toml, run_card.toml, param_card.dat
   data/                  the optimised channels
   lib/                   the compiled matrix elements
   madspace/              a compiled copy of madspace
@@ -773,7 +782,7 @@ Step('shell', lambda interface: """
 These events come from the merged gridpack, with the trained MadNIS
 channels. They are in
 
-  %(gridpack)s/Events/run_01/events.lhe.gz
+  %(events)s
 
 Compare `unw. eff.` in the output with the first gridpack run. The MadNIS
 channels usually unweight better, which is what makes a long training pay
@@ -803,7 +812,7 @@ The documentation lists every option.
 %(see_also)s
 
 Leave with `tutorial stop`.
-""" % {'gridpack': _gridpack(interface), 'docs': DOCS,
+""" % {'events': _gridpack_events(interface), 'docs': DOCS,
        'see_also': tutorials.where_next()},
      title='running the merged gridpack'),
 

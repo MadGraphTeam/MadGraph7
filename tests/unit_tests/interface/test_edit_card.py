@@ -802,6 +802,61 @@ class TestEditCardCmd(unittest.TestCase):
         self.assertIn('tutorial progress', question._answer_history[-1])
         self.assertEqual(before.count('QUESTION'), 2)
 
+    def test_wrapped_lines_are_erased_by_the_redraw(self):
+        """A line wider than the terminal takes several rows: the redraw
+        must move up over all of them, or the start of a long message stays
+        on screen above the new box."""
+        import io
+        import sys
+        from unittest import mock
+        self.assertEqual(ext_cmd._screen_rows('a' * 80 + '\n', 80), 1)
+        self.assertEqual(ext_cmd._screen_rows('a' * 81 + '\n', 80), 2)
+        self.assertEqual(ext_cmd._screen_rows('\x1b[1m' + 'a' * 80 + '\x1b[0m\n', 80), 1)
+        self.assertEqual(ext_cmd._screen_rows('a' * 200 + '\nb\n', 80), 4)
+        self.assertEqual(ext_cmd._screen_rows('a' * 200 + '\n', 0), 1)
+
+        question = ext_cmd.SmartQuestion('QUESTION', allow_arg=['a'])
+        saved = sys.stdout
+        sys.stdout = io.StringIO()
+        try:
+            with mock.patch.object(ext_cmd, '_terminal_size',
+                                   lambda: (50, 80)):
+                question._redraw = ext_cmd._StdoutLineCounter().__enter__()
+                question.display_question()
+                question._cmd_seq, question.lastcmd = 1, 'set x 1'
+                sys.stdout.write('w' * 170 + '\n')   # 3 rows on 80 columns
+                question.display_question()
+                question._cmd_seq, question.lastcmd = 2, 'set x 2'
+                sys.stdout.write('next\n')
+                start = len(sys.stdout.getvalue())
+                question.display_question()
+                question._redraw.__exit__()
+            written = sys.stdout.getvalue()[start:]
+        finally:
+            sys.stdout = saved
+        # box (1) + first answer line (1) + 170 wide line (3) + `next` (1)
+        # + the second answer line (1)
+        self.assertTrue(written.startswith('\x1b[7A'), repr(written[:10]))
+
+    def test_merged_question_help_routing(self):
+        """help on the merged launch question: a switch name goes to the
+        switch help, anything else (a card parameter) to the card editor,
+        a bare `help` to both."""
+        from unittest import mock
+        calls = []
+        fake = type('Question', (), {'switch': {'shower': 'OFF'},
+                                     'ans_madspin': lambda self, v: None})()
+        with mock.patch.object(ext_cmd.ControlSwitch, 'do_help',
+                               lambda self, line: calls.append(('switch', line))), \
+             mock.patch.object(runcmd.AskforEditCard, 'do_help',
+                               lambda self, line, *a, **k: calls.append(('card', line))):
+            for line in ('shower', 'Shower', 'madspin', 'save_gridpack', ''):
+                runcmd.AskforEditCardWithSwitch.do_help(fake, line)
+        self.assertEqual(calls, [('switch', 'shower'), ('switch', 'Shower'),
+                                 ('switch', 'madspin'),
+                                 ('card', 'save_gridpack'),
+                                 ('switch', ''), ('card', '')])
+
     def test_dynamical_scale_choice_ht(self):
         """set dynamical_scale_choice HT/n on the LO, NLO and mg7 cards"""
         import shutil

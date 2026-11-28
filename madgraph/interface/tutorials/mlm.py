@@ -79,6 +79,36 @@ def _found_plot_dir(interface):
     return os.path.dirname(max(found, key=os.path.getmtime))
 
 
+def _shower_ran(interface):
+    """Whether the last run's shower finished: it leaves the DJR data (or the
+    showered events) even when no plot could be drawn from them."""
+
+    run = _latest_run(interface)
+    if not run:
+        return False
+    return any(glob.glob(os.path.join(run, pattern)) for pattern in
+               ('*_djrs.dat*', '*_pythia8_events.hepmc*'))
+
+
+def _not_drawn(interface):
+    """What to say when the shower finished but left no DJR plot: drawing
+    it needs matplotlib or gnuplot, and neither worked."""
+
+    run = _latest_run(interface)
+    data = sorted(glob.glob(os.path.join(run, '*_djrs.dat*')))
+    text = ("**The shower finished, but MG7 could not draw the DJR plots.**\n"
+            "Drawing them needs matplotlib or gnuplot, and the run log says "
+            "which one\nfailed.")
+    if data:
+        text += " The DJR data are in\n\n  %s\n" % _shown(data[-1])
+    else:
+        text += "\n"
+    return text + ("\nInstall matplotlib (`pip install matplotlib`) and "
+                   "launch again with the same\nanswers to get the plots. "
+                   "Or read on with `skip`: the next step explains\nwhat "
+                   "the plots show.\n")
+
+
 def _plot_dir(interface):
     """Where the DJR plots are, as typed at the prompt.
 
@@ -179,6 +209,8 @@ Then `tutorial mlm` and `skip 4` bring you back to the launch.
 
 def _plots_found(interface):
     if not _found_plot_dir(interface):
+        if _shower_ran(interface):
+            return _not_drawn(interface)
         return _shower_failed(interface)
     return """The Pythia8 summary at the end of the run shows two more numbers.
 
@@ -313,8 +345,8 @@ Step('launch', lambda interface: """
 %(result)s%(found)s%(open)s""" % {
        'result': _parton_result(interface), 'found': _plots_found(interface),
        # after `skip 4` this step shows again, with the right path
-       'open': '' if _version_mismatch(interface) and
-               not _found_plot_dir(interface)
+       'open': '' if not _found_plot_dir(interface) and
+               (_version_mismatch(interface) or _shower_ran(interface))
                else '\n%s %s\n' % (P, _open_plot(interface))},
      title='the shower and the merging',
      hint="`shell open PATH` opens a file, or `shell xdg-open PATH` on Linux.",

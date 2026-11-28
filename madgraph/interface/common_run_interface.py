@@ -9421,7 +9421,8 @@ class AskforEditCardWithSwitch(object):
         if not words:
             cmd.ControlSwitch.do_help(self, line)
             return AskforEditCard.do_help(self, line, *args, **opts)
-        if words[0] in self.switch or hasattr(self, 'ans_%s' % words[0]):
+        key = words[0].lower()
+        if key in self.switch or hasattr(self, 'ans_%s' % key):
             return cmd.ControlSwitch.do_help(self, line)
         return AskforEditCard.do_help(self, line, *args, **opts)
 

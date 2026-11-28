@@ -2402,6 +2402,35 @@ class NotValidInput(Exception): pass
 #===============================================================================
 # Question with auto-completion
 #===============================================================================
+_ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;?]*[A-Za-z]')
+
+
+def _screen_rows(text, columns=0):
+    """The terminal rows `text` moves the cursor down: its newlines, plus one
+    per extra row a line longer than the terminal wraps onto (`columns` 0:
+    width unknown, newlines only)."""
+
+    if not text:
+        return 0
+    rows = text.count('\n')
+    if columns > 0:
+        for line in text.split('\n'):
+            width = len(_ANSI_ESCAPE.sub('', line).expandtabs())
+            if width > columns:
+                rows += (width - 1) // columns
+    return rows
+
+
+def _terminal_size():
+    """(rows, columns) of the terminal, (0, 0) when unknown."""
+
+    try:
+        rows, columns = os.popen('stty size', 'r').read().split()[:2]
+        return int(rows), int(columns)
+    except Exception:
+        return 0, 0
+
+
 class _StdoutLineCounter(object):
     """Buffers everything written to stdout while active, by patching
     ``write`` in place (this also catches logger output, not just print()).
@@ -2447,22 +2476,36 @@ class SmartQuestion(BasicCmd):
         default. Commands answered from a script are recorded by ask() for the
         same reason.
 
-        A closing answer (Enter, done, 0) a tutorial refuses (question_gate)
-        is replaced by `tutorial_wait`, which does nothing: every postcmd then
-        asks again, as after any other command.
+        A closing answer (Enter, done, 0, auto, in any case, alone or last
+        of a `;` list) a tutorial refuses (question_gate) is replaced by
+        `tutorial_wait`, which does nothing: every postcmd then asks again,
+        as after any other command. Ctrl-D (EOF) still closes the question.
         """
 
-        if (line or '').strip() in self.CLOSING_ANSWERS:
-            refusal = get_question_gate((line or '').strip())
+        if self.closing_answer(line) is not None:
+            refusal = get_question_gate(self.closing_answer(line))
             if refusal:
                 logger_tuto.info(refusal, '$MG:BOLD')
+                logger_tuto.info('(Ctrl-D closes the question anyway.)')
                 self._waiting_on = (line or "").strip()
                 return 'tutorial_wait'
         record_answer_in_history(getattr(self, 'mother_interface', None), line)
         return BasicCmd.precmd(self, line)
 
-    # answers which close a question
-    CLOSING_ANSWERS = ('', 'done', '0')
+    # answers which close a question (compared in lower case)
+    CLOSING_ANSWERS = ('', 'done', '0', 'auto')
+
+    @classmethod
+    def closing_answer(cls, line):
+        """The closing answer `line` gives, lower-cased, or None. A `;` list
+        closes on its last command, as the switch question reads it."""
+
+        answer = (line or '').strip()
+        if ';' in answer:
+            answer = ([part for part in answer.split(';') if part.strip()]
+                      or [''])[-1].strip()
+        answer = answer.lower()
+        return answer if answer in cls.CLOSING_ANSWERS else None
 
     def do_tutorial_wait(self, line):
         # no docstring: kept out of `help`.  A closing answer the tutorial
@@ -2547,14 +2590,14 @@ class SmartQuestion(BasicCmd):
                 return
             captured = ''.join(self._redraw.captured)
             self._redraw.captured = []
-            interstitial_lines = captured.count('\n')
+            # rows, not newlines: a line wider than the terminal wraps, and
+            # erasing too few rows leaves its start on screen
+            nb_rows, columns = _terminal_size()
+            rows = lambda block: _screen_rows(block, columns)
+            interstitial_lines = rows(captured)
             tainted = self._redraw.tainted
             self._redraw.tainted = False
-            try:
-                nb_rows = int(os.popen('stty size', 'r').read().split()[0])
-            except Exception:
-                nb_rows = 0
-            box_lines = text.count('\n') + 1 + self._hint_text.count('\n')
+            box_lines = rows(text + '\n') + rows(self._hint_text)
             margin = 2 # 1 free row + 1 so the next untracked echo line doesn't force a scroll
 
             old_history = self._answer_history
@@ -2571,13 +2614,14 @@ class SmartQuestion(BasicCmd):
                 updated_history = old_history[:-1] + [old_history[-1] + extra]
             else:
                 updated_history = list(old_history)
-            updated_total = sum(e.count('\n') for e in updated_history)
+            updated_total = sum(rows(e) for e in updated_history)
 
             if not tainted and (not nb_rows or box_lines + updated_total <= nb_rows - margin):
                 # everything fits: erase back past the box and its full history, rewrite both
-                n_up = self._prev_box_lines + sum(e.count('\n') for e in old_history) + interstitial_lines
+                n_up = self._prev_box_lines + sum(rows(e) for e in old_history) + interstitial_lines
                 if is_new_input:
-                    n_up += 1 # the '>answer' line, invisible to the hook
+                    # the '>answer' line, invisible to the hook
+                    n_up += rows('%s%s\n' % (self.prompt, self.lastcmd or ''))
                 sys.stdout.write('\x1b[%dA\x1b[0J' % n_up)
                 sys.stdout.write(text + '\n' + self._hint_text)
                 for entry in updated_history:
@@ -2593,7 +2637,7 @@ class SmartQuestion(BasicCmd):
                     kept = []
                     total = 0
                     for entry in reversed(updated_history):
-                        L = entry.count('\n')
+                        L = rows(entry)
                         if total + L <= budget:
                             kept.insert(0, entry)
                             total += L
@@ -2612,7 +2656,8 @@ class SmartQuestion(BasicCmd):
         else:
             sys.stdout.write(text + '\n')
             if self._redraw is not None:
-                self._prev_box_lines = text.count('\n') + 1
+                self._prev_box_lines = _screen_rows(text + '\n',
+                                                    _terminal_size()[1])
                 self._redraw.captured = []
         self._has_drawn = True
         self._drawn_text = text
@@ -2635,7 +2680,8 @@ class SmartQuestion(BasicCmd):
                 if self._redraw is not None:
                     # part of the box: redrawn with it, not moved below the answer
                     self._hint_text = ''.join(self._redraw.captured)
-                    self._prev_box_lines += self._hint_text.count('\n')
+                    self._prev_box_lines += _screen_rows(
+                        self._hint_text, _terminal_size()[1])
                     self._redraw.captured = []
             return self.cmdloop()
         finally:
