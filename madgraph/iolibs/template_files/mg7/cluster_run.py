@@ -511,6 +511,14 @@ class ClusterRun:
         program = os.path.join(gridpack_path, "bin", "generate_events")
         threads = self.thread_count("deploy", self.cluster_type)
         self.cancel_earlier_jobs("deploy")
+        output_format = self.card["output"]["output_format"]
+        if output_format != "lhe" and os.path.isdir(
+                os.path.join(gridpack_path, gridpack_madspin.MS_DIR)):
+            # the gridpack decays the events of each job, and MadSpin reads
+            # and writes LHE (the runner refuses npy with MadSpin)
+            logger.info("generation pass: the jobs write LHE events (not %s), "
+                        "which the MadSpin of the gridpack decays", output_format)
+            output_format = "lhe"
         jobs = []
         for job in self.state["deploy_jobs"]:
             job_dir = self.job_dir("deploy", job["index"])
@@ -522,7 +530,7 @@ class ClusterRun:
                 "--seed", str(job["seed"]), "--events", str(job["events"]),
                 "--output_dir", job_dir, "--done_file", os.path.join(job_dir, "done"),
                 "--verbosity", "log", "--temp_output_dir", "auto",
-                "--output_format", self.card["output"]["output_format"],
+                "--output_format", output_format,
                 "--cpu_thread_pool_size", str(threads),
                 "--device", *self.devices["deploy"],
             ]

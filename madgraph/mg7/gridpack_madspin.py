@@ -52,20 +52,49 @@ class GridpackMadSpinError(Exception):
 
 def madspin_wanted(run_card, madspin_switch=None, cards_dir="Cards") -> bool:
     """Whether the gridpack carries MadSpin: [gridpack] include_madspin, whose
-    'auto' follows the madspin switch of the launch (when known) or else the
-    presence of the madspin card, as the madspin step of a run does."""
+    'auto' follows the madspin switch of the launch. An unknown switch (None:
+    ``launch -f``, which runs no tool on the events) is off: the gridpack then
+    decays its events only when the run that makes it did."""
     setting = run_card["gridpack"]["include_madspin"]
     has_card = os.path.exists(os.path.join(cards_dir, "madspin_card.dat"))
     if setting == "auto":
-        if madspin_switch is not None:
-            return bool(madspin_switch) and has_card
-        return has_card
+        return bool(madspin_switch) and has_card
     if setting and not has_card:
         raise GridpackMadSpinError(
             "[gridpack] include_madspin is on but there is no "
             "Cards/madspin_card.dat to prepare MadSpin with: switch madspin "
             "on (or write the card), or set include_madspin = false")
     return bool(setting)
+
+
+def check_madspin(run_card, madspin_switch=None, cards_dir="Cards") -> bool:
+    """Before the run: whether the gridpack it makes will carry MadSpin, and
+    if so that the madspin card can be prepared for a gridpack -- no refused
+    setting (see MadSpin.gridpack_decay.gridpack_card) and every decay line
+    generates (a few seconds). Otherwise these fail only when the gridpack is
+    written, once the whole integration has run. Raises
+    GridpackMadSpinError."""
+    if not madspin_wanted(run_card, madspin_switch, cards_dir):
+        return False
+    import madgraph
+    mg_root = os.path.dirname(os.path.dirname(os.path.abspath(madgraph.__file__)))
+    command = [sys.executable, "-m", "MadSpin.gridpack_decay", "check",
+               "--card", os.path.abspath(os.path.join(cards_dir, "madspin_card.dat")),
+               "--proc_card", os.path.abspath(os.path.join(cards_dir, "proc_card_mg5.dat")),
+               "--log_level", "ERROR"]
+    logger.info("MadSpin in the gridpack: checking the decays of the madspin card")
+    result = subprocess.run(command, env=_python_env(mg_root), stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT, text=True)
+    if result.returncode:
+        lines = [line for line in result.stdout.splitlines() if line.strip()]
+        message = lines[-1] if lines else "exit %d" % result.returncode
+        if message.startswith("MadSpin: "):
+            message = message[len("MadSpin: "):]
+        raise GridpackMadSpinError(
+            f"{message}. Fix Cards/madspin_card.dat, or switch madspin off "
+            "(or set [gridpack] include_madspin = false) for a gridpack "
+            "without decays")
+    return True
 
 
 def model_dir(cards_dir="Cards") -> str:

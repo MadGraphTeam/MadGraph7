@@ -23,6 +23,7 @@ gridpack, see :func:`install_runtime`)::
         --ms_dir DIR [--seed N] [--nb_core N]
     python -m MadSpin.gridpack_decay decay --ms_dir DIR --events EVENTS \\
         --seed N [--output OUT] [--nb_core N]
+    python -m MadSpin.gridpack_decay check --card CARD --proc_card PROC_CARD
 
 Both run MadSpin in this process, so each call has to be a process of its own:
 MadSpin seeds Python's random generator only once per process.
@@ -100,6 +101,59 @@ def gridpack_card(text):
                     "card")
         kept.append(line)
     return '\n'.join(kept).strip('\n') + '\n'
+
+
+def check_decays(body, proc_card):
+    """Generate the diagrams of every ``decay`` line of the madspin card
+    ``body`` with the model and the multiparticles of ``proc_card`` (the
+    proc_card_mg5.dat of the process), as MadSpin does when it prepares the
+    decays. A few seconds, where a wrong line otherwise fails only once the
+    events of the run exist. Raises GridpackDecayError naming the line."""
+    loggers = [logging.getLogger(name) for name in
+               ('madgraph', 'cmdprint', 'madevent', 'models')]
+    levels = [each.level for each in loggers]
+    for each in loggers:
+        each.setLevel(logging.ERROR)
+    try:
+        _check_decays(body, proc_card)
+    finally:
+        for each, level in zip(loggers, levels):
+            each.setLevel(level)
+
+
+def _check_decays(body, proc_card):
+    from madgraph.interface import master_interface
+    model, defines = 'sm', []
+    with open(proc_card) as fsock:
+        for line in fsock:
+            words = line.split('#', 1)[0].split()
+            if len(words) > 2 and words[:2] == ['import', 'model']:
+                model = words[2]
+            elif words and words[0] == 'define':
+                defines.append(' '.join(words))
+    cmd = master_interface.MasterCmd()
+    cmd.exec_cmd('import model %s' % model, printcmd=False, errorhandling=False)
+    for line in defines:
+        cmd.exec_cmd(line, printcmd=False, errorhandling=False)
+    for line in body.splitlines():
+        words = line.split('#', 1)[0].split()
+        if not words:
+            continue
+        if words[0] == 'define':
+            cmd.exec_cmd(' '.join(words), printcmd=False, errorhandling=False)
+        elif words[0] == 'decay':
+            decay = ' '.join(words[1:])
+            try:
+                cmd.exec_cmd('generate %s' % decay, printcmd=False,
+                             errorhandling=False)
+            except Exception as error:
+                reason = str(error).split('\n')[0]
+                if 'No amplitudes generated' in reason:
+                    reason = 'no diagram in the model %s (check the charges ' \
+                             'and the particle names)' % model
+                raise GridpackDecayError(
+                    "the madspin card line 'decay %s' cannot be generated: %s"
+                    % (decay, reason))
 
 
 def run_card(body, events, ms_dir, seed, nb_core=None, prepare=False):
@@ -383,12 +437,19 @@ def main(argv=None):
     run.add_argument('--output', default=None)
     run.add_argument('--nb_core', type=int, default=None)
     run.add_argument('--work_dir', default=None)
-    for each in (prep, run):
+    check = sub.add_parser('check', help='check a madspin card before a run '
+                           'makes a gridpack with it')
+    check.add_argument('--card', required=True)
+    check.add_argument('--proc_card', required=True)
+    for each in (prep, run, check):
         each.add_argument('--log_level', default='INFO')
     args = parser.parse_args(argv)
     _setup_logging(getattr(logging, args.log_level.upper(), logging.INFO))
     try:
-        if args.action == 'prepare':
+        if args.action == 'check':
+            with open(args.card) as fsock:
+                check_decays(gridpack_card(fsock.read()), args.proc_card)
+        elif args.action == 'prepare':
             prepare(args.card, args.events, args.ms_dir, args.seed, args.nb_core)
         else:
             out = decay(args.ms_dir, args.events, args.seed, args.output,

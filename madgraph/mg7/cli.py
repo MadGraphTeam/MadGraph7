@@ -12,7 +12,9 @@ from madgraph.interface.extended_cmd import Cmd
 from madgraph.various.banner import RunCardMG7
 from madgraph.mg7 import npy_to_lhe
 from madgraph.mg7.bootstrap import MG_ROOT as _MG_ROOT
+from madgraph.mg7.gridpack_madspin import GridpackMadSpinError
 from madgraph.mg7.driver import (
+    check_gridpack_madspin,
     run_cluster_job,
     ExistingRun,
     REWEIGHT_CARD,
@@ -156,7 +158,18 @@ class MG7Cmd(Cmd):
                                            self.options)
             force_lhe_output_if_needed(switch, reweight)
             _raise_open_file_limit()
-            run_generation(switch, reweight)
+            try:
+                check_gridpack_madspin(switch)
+                run_generation(switch, reweight)
+            except GridpackMadSpinError as error:
+                raise self.InvalidCmd(str(error)) from error
+            except Exception as error:
+                # what the cluster mode refuses or reports is the user's to fix
+                # (a card, a batch system, a failed job and its log), not a bug
+                from madgraph.iolibs.template_files.mg7 import cluster_run
+                if isinstance(error, cluster_run.ClusterRunError):
+                    raise self.InvalidCmd("cluster run: %s" % error) from error
+                raise
         finally:
             os.chdir(cwd)
 

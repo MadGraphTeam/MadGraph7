@@ -114,6 +114,9 @@ class MG7GridpackMadSpinTest(unittest.TestCase):
             'systematics.enable': False,
             'madnis.enable': False,
             'gridpack.save_gridpack': False,
+            # bin/generate_events -f runs no tool, so 'auto' would not ship
+            # MadSpin: ask for it
+            'gridpack.include_madspin': True,
             'cluster.enable': False,
         }, **settings)
         toml = pjoin(self._process(), 'Cards', 'run_card.toml')

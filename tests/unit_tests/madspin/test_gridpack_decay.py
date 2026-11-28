@@ -80,6 +80,24 @@ class TestGridpackCard(unittest.TestCase):
         self.assertNotIn('set seed', prepare)
         self.assertTrue(prepare.endswith('launch --prepare_only\n'))
 
+    def test_check_decays(self):
+        """A decay line without diagram is refused before the run, naming the
+        line; the multiparticles of the proc card and of the madspin card are
+        known."""
+        path = tempfile.mkdtemp(prefix='ms_check_')
+        self.addCleanup(shutil.rmtree, path, ignore_errors=True)
+        proc_card = pjoin(path, 'proc_card_mg5.dat')
+        with open(proc_card, 'w') as f:
+            f.write('import model sm\ndefine lep+ = e+ mu+\n'
+                    'generate p p > t t~\n')
+        gridpack_decay.check_decays(
+            'define nul = ve vm\ndecay t > w+ b, w+ > lep+ nul\n'
+            'decay t~ > w- b~, w- > j j\n', proc_card)
+        with self.assertRaisesRegex(gridpack_decay.GridpackDecayError,
+                                    "'decay t > w\\+ b, w\\+ > l\\+ vl~'.*no diagram"):
+            gridpack_decay.check_decays('decay t > w+ b, w+ > l+ vl~\n',
+                                        proc_card)
+
 
 def _load_runner():
     """template_files/mg7/gridpack.py, with what it imports at load time
@@ -268,9 +286,11 @@ class TestIncludeMadSpin(unittest.TestCase):
         self.assertFalse(wanted(self.card(), True, self.cards))
         with open(pjoin(self.cards, 'madspin_card.dat'), 'w') as f:
             f.write('decay t > w+ b\n')
-        self.assertTrue(wanted(self.card(), None, self.cards))
         self.assertTrue(wanted(self.card(), True, self.cards))
         self.assertFalse(wanted(self.card(), False, self.cards))
+        # an unknown switch (launch -f runs no tool): the run decays nothing,
+        # nor does its gridpack
+        self.assertFalse(wanted(self.card(), None, self.cards))
 
     def test_explicit(self):
         wanted = gridpack_madspin.madspin_wanted
@@ -281,6 +301,30 @@ class TestIncludeMadSpin(unittest.TestCase):
             f.write('decay t > w+ b\n')
         self.assertTrue(wanted(self.card(True), False, self.cards))
         self.assertFalse(wanted(self.card(False), True, self.cards))
+
+    def test_checked_before_the_run(self):
+        """check_madspin refuses, before the run, what would otherwise fail
+        only once the gridpack is written: a refused setting, a decay line
+        without diagram."""
+        check = gridpack_madspin.check_madspin
+        # MadSpin off: nothing to check
+        self.assertFalse(check(self.card(), False, self.cards))
+        with open(pjoin(self.cards, 'proc_card_mg5.dat'), 'w') as f:
+            f.write('import model sm\ngenerate p p > t t~\n')
+        card = pjoin(self.cards, 'madspin_card.dat')
+        with open(card, 'w') as f:
+            f.write('set spinmode onshell_v1\ndecay t > w+ b\n')
+        with self.assertRaisesRegex(gridpack_madspin.GridpackMadSpinError,
+                                    'onshell_v1'):
+            check(self.card(), True, self.cards)
+        with open(card, 'w') as f:
+            f.write('decay t > w+ b, w+ > l+ vl~\n')
+        with self.assertRaisesRegex(gridpack_madspin.GridpackMadSpinError,
+                                    "'decay t > w\\+ b, w\\+ > l\\+ vl~'"):
+            check(self.card(), True, self.cards)
+        with open(card, 'w') as f:
+            f.write('decay t > w+ b, w+ > l+ vl\n')
+        self.assertTrue(check(self.card(), True, self.cards))
 
 
 class TestDensityMatrixElementCache(unittest.TestCase):

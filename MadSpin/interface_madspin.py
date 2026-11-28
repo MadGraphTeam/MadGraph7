@@ -3858,6 +3858,17 @@ class MadSpinInterface(extended_cmd.Cmd):
                     # this environment, whatever MadGraph this is (a gridpack
                     # ships none to build with)
                     pass
+                elif use_gridpack and os.path.exists(decay_dir) and \
+                        not os.path.exists(pjoin(decay_dir, 'run.sh')):
+                    # neither gridpack: what an interrupted or failed build
+                    # left (the mg7 output, before its integration made it a
+                    # gridpack). Build it again rather than drive it as one.
+                    logger.warning('gridpack mode: %s is an unfinished decay '
+                                   'gridpack (an earlier build failed): '
+                                   'building it again', decay_dir)
+                    _force_rmtree(decay_dir)
+                    if not self._mg7_available():
+                        output_format = 'madevent'
                 elif use_gridpack and os.path.exists(decay_dir):
                     # an ms_dir whose decay directories are madevent gridpacks
                     # (run.sh): keep driving them the way they were built

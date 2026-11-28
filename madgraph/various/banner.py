@@ -7585,8 +7585,8 @@ class RunCardMG7(RunCard):
             comment="include the madtrex source code, built by bin/reweight if needed")
         self.add_toml_param('gridpack', 'include_madspin', False, auto=True,
             comment="ship MadSpin, prepared to decay the gridpack's events "
-                    "(auto: when the madspin switch is on, i.e. "
-                    "Cards/madspin_card.dat exists)")
+                    "(auto: when the madspin switch of the launch is on, "
+                    "with Cards/madspin_card.dat)")
         self.add_toml_param('gridpack', 'compress', False,
             comment="compress the gridpack into a tarball")
         self.add_toml_param('gridpack', 'run_mode', "minimal",

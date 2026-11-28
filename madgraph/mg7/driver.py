@@ -552,6 +552,26 @@ def cluster_enabled() -> bool:
     return False
 
 
+def check_gridpack_madspin(switch=None) -> None:
+    """Before the run: when it makes a gridpack ([gridpack] save_gridpack, or
+    the cluster mode, which always merges one) that carries MadSpin, check the
+    madspin card now rather than once the gridpack is written (see
+    gridpack_madspin.check_madspin). Raises GridpackMadSpinError."""
+    from madgraph.mg7 import gridpack_madspin
+    path = os.path.join("Cards", "run_card.toml")
+    if not os.path.exists(path):
+        return
+    try:
+        card = RunCardMG7(path)
+    except Exception:
+        # a scan card: run_scan reads it point by point
+        return
+    if not (cluster_enabled() or card["gridpack"]["save_gridpack"]):
+        return
+    switch_on = None if not switch else not _off(switch.get("madspin"))
+    gridpack_madspin.check_madspin(card, switch_on)
+
+
 def run_cluster_job(job_dir: str) -> None:
     """One training job of the cluster mode: integrate the subprocesses of the
     card in job_dir, save the data of the gridpack and mark the job done. The
