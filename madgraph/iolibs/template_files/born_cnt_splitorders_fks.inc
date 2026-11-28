@@ -147,6 +147,11 @@ C
       REAL*8 borns(2,NSQAMPSO)
       INTEGER NTRY
       DATA NTRY / 0 /
+C     The good helicities are learned over the first MAXTRIES_HEL calls,
+C     not the first alone: one degenerate point (a Born that is zero, or
+C     a J_z-forbidden helicity set along the beam) must not fix the filter.
+      INTEGER MAXTRIES_HEL
+      PARAMETER (MAXTRIES_HEL=10)
       COMPLEX*16 T(2,NSQAMPSO)
       INTEGER NHEL(NEXTERNAL-1,NCOMB)
 %(helicity_lines)s
@@ -196,7 +201,7 @@ c MZ      ENDDO
       hel_fac=1d0
       DO IHEL=1,NCOMB
         if (nhel(glu_ij,ihel).le.0) then
-          IF ((GOODHEL(IHEL) .OR. GOODHEL(IHEL+SKIP) .OR. NTRY .LT. 2) ) THEN
+          IF ((GOODHEL(IHEL) .OR. GOODHEL(IHEL+SKIP) .OR. NTRY .LE. MAXTRIES_HEL) ) THEN
             
             CALL BORN_CNT%(proc_prefix)s(P1,NHEL(1,IHEL),IHEL,T,borns)
             DO I=1,NSQAMPSO

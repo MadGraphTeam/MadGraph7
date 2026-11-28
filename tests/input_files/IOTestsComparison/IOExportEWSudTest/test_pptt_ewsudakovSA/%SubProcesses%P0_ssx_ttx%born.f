@@ -380,6 +380,14 @@ C
       COMPLEX*16 BORNTILDE
       INTEGER NTRY(1)
       DATA NTRY /1*0/
+C     The good helicities are learned over the first MAXTRIES_HEL
+C      calls,
+C     not the first alone: one degenerate point (a Born that is zero,
+C      or
+C     a J_z-forbidden helicity set along the beam) must not fix the
+C      filter.
+      INTEGER MAXTRIES_HEL
+      PARAMETER (MAXTRIES_HEL=10)
       COMPLEX*16 T(2,NSQAMPSO)
       INTEGER NHEL(NEXTERNAL-1,NCOMB)
       DATA (NHEL(I,   1),I=1,4) / 1,-1,-1, 1/
@@ -551,9 +559,9 @@ C     AMP2/JAMP2 are still those of the last evaluation.
 C     The JAMPs of every helicity are summed into the colour density
 C     RHO (BORN_RHO_ADD); the Born and the colour-linked Borns are then
 C     traces of RHO with their colour matrix. The Born of each helicity
-C     is only needed on the first call, to find the good helicities.
+C     is only needed while the good helicities are learned.
       CALL BORN_RHO_RESET()
-      IF (NTRY(NFKSPROCESS).LT.2) THEN
+      IF (NTRY(NFKSPROCESS).LE.MAXTRIES_HEL) THEN
         BMODE=1
       ELSE
         BMODE=2
@@ -567,8 +575,8 @@ C       if (nhel(glu_ij,ihel).EQ.NHEL(GLU_IJ,1).or.skip(nfksprocess).eq
 C       .0) then
         IF (COND_IJ) THEN
           IF ((GOODHEL(IHEL,NFKSPROCESS) .OR. GOODHEL(IHEL
-     $     +SKIP(NFKSPROCESS),NFKSPROCESS) .OR. NTRY(NFKSPROCESS) .LT.
-     $      2) ) THEN
+     $     +SKIP(NFKSPROCESS),NFKSPROCESS) .OR. NTRY(NFKSPROCESS) .LE.
+     $      MAXTRIES_HEL) ) THEN
 
             CALL BORN(P1,NHEL(1,IHEL),IHEL,BMODE,T,BORNS)
             DO I=1,NSQAMPSO

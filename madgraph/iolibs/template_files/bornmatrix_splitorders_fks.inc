@@ -349,6 +349,11 @@ C
       COMPLEX*16 BORNTILDE
       INTEGER NTRY(%(nconfs)d)
       DATA NTRY /%(nconfs)d*0/
+C     The good helicities are learned over the first MAXTRIES_HEL calls,
+C     not the first alone: one degenerate point (a Born that is zero, or
+C     a J_z-forbidden helicity set along the beam) must not fix the filter.
+      INTEGER MAXTRIES_HEL
+      PARAMETER (MAXTRIES_HEL=10)
       COMPLEX*16 T(2,NSQAMPSO)
       INTEGER NHEL(NEXTERNAL-1,NCOMB)
 %(helicity_lines)s
@@ -430,7 +435,7 @@ C ----------
         if (.not.cond_ij) cond_ij=cond_ij.or.nhel(glu_ij,ihel).EQ.NHEL(GLU_IJ,1)
         !if (nhel(glu_ij,ihel).EQ.NHEL(GLU_IJ,1).or.skip(nfksprocess).eq.0) then
         if (cond_ij) then
-          IF ((GOODHEL(IHEL,nFKSprocess) .OR. GOODHEL(IHEL+SKIP(nFKSprocess),nFKSprocess) .OR. NTRY(nFKSprocess) .LT. 2) ) THEN
+          IF ((GOODHEL(IHEL,nFKSprocess) .OR. GOODHEL(IHEL+SKIP(nFKSprocess),nFKSprocess) .OR. NTRY(nFKSprocess) .LE. MAXTRIES_HEL) ) THEN
             
             CALL BORN(P1,NHEL(1,IHEL),IHEL,T,borns)
             DO I=1,NSQAMPSO
