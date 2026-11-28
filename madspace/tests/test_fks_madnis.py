@@ -222,7 +222,6 @@ def test_against_mg5amc(name, discrete):
         grid_iterations=3,
         points=4000,
         max_iterations=3,
-        generator=True,
         threads=2,
         madnis_batches=100,
         madnis_discrete=discrete,

@@ -1,15 +1,15 @@
 """The C++ integrand of a channel of the FKS driver (FKSChannelIntegrand of
-madspace, with the Fortran provider as UMAMI libraries) against the driver
-in Python (SubprocessIntegrand.evaluate of madgraph/mg7/nlo/fks.py) at the
-same random numbers, FKS configurations, weights of their choice, points
+madspace, with the Fortran provider as UMAMI libraries) against the Python
+driver that came first (FKSReferenceIntegrand.evaluate of nlo_reference) at
+the same random numbers, FKS configurations, weights of their choice, points
 with the virtual and averages and fraction of the virtual trick.
 
 The kinematics agree bit for bit. The libraries ask the provider for the
 Born and the real with one configuration per spin leg and per real matrix
-element, the driver with the configuration of each point, which round apart
-in the last bits (see test_fks_provider_libraries.py), and the integrand
-takes C_m B on the diagonal of the colour matrix where the driver takes
-minus the sum of the row (colour conservation). So the weights agree to the
+element, the reference with the configuration of each point, which round
+apart in the last bits (see test_fks_provider_libraries.py), and the
+integrand takes C_m B on the diagonal of the colour matrix where the
+reference takes minus the sum of the row (colour conservation). So the weights agree to the
 rounding of their parts: per point to RTOL of the sum of the absolute
 weights of the event, its counter-events and the n-body part (at most
 1.3e-15 of it on these references). The scale and PDF variations and the
@@ -26,8 +26,8 @@ import tempfile
 import numpy as np
 import pytest
 from fks_testing import fks_output
-from madgraph.mg7.nlo.core import Runtime, VirtualTrick
-from madgraph.mg7.nlo.fks import FKSRun
+from madgraph.mg7.nlo.core import Runtime
+from nlo_reference import FKSReferenceRun, VirtualTrick
 from test_fks_cross_section import reference
 
 OUTPUTS = os.environ.get("MADSPACE_FKS_OUTPUTS")
@@ -71,9 +71,10 @@ PARTS = (
 
 @contextlib.contextmanager
 def fks_setup(name, output=None, **run_card):
-    """The run of the driver on the output of a reference with the entries
-    of run_card changed, or on an output with its own cards, set up, and
-    closed afterwards with the processes of its providers."""
+    """The run of the Python reference (FKSReferenceRun) on the output of a
+    reference of MG5aMC with the entries of run_card changed, or on an output
+    with its own cards, set up, and closed afterwards with the processes of
+    its providers."""
     if output is None:
         data = reference(os.path.join(DATA, f"{name}.json"))
         cards = dict(
@@ -82,7 +83,7 @@ def fks_setup(name, output=None, **run_card):
         output = data["output"]
     else:
         cards = dict(run_card=run_card or None)
-    run = FKSRun(
+    run = FKSReferenceRun(
         fks_output(output),
         run_path=os.path.join(tempfile.gettempdir(), "madspace_fks_channel", name),
         seed=4711,
@@ -103,8 +104,8 @@ def assert_weights(ours, theirs, scale, name):
     assert not bad.any(), (name, ours[bad][:5], theirs[bad][:5])
 
 
-def compare_with_driver(run):
-    """The integrand against the driver on two channels of every subprocess
+def compare_with_reference(run):
+    """The integrand against the reference on two channels of every subprocess
     of a run."""
     checked = 0
     for integrand in run.integrands:
@@ -172,9 +173,9 @@ def compare_with_driver(run):
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_against_driver(name):
+def test_against_reference(name):
     with fks_setup(name) as run:
-        compare_with_driver(run)
+        compare_with_reference(run)
 
 
 def half_transverse_mass(momenta, valid=None):
@@ -195,7 +196,7 @@ def half_transverse_mass(momenta, valid=None):
 def test_user_scale(choice):
     """With the scale of the user the integrand calls the reference scale
     (a scale library of the provider through CustomFunction) at the event,
-    the soft and the collinear counter-events where the driver does, and the
+    the soft and the collinear counter-events where the reference does, and the
     Born and the virtual take it at the soft counter-event. The provider of
     the outputs has the fixed scale of user_dynamical_scale, so both take
     half_transverse_mass in its place."""
@@ -203,7 +204,7 @@ def test_user_scale(choice):
         for integrand in run.integrands:
             assert integrand.user_scale
             integrand.provider.reference_scales = half_transverse_mass
-        compare_with_driver(run)
+        compare_with_reference(run)
 
 
 def test_extra_counterterms():
@@ -212,7 +213,7 @@ def test_extra_counterterms():
     (a library of its own), with its own cards."""
     with fks_setup("gu_ua_mix", output="gu_ua_mix") as run:
         assert any(i.provider.orders.get("extra_born") for i in run.integrands)
-        compare_with_driver(run)
+        compare_with_reference(run)
 
 
 @pytest.mark.parametrize("name", ["pp_epem", "pp_epemj"])

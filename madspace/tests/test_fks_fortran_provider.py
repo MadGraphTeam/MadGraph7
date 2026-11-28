@@ -37,11 +37,7 @@ import os
 import numpy as np
 import pytest
 from fks_testing import born_inputs, evaluate, fks_output, reference
-from madgraph.mg7.nlo.fks import (
-    born_topology,
-    ew_sudakov_corrections,
-    ew_sudakov_runtime,
-)
+from madgraph.mg7.nlo.fks import born_topology, ew_sudakov_runtime
 from madgraph.mg7.nlo.provider import (
     FortranProvider,
     azimuthal_phase,
@@ -50,6 +46,7 @@ from madgraph.mg7.nlo.provider import (
     momenta_at_rest,
 )
 from madspace_testing import default_context
+from nlo_reference import ew_sudakov_corrections
 from test_fks_integrand import DATA, IDS, WEIGHTS, channels
 
 import madspace as ms
@@ -468,7 +465,7 @@ EW_SUDAKOV_POINTS = 64
 def test_ew_sudakov(name):
     """With --ewsudakov, EWSudakov of madspace with the matrix elements of
     the provider per helicity combination (ew_sudakov_corrections of
-    nlo.fks) gives the weights of compute_ewsudakov of MadFKS at Born points
+    nlo_reference) gives the weights of compute_ewsudakov of MadFKS at Born points
     of every subprocess and configuration, for sud_mod 0 and 1, which has no
     weights at other orders. Its parameters are those of the param card."""
     path = os.path.join(

@@ -1,6 +1,6 @@
 """The C++ integrand of the real stream of Catani-Seymour
-(CSRealChannelIntegrand of madspace) against the driver in Python
-(CSRealIntegrand.evaluate of madgraph/mg7/nlo/cs.py with the combined
+(CSRealChannelIntegrand of madspace) against the Python driver that came
+first (CSRealReference.evaluate of nlo_reference with the combined
 channels) at the same random numbers, on the aMC@NLO outputs of the
 references of test_cs_cross_section.py (MADSPACE_FKS_OUTPUTS): hadron beams
 (p p > e+ e-, t t~, a a, e+ e- j, w+), lepton beams (e+ e- > j j, j j j),
@@ -23,7 +23,7 @@ import numpy as np
 import pytest
 from fks_testing import fks_output
 from madgraph.mg7.nlo.core import Runtime
-from madgraph.mg7.nlo.cs import CSRun
+from nlo_reference import CSReferenceRun
 from test_cs_cross_section import reference
 from test_fks_channel_integrand import half_transverse_mass
 
@@ -59,12 +59,12 @@ RTOL = 1e-13
 
 @contextlib.contextmanager
 def cs_setup(name, channels="combined", **run_card):
-    """The real stream of the driver with the channels (by default all of
-    them, combined) on the output of a reference with the entries of run_card
-    changed, set up, and closed afterwards with the processes of its
-    providers."""
+    """The real stream of the Python reference (CSReferenceRun) with the
+    channels (by default all of them, combined) on the output of a reference
+    of MG5aMC with the entries of run_card changed, set up, and closed
+    afterwards with the processes of its providers."""
     data = reference(name)
-    run = CSRun(
+    run = CSReferenceRun(
         fks_output(data["output"]),
         run_card={**data["run_card"], **run_card},
         param_card=data["param_card"],
@@ -87,8 +87,8 @@ def channels_of(integrand):
     return dipoles[:CHANNELS] + diagrams[:CHANNELS]
 
 
-def compare_with_driver(run):
-    """The integrand against the driver on channels of the first real
+def compare_with_reference(run):
+    """The integrand against the reference on channels of the first real
     processes of a run."""
     checked = 0
     for integrand in run.integrands[:REALS]:
@@ -123,9 +123,9 @@ def compare_with_driver(run):
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_against_driver(name):
+def test_against_reference(name):
     with cs_setup(name) as run:
-        compare_with_driver(run)
+        compare_with_reference(run)
 
 
 @pytest.mark.parametrize("channels", ["pairs", "reals"])
@@ -138,14 +138,14 @@ def test_channel_sets(name, channels):
             m is not None for integrand in run.integrands for m, _ in integrand.channels
         )
         assert (dipoles == 0) == (channels == "reals")
-        compare_with_driver(run)
+        compare_with_reference(run)
 
 
 @pytest.mark.parametrize("choice", [0, 10])
 def test_user_scale(choice, monkeypatch):
     """The scale of the user (dynamical_scale_choice 0 and 10) on p p > e+ e-,
     with the fixed user_dynamical_scale of the provider replaced by half the
-    sum of the transverse masses in the driver and in the libraries."""
+    sum of the transverse masses in the reference and in the libraries."""
     from madgraph.mg7.nlo.provider import FortranProvider
 
     monkeypatch.setattr(
@@ -155,7 +155,7 @@ def test_user_scale(choice, monkeypatch):
     )
     with cs_setup("pp_epem", dynamical_scale_choice=choice) as run:
         assert all(i.source.user_scale for i in run.integrands)
-        compare_with_driver(run)
+        compare_with_reference(run)
 
 
 @pytest.mark.parametrize("name", ["pp_ttx", "epem_ttx_isr"])

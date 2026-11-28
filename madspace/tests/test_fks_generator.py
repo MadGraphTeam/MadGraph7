@@ -5,21 +5,18 @@ NLOIterationState, EventGenerator.integrate):
   virtual on every point, no ratios) against FKSChannelIntegrand at the
   same random numbers and configurations, bit for bit;
 - the adaptation of the state after an iteration against the rules of the
-  Python driver (DiscreteChoice and VirtualTrick of nlo/core.py) on the same
-  points, and the globals it writes;
+  Python driver that came first (DiscreteChoice and VirtualTrick of
+  nlo_reference) on the same points, and the globals it writes;
 - the results of the state against the sums of the points;
-- runs of FKSRun through the generator against the cross sections of MG5aMC
-  per subprocess, with their histograms;
-- the Sudakov approximation of the EW corrections through the generator
-  against MG5aMC;
+- a run with the scale of the user against one at the same fixed scale;
 - the refusal of the survey and the generation of a fixed-order channel.
 
 The runs are those of test_fks_cross_section.py on the aMC@NLO outputs of
-MADSPACE_FKS_OUTPUTS.
+MADSPACE_FKS_OUTPUTS, which runs them through the generator against
+MG5aMC.
 """
 
 import contextlib
-import json
 import math
 import os
 import tempfile
@@ -27,8 +24,8 @@ import tempfile
 import numpy as np
 import pytest
 from fks_testing import fks_output
-from madgraph.mg7.nlo.core import DiscreteChoice, VirtualTrick
 from madgraph.mg7.nlo.fks import FKSRun
+from nlo_reference import DiscreteChoice, VirtualTrick
 from test_fks_cross_section import reference
 
 import madspace as ms
@@ -191,75 +188,23 @@ def test_adaptation():
         assert state.combination([1.0]) == (0.0, 0.0)
 
 
-@pytest.mark.parametrize("name", ["epem_jj_fixed", "pp_epem", "t_bw", "pp_ttx"])
-def test_against_mg5amc(name):
-    """Runs through the event generator agree with MG5aMC per subprocess,
-    and their histograms add up to the cross section."""
-    data, run = run_of(
-        name,
-        accuracy=0.0,
-        grid_points=2000,
-        grid_iterations=3,
-        points=4000,
-        max_iterations=3,
-        generator=True,
-        threads=2,
-    )
-    result = run.run()
-    for key in ("lo", "nlo"):
-        assert abs(pull(result[key], data[key])) < SIGMAS, (key, result[key])
-        for subprocess, theirs in data[key]["subprocesses"].items():
-            ours = result["subprocesses"][subprocess][key]
-            assert abs(pull(ours, theirs)) < SIGMAS, (subprocess, key, ours, theirs)
-    with open(os.path.join(run.run_path, "info.json")) as f:
-        info = json.load(f)
-    assert info["status"] == "done"
-    assert info["process"]["count"] > 0
-    histograms = info["histograms"]
-    assert histograms
-    total = sum(histograms[0]["bin_values"])
-    assert total == pytest.approx(result["nlo"]["sigma"], rel=1e-9)
-
-
-def test_ew_sudakov():
-    """The Sudakov approximation of the EW corrections (--ewsudakov, sud_mod
-    0 and 1) through the event generator, with its blocks from their library,
-    agrees with MG5aMC, which sums it with the NLO."""
-    data, run = run_of(
-        "epem_ttx_sdk",
-        accuracy=0.0,
-        grid_points=2000,
-        grid_iterations=3,
-        points=4000,
-        max_iterations=3,
-        generator=True,
-        threads=2,
-    )
-    result = run.run()
-    assert abs(pull(result["lo"], data["lo"])) < SIGMAS
-    assert abs(pull(result["nlo_with_ew_sudakov"], data["nlo"])) < SIGMAS
-    theirs = data["nlo"]["ew_sudakov"]
-    assert [e["sud_mod"] for e in result["ew_sudakov"]] == [
-        e["sud_mod"] for e in theirs
-    ]
-    for ours, other in zip(result["ew_sudakov"], theirs):
-        assert ours["sigma"] < 0
-        assert abs(pull(ours, other)) < SIGMAS, (ours, other)
-
-
 def test_user_scale():
     """With the scale of the user (dynamical_scale_choice 10, the fixed scale
-    of user_dynamical_scale of the output) a run through the event generator
-    agrees with one of the driver in Python at the same points."""
+    muR_ref_fixed of user_dynamical_scale of the output, from its scale
+    library on the threads of the event generator) a run agrees with one at
+    that fixed scale for mu_R and mu_F."""
     results = []
-    for generator in (False, True):
-        data = reference(os.path.join(DATA, "pp_epem.json"))
+    data = reference(os.path.join(DATA, "pp_epem.json"))
+    for name, scales in (
+        ("user", {"dynamical_scale_choice": 10}),
+        ("fixed", {"fixed_ren_scale": True, "fixed_fac_scale": True}),
+    ):
         run = FKSRun(
             fks_output(data["output"]),
-            run_card={**data["run_card"], "dynamical_scale_choice": 10},
+            run_card={**data["run_card"], **scales},
             param_card=data["param_card"],
             run_path=os.path.join(
-                tempfile.gettempdir(), "madspace_fks_generator", f"user_{generator}"
+                tempfile.gettempdir(), "madspace_fks_generator", f"scale_{name}"
             ),
             seed=4711,
             accuracy=0.0,
@@ -267,13 +212,12 @@ def test_user_scale():
             grid_iterations=3,
             points=4000,
             max_iterations=3,
-            generator=generator,
-            threads=2 if generator else 1,
+            threads=2,
         )
         results.append(run.run())
-    python, generator = results
+    user, fixed = results
     for key in ("lo", "nlo"):
-        assert abs(pull(generator[key], python[key])) < SIGMAS, key
+        assert abs(pull(user[key], fixed[key])) < SIGMAS, key
 
 
 def test_discrete_choice():

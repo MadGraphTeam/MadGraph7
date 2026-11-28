@@ -1,9 +1,10 @@
 """The Fortran provider of the FKS integrand of madspace: the matrix-element
 blocks that FKSCrossSection takes, from the Fortran of an aMC@NLO output
 (output DIR of a process with [QCD]), until the matrix elements of MadMatrix
-and pyAmpliCol give them through UMAMI. The fixed-order driver of madspace
-(nlo/fks.py) and the tests of madspace (madspace/tests) take them from
-here.
+and pyAmpliCol give them through UMAMI. The fixed-order drivers of madspace
+(nlo/fks.py, nlo/cs.py) take them as UMAMI libraries (nlo/libraries.py),
+the tests of madspace (madspace/tests, with the Python reference of the
+drivers in nlo_reference) also from here directly.
 
 fks_provider.f (template_files/mg7) is linked in a P* directory of the
 output as check_poles (make -f makefile_provider fks_provider) and answers

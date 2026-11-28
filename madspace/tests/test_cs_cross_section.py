@@ -43,13 +43,9 @@ import numpy as np
 import pytest
 from fks_testing import fks_output
 from madgraph.mg7.nlo.core import Runtime, light_flavors, madspace
-from madgraph.mg7.nlo.cs import (
-    STREAMS,
-    CSRun,
-    dipole_variables,
-    spin_configuration,
-)
+from madgraph.mg7.nlo.cs import STREAMS, CSRun, spin_configuration
 from madgraph.mg7.nlo.provider import boost_z, partonic_rapidity
+from nlo_reference import CSReferenceRun, dipole_variables
 
 OUTPUTS = os.environ.get("MADSPACE_FKS_OUTPUTS")
 needs_outputs = pytest.mark.skipif(
@@ -82,13 +78,15 @@ def dipole_reference(name):
         return json.load(f)
 
 
-def make_run(name, alpha=1.0, streams=STREAMS, points=POINTS, **options):
+def make_run(
+    name, alpha=1.0, streams=STREAMS, points=POINTS, run_class=CSRun, **options
+):
     if name in SLOW_REFERENCES and not SLOW:
         pytest.skip(f"{name} runs only with MADSPACE_FKS_SLOW=1")
     data = reference(name)
     tag = "_".join([name, str(alpha), *streams, options.get("channels", "pairs")])
     factor, grid_iterations, max_iterations = LONGER_RUNS.get(name, (1, 2, 3))
-    return CSRun(
+    return run_class(
         fks_output(data["output"]),
         alpha=alpha,
         streams=streams,
@@ -232,20 +230,21 @@ def test_s_hat_shift(monkeypatch):
 
 
 @needs_outputs
-@pytest.mark.parametrize("channels", ["combined", "reals", "dipoles"])
+@pytest.mark.parametrize("channels", ["combined", "reals"])
 def test_channel_sets(channels):
-    """With the channels of all dipoles and diagrams (combined), of the
-    diagrams alone (reals) and those of the first driver (dipoles), besides
-    those of the default (pairs) in the other tests: the real stream of e+ e-
-    > j j at a fixed scale without cuts is (1 - C_F) alpha_s / pi sigma_LO,
-    and the NLO of p p > t t~ that of MG5aMC, within PULL errors."""
+    """With the channels of all dipoles and diagrams (combined) and of the
+    diagrams alone (reals), besides those of the default (pairs) in the other
+    tests: the real stream of e+ e- > j j at a fixed scale without cuts is
+    (1 - C_F) alpha_s / pi sigma_LO, and the NLO of p p > t t~ that of
+    MG5aMC, within PULL errors."""
     data = reference("epem_jj_fixed")
     run = make_run("epem_jj_fixed", streams=("real",), channels=channels)
     run.run()
     diagrams = [
         m is None for integrand in run.integrands for m, _ in integrand.channels
     ]
-    assert any(diagrams) == (channels != "dipoles")
+    assert any(diagrams)
+    assert all(diagrams) == (channels == "reals")
     a = alpha_s_of(run, float(data["run_card"]["mur_ref_fixed"])) / math.pi
     lo = data["lo"]["sigma"]
     sigma, error = run.combination([1.0, 0.0, 0.0])
@@ -355,8 +354,9 @@ def test_info_json():
 
 @pytest.fixture(scope="module")
 def real_stream():
-    """The runs with the real stream alone, set up and not run, by reference,
-    technical cut and channels, closed at the end of the module."""
+    """The runs of the Python reference (CSReferenceRun) with the real stream
+    alone, set up and not run, by reference, technical cut and channels,
+    closed at the end of the module."""
     runs = {}
 
     def get(name, technical_cut, channels="pairs"):
@@ -365,6 +365,7 @@ def real_stream():
             run = make_run(
                 name,
                 streams=("real",),
+                run_class=CSReferenceRun,
                 technical_cut=technical_cut,
                 channels=channels,
             )
@@ -628,19 +629,18 @@ def test_gluon_decay_limits(real_stream, name):
 
 @needs_outputs
 def test_technical_cut(real_stream):
-    """With the channels of the dipoles (channels="dipoles"), the technical
-    cut is the region of each channel, both variables of its dipole at or
-    above it, the cutoff of its CSMapping. An event outside it has neither
-    the real emission nor the dipoles in that channel, the soft gluons of
-    1e-6 GeV of the reference, where the real of the Fortran is off, are
-    outside every channel and the events away from the limits inside all.
-    The events of the mapping of a channel are in its region and none is
-    cut, also at random numbers of the emission piled towards zero. The
-    densities of the other channel sets drop the few of those events that lie
-    on the cutoff, where the inverse of the mapping finds the variables below
-    it by rounding."""
+    """The technical cut is the region of each channel, both variables of
+    its dipole at or above it (the cutoff of its CSMapping), those of all
+    dipoles for a channel of a diagram. An event outside it has neither the
+    real emission nor the dipoles in that channel, the soft gluons of 1e-6
+    GeV of the reference, where the real of the Fortran is off, are outside
+    every channel and the events away from the limits inside all. The events
+    of the mapping of a channel of a dipole are in its region, also at random
+    numbers of the emission piled towards zero, and the densities of the
+    channels drop only the few of them that lie on the cutoff, where the
+    inverse of the mapping finds the variables below it by rounding."""
     data = dipole_reference("pp_ttx")
-    run = real_stream("pp_ttx", 1e-6, "dipoles")
+    run = real_stream("pp_ttx", 1e-6)
     points = [p for p in data["points"] if p["real"] == 0]
     integrand = real_integrand(run, data["reals"][0]["pdgs"])
     momenta = np.array([p["momenta"] for p in points])
@@ -650,10 +650,16 @@ def test_technical_cut(real_stream):
         [p["ray"]["limit"] == "soft" and p["ray"]["lam"] == 1e-4 for p in points]
     )
     none = np.array([p["ray"]["limit"] == "none" for p in points])
+    variables = {
+        m: np.minimum(*dipole_variables(momenta, dipole.entry))
+        for m, dipole in enumerate(integrand.dipoles)
+    }
     rng = np.random.default_rng(11)
-    for index in range(integrand.channel_count):
-        dipole = integrand.dipoles[integrand.channels[index][0]]
-        smallest = np.minimum(*dipole_variables(momenta, dipole.entry))
+    kinds = set()
+    for index, (m, _) in enumerate(integrand.channels):
+        kinds.add(m is None)
+        dipoles = list(variables) if m is None else [m]
+        smallest = np.min([variables[d] for d in dipoles], axis=0)
         covered = integrand.covered(index, momenta)
         np.testing.assert_array_equal(covered, smallest >= 1e-6)
         assert not covered[soft].any() and covered[none].all()
@@ -661,7 +667,8 @@ def test_technical_cut(real_stream):
         assert (out["real_weight"][~covered] == 0).all()
         assert (out["dipole_weights"][~covered] == 0).all()
         assert (out["real_weight"][none] != 0).all()
-
+        if m is None:
+            continue
         x = rng.random((2000, integrand.channel_dimension(index)))
         x[:, -3:-1] **= 4
         mapped = [
@@ -670,13 +677,15 @@ def test_technical_cut(real_stream):
         momenta_mapped, x1_mapped, x2_mapped, det = mapped
         inside = det > 0
         assert inside.mean() > 0.9
-        smallest = np.minimum(*dipole_variables(momenta_mapped, dipole.entry))
+        entry = integrand.dipoles[m].entry
+        smallest = np.minimum(*dipole_variables(momenta_mapped, entry))
         # products in the lab frame, with the digits of p_i.p_a for i close to
         # the beam (test_cs_mapping checks the cutoff to 1e-9 with products
         # from the mass shells)
         assert (smallest[inside] >= 1e-6 * (1 - 1e-6)).all()
         out = integrand.evaluate(index, x, None, None, None, None)
-        assert (out["real_weight"][inside] != 0).all(), index
+        assert (out["real_weight"][inside] != 0).mean() > 0.99, index
+    assert kinds == {False, True}
 
 
 @needs_outputs

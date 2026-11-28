@@ -7,13 +7,14 @@
   ratios) and CSRealChannelIntegrand at the same random numbers, bit for
   bit;
 - the adaptation of the virtual trick of the n-body stream after an
-  iteration against VirtualTrick of nlo/core.py on the same points, the
+  iteration against VirtualTrick of nlo_reference on the same points, the
   globals it writes, and the results of the states of both streams against
   the sums of the points;
 - the outputs of the training against the channel integrands without the
   virtual, and the density of the flow against CSIntegrandProbability;
 - the histograms of each stream (CSObservableHistograms) against those of
-  the driver in Python (CSHistograms) at the outputs of the integrand;
+  the Python driver that came first (histogram_sums of nlo_reference) at
+  the outputs of the integrand;
 - runs of CSRun through the generator, also with the channels of the real
   diagrams alone, of dressed leptons and with a MadNIS training, against the
   cross sections of MG5aMC, the LO also per subprocess, with histograms that
@@ -35,8 +36,8 @@ import tempfile
 import numpy as np
 import pytest
 from fks_testing import fks_output
-from madgraph.mg7.nlo.core import VirtualTrick
 from madgraph.mg7.nlo.cs import CSBornIntegrand, CSRun
+from nlo_reference import CSReferenceRun, VirtualTrick
 from test_cs_cross_section import reference
 
 import madspace as ms
@@ -54,9 +55,9 @@ FRACTION = 0.5
 REALS = 2
 
 
-def run_of(name, tag=None, **options):
+def run_of(name, tag=None, run_class=CSRun, **options):
     data = reference(name)
-    return data, CSRun(
+    return data, run_class(
         fks_output(data["output"]),
         run_card=data["run_card"],
         param_card=data["param_card"],
@@ -70,9 +71,9 @@ def run_of(name, tag=None, **options):
 
 @contextlib.contextmanager
 def cs_setup(name, **options):
-    """The run of a reference, set up, and closed afterwards with the
-    processes of its providers."""
-    _, run = run_of(name, **options)
+    """The run of the Python reference (CSReferenceRun) on a reference, set
+    up, and closed afterwards with the processes of its providers."""
+    _, run = run_of(name, run_class=CSReferenceRun, **options)
     run.setup()
     try:
         yield run
@@ -301,10 +302,10 @@ def test_training_outputs(name):
 @pytest.mark.parametrize("name", ["pp_ttx", "epem_jjj", "t_bwg"])
 def test_histograms(name):
     """The histograms of a channel of each stream through the generator
-    (CSObservableHistograms) are those of the driver in Python (CSHistograms)
-    at the outputs of the integrand, the real emission and the Borns of its
-    dipoles in the same bins, to the rounding of the bins, and the integrand
-    of the other stream refuses them."""
+    (CSObservableHistograms) are those of the Python reference
+    (histogram_sums) at the outputs of the integrand, the real emission and
+    the Borns of its dipoles in the same bins, to the rounding of the bins,
+    and the integrand of the other stream refuses them."""
     with cs_setup(name) as run:
         context = run.context
         histograms, jets = run.histograms, run.jets()
@@ -331,10 +332,10 @@ def test_histograms(name):
             ones = np.ones(POINTS)
             if nbody(integrand):
                 result = dict(nlo=out["weight"], momenta=out["momenta"])
-                theirs = integrand.histogram_sums(runtime, result, ones, None)
             else:
                 assert out["born_momenta"].shape[1] == len(integrand.dipoles)
-                theirs = runtime(out, ones)
+                result = out
+            theirs = integrand.histogram_sums(runtime, result, ones, None)
             assert len(ours) == len(theirs) == 2 * len(histograms)
             # the graph of the generator fuses the observables of the
             # kinematics otherwise, so that a bin can differ by its rounding
@@ -417,7 +418,6 @@ def test_against_mg5amc(name, options):
         grid_iterations=3,
         points=4000,
         max_iterations=3,
-        generator=True,
         threads=2,
         **options,
     )

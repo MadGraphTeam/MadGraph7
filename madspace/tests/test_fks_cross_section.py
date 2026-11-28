@@ -1,5 +1,6 @@
 """The cross sections of the MG7 NLO driver (madgraph/mg7/nlo/fks.py) with
-the FKS integrand of madspace against those of MG5aMC at LO and NLO
+the FKS integrand of madspace, through the event generator of madspace,
+against those of MG5aMC at LO and NLO
 (test_data/fks_cross_section, from make_fks_cross_section_reference.py), per
 subprocess, within PULL combined errors. For e+ e- > j j at a fixed scale
 without cuts the NLO also has to be sigma_LO (1 + alpha_s / pi) on the same
@@ -11,12 +12,10 @@ The driver runs on the aMC@NLO outputs of the references, as for
 test_fks_fortran_provider.py (MADSPACE_FKS_OUTPUTS), with the run card of
 each reference. MADSPACE_FKS_POINTS sets the number of points per channel of
 an iteration (four adapt the grids, six add up), POINTS by default, with
-which all setups take a minute on one core, half of it for the virtual of
-g g > t t~. With MADSPACE_FKS_ACCURACY=reference the runs go on to the
-accuracy of each reference instead (req_acc_FO of its run card), as a
-fixed-order run of MG5aMC does, in about 20 minutes on one core. p p > e+
-e- j (twelve subprocesses, two and a half minutes there) runs only with
-MADSPACE_FKS_SLOW=1.
+which all setups take a few minutes. With MADSPACE_FKS_ACCURACY=reference
+the runs go on to the accuracy of each reference instead (req_acc_FO of its
+run card), as a fixed-order run of MG5aMC does. p p > e+ e- j (twelve
+subprocesses) runs only with MADSPACE_FKS_SLOW=1.
 """
 
 import functools

@@ -1,33 +1,33 @@
 """The scheme-independent core of the fixed-order NLO runs of madspace on an
 aMC@NLO output, which the integrands of a subtraction scheme plug into (FKS
-in nlo/fks.py, Catani-Seymour in nlo/cs.py): the cards of the output,
-the PDFs and alpha_s, the VEGAS grids, the adaptive discrete choice, the
-virtual trick, the channels with their iterations to the accuracy, and the
-outputs of the run (info.json, which MadBoard reads, and the histograms as
-HwU).
+in nlo/fks.py, Catani-Seymour in nlo/cs.py): the cards of the output, the
+PDFs and alpha_s, the run through the C++ event generator of madspace and
+the outputs of the run (info.json, which MadBoard reads, and the histograms
+as HwU).
 
 A run (NLORun) integrates channels. An integrand of a scheme gives the
 channels of one subprocess (a P* directory of the output) and
 
 - channel_count, channel_dimension(index) (the random numbers of a channel)
   and channel_name(index),
-- choice_count(index), the options of the discrete choice of a channel (the
-  FKS configurations), and choice_key, its name in info.json,
-- nlo_count, the NLO orders, for the virtual trick,
-- evaluate(index, x, choice, choice_weight, trick, rng): the NLO weight per
-  point, its LO part and its virtual residual (nlo, lo, residual), the
-  virtual and the Born of the points with the virtual (virtual, born,
-  evaluated), as SubprocessIntegrand.evaluate of nlo/fks.py, optionally
-  the part of the weight that does not depend on the choice (nbody), and
-  with
-  scale_variations, the pairs of factors of mu_R and mu_F of the run card
-  (scale_variations of this module), and pdf_members, the number of
+- choice_key, the name of the discrete choice of a channel (the FKS
+  configurations) in info.json,
+- channel_integrand(index, context), the C++ integrand of a channel at
+  given random numbers, and generator_integrand(index, context, prefix,
+  fraction, min_fraction, bins, histograms, jets, flow, discrete,
+  madnis_training), a GeneratorIntegrand of madspace on it with its VEGAS
+  grid, its discrete choice and its virtual trick as globals of the
+  context (FKSIntegrand for FKS, CSIntegrand for CS, both with
+  NLOIterationState),
+- with scale_variations, the pairs of factors of mu_R and mu_F of the run
+  card (scale_variations of this module), and pdf_members, the number of
   members of the PDF set of reweight_PDF (0 without), the NLO weight at each
-  scale variation, then with each member (variations), and with
-  ew_sudakov_modes, the modes of the Sudakov approximation of the EW
-  corrections (0 without), its weight per mode (ew_sudakov),
-- histogram_runtime(histograms, jets) and histogram_sums(runtime, result,
-  jacobian, choice), the weights of the histograms of a batch,
+  scale variation, then with each member, and with ew_sudakov_modes, the
+  modes of the Sudakov approximation of the EW corrections (0 without), its
+  weight per mode, as values of the iteration state after the NLO weight,
+  its LO part and its virtual residual,
+- histogram_runtime(histograms, jets), the histograms of the run, which
+  the setup builds once to find out whether they fit the subprocess,
 - name, incoming, beams, energy, born_pdgs, matrix_element_calls() and
   close(),
 - takes_virtual and provider, for the integrands that take the virtual:
@@ -36,24 +36,16 @@ channels of one subprocess (a P* directory of the output) and
   IRPoleCheckThreshold of FKS_params.dat) and stops where they do not.
 
 The integration follows the fixed-order run of MadFKS (driver_mintFO.f with
-mint): every iteration adapts the grids, the choice and the virtual trick
-of each channel to its points. After the grid iterations the integration
-iterations add up their points, each iteration with its own variance, the
-points of an iteration shared among the channels by their standard
-deviations. Towards req_acc_FO the grid iterations double their points and
-each integration iteration has the points the errors so far imply are
-missing (at most four times those before). Where req_acc_FO is -1 the run
-takes niters_FO iterations of npoints_FO points per channel.
+mint) in EventGenerator.integrate: every iteration adapts the grids, the
+choice and the virtual trick of each channel to its points. After the grid
+iterations the integration iterations add up their points, each iteration
+with its own variance, the points of an iteration shared among the channels
+by their standard deviations. Towards req_acc_FO the grid iterations double
+their points and each integration iteration has the points the errors so
+far imply are missing (at most four times those before). Where req_acc_FO is
+-1 the run takes niters_FO iterations of npoints_FO points per channel.
 
-With generator the run goes through the C++ event generator of madspace
-instead (EventGenerator.integrate): an integrand of a scheme then also gives
-generator_integrand(index, context, prefix, fraction, min_fraction, bins,
-histograms, jets), a GeneratorIntegrand of madspace with its VEGAS grid, its
-discrete choice and its virtual trick as globals of the context, which the
-iterations adapt in C++ (FKSIntegrand for FKS, CSIntegrand for CS, both with
-NLOIterationState) and fill the histograms of the run.
-
-With madnis_batches as well, the grid iterations adapt the VEGAS grids, the
+With madnis_batches, the grid iterations adapt the VEGAS grids, the
 discrete choice and the virtual trick, a MadNIS training of that many
 batches per subprocess turns each grid into a Flow, and the integration
 iterations run with the flows (generator_integrand with flow and
@@ -66,6 +58,12 @@ probabilities the flow learns (with the n-body part times p_k the flow chased
 its own probabilities: e+ e- -> j j at a fixed scale after 1000 batches
 5.2e-4 relative error with the DiscreteFlow and 3.9e-4 without, now 3.8e-4
 with it, p p > t t~ 5.1e-3 with and without it).
+
+The Python driver that came first (its VEGAS grids, discrete choice, virtual
+trick and iterations in numpy, and the integrands at given points with the
+matrix elements of the provider called from Python) lives on in the tests of
+madspace as their reference (madspace/tests/nlo_reference), against which
+the C++ integrands are checked point by point.
 """
 
 import ast
@@ -139,16 +137,25 @@ def madspace():
 
 
 class Runtime:
-    """A FunctionGenerator of madspace built once and called on numpy
-    arrays, its outputs by name, with its index (fks_index or layout_index)
-    as the last argument where it has one."""
+    """A FunctionGenerator of madspace called on numpy arrays, its outputs
+    by name, with its index (fks_index or layout_index) as the last argument
+    where it has one. It builds its FunctionRuntime at its first call, so
+    that a run that hands the function to the C++ integrands compiles it
+    there only."""
 
     def __init__(self, function, context):
-        ms = madspace()
         self.function = function
-        self.runtime = ms.FunctionRuntime(function.function(), context)
+        self.context = context
+        self._runtime = None
         self.names = list(function.arg_types().keys())
         self.returns = list(function.return_types().keys())
+
+    @property
+    def runtime(self):
+        if self._runtime is None:
+            ms = madspace()
+            self._runtime = ms.FunctionRuntime(self.function.function(), self.context)
+        return self._runtime
 
     def __call__(self, *args, fks_index=None, layout_index=None):
         tensors = [np.ascontiguousarray(a) for a in args]
@@ -170,128 +177,6 @@ class Runtime:
 
 # the damping exponent of the VEGAS grids, as of the classic VEGAS
 VEGAS_ALPHA = 1.5
-
-
-class Vegas:
-    """A separable VEGAS grid on the unit hypercube with bin_count bins per
-    dimension, adapted to the absolute values of the weights (alpha the
-    damping), as MINT of MadFKS. One rare large weight dominates the sums
-    of the squares of its bins in every dimension, so that grids adapted to
-    the squares of the NLO weights sampled the bulk ever more sparsely (p p
-    > e+ e- j: errors four times larger at the same points)."""
-
-    def __init__(self, dimension, bin_count=50, alpha=VEGAS_ALPHA):
-        self.edges = np.tile(np.linspace(0.0, 1.0, bin_count + 1), (dimension, 1))
-        self.bin_count, self.alpha = bin_count, alpha
-        self.sums = np.zeros((dimension, bin_count))
-
-    def sample(self, u):
-        """The points of the grid at the uniform numbers u (n, dimension),
-        their Jacobians and bins."""
-        scaled = u * self.bin_count
-        bins = np.minimum(scaled.astype(int), self.bin_count - 1)
-        dims = np.arange(u.shape[1])
-        low = self.edges[dims, bins]
-        width = self.edges[dims, bins + 1] - low
-        x = low + (scaled - bins) * width
-        return x, np.prod(width * self.bin_count, axis=1), bins
-
-    def add(self, bins, weights):
-        for d in range(self.edges.shape[0]):
-            self.sums[d] += np.bincount(
-                bins[:, d], weights=np.abs(weights), minlength=self.bin_count
-            )
-
-    def adapt(self):
-        n = self.bin_count
-        for d in range(self.edges.shape[0]):
-            sums = np.convolve(self.sums[d], [1, 1, 1], "same")
-            sums /= np.convolve(np.ones(n), [1, 1, 1], "same")
-            total = sums.sum()
-            if total <= 0:
-                continue
-            r = sums / total
-            with np.errstate(divide="ignore", invalid="ignore"):
-                r = np.where(r > 0, ((r - 1) / np.log(r)) ** self.alpha, 0.0)
-            r = np.nan_to_num(r, nan=1.0)
-            if r.sum() <= 0:
-                continue
-            cumulative = np.concatenate([[0.0], np.cumsum(r)]) / r.sum()
-            targets = np.linspace(0.0, 1.0, n + 1)
-            self.edges[d] = np.interp(targets, cumulative, self.edges[d])
-        self.sums[:] = 0.0
-
-
-class DiscreteChoice:
-    """The adaptive choice of one of count options (the FKS configuration), as
-    MC_integer of MadFKS: probabilities proportional to the mean absolute
-    integrand of each option, mixed with the uniform choice by floor, so
-    that every option keeps being sampled. The integrand of an option is the
-    part of the weight that depends on the choice (for FKS the event and its
-    counter-events, without the n-body part) times the probability of its
-    choice."""
-
-    def __init__(self, count, floor=0.1):
-        self.probabilities = np.full(count, 1.0 / count)
-        self.floor = floor
-        self.sums = np.zeros(count)
-        self.counts = np.zeros(count)
-
-    def sample(self, rng, points):
-        index = rng.choice(len(self.probabilities), size=points, p=self.probabilities)
-        return index, 1.0 / self.probabilities[index]
-
-    def add(self, index, integrands):
-        n = len(self.probabilities)
-        self.sums += np.bincount(index, weights=np.abs(integrands), minlength=n)
-        self.counts += np.bincount(index, minlength=n)
-
-    def adapt(self):
-        seen = self.counts > 0
-        if not seen.any():
-            return
-        target = np.zeros_like(self.sums)
-        target[seen] = self.sums[seen] / self.counts[seen]
-        if target.sum() > 0:
-            target /= target.sum()
-            uniform = np.full_like(target, 1.0 / len(target))
-            self.probabilities = (1 - self.floor) * target + self.floor * uniform
-        self.sums[:] = 0.0
-        self.counts[:] = 0.0
-
-
-class VirtualTrick:
-    """The virtual on a fraction of the points of a channel (the virtual
-    trick of MadFKS): where it is evaluated (V - r B) / f, plus r B
-    everywhere, with r the average of V / B per NLO order and B the sum of
-    the Born orders."""
-
-    def __init__(self, orders, fraction, min_fraction):
-        self.ratios = np.zeros(orders)
-        self.fraction = fraction
-        self.min_fraction = min_fraction
-        self.virtual_sums = np.zeros(orders)
-        self.born_sum = 0.0
-
-    def inputs(self, virtual, born, evaluated):
-        approximation = self.ratios[None, :] * born.sum(1)[:, None]
-        residual = np.where(
-            evaluated[:, None], (virtual - approximation) / self.fraction, 0.0
-        )
-        return approximation + residual, approximation
-
-    def add(self, virtual, born, evaluated):
-        self.virtual_sums += virtual[evaluated].sum(0)
-        self.born_sum += born[evaluated].sum()
-
-    def adapt(self, error_virtual, error_total):
-        if self.born_sum != 0:
-            self.ratios = self.virtual_sums / self.born_sum
-        self.virtual_sums[:] = 0.0
-        self.born_sum = 0.0
-        if error_total > 0:
-            factor = max(min(2.0 * error_virtual / error_total, 2.0), 0.25)
-            self.fraction = max(min(self.fraction * factor, 1.0), self.min_fraction)
 
 
 def born_topology(masses, nincoming, channel, order=None):
@@ -557,6 +442,18 @@ POLE_CHECK_POINTS = 6
 POLE_CHECK_TRIES = 2000
 
 
+def mapping_outputs(out, count):
+    """The momenta, momentum fractions (x1, x2, broadcast to count points),
+    1 - x of dressed leptons (omx1, omx2, None without) and Jacobian of the
+    forward map of a PhaseSpaceMapping or CSMapping."""
+    out = [np.array(np.from_dlpack(t)) for t in out]
+    momenta, x1, x2, det = out[0], out[1], out[2], out[-1]
+    omx = None if len(out) == 4 else (out[3], out[4])
+    x1 = np.broadcast_to(x1, count).copy()
+    x2 = np.broadcast_to(x2, count).copy()
+    return momenta, x1, x2, omx, det
+
+
 def pole_check(provider, run_card, param_card, n_f, n_l, context, threshold, seed=1):
     """The check of BinothLHA.f of MadFKS that the poles of the virtual of
     the provider cancel those of the integrated subtraction terms, here those
@@ -581,7 +478,7 @@ def pole_check(provider, run_card, param_card, n_f, n_l, context, threshold, see
     """
     if threshold < 0:
         return 0
-    from madgraph.mg7.nlo.cs import correction_orders, mapping_outputs
+    from madgraph.mg7.nlo.cs import correction_orders
     from madgraph.mg7.nlo.provider import boost_z, partonic_rapidity
 
     ms = madspace()
@@ -967,141 +864,25 @@ class Couplings:
 
 
 class Channel:
-    """The state of one channel of one subprocess: its VEGAS grid, its
-    discrete choice (of the FKS configurations), its virtual trick and the
-    sums of its integration iterations, which add up the points of all of
-    them, each iteration with its own variance."""
+    """One channel of one subprocess, with the results of its
+    ChannelEventGenerator after the run (read): its estimates from the
+    NLOIterationState, its virtual fraction, the probabilities of its
+    discrete choice and its histograms, nothing before."""
 
-    def __init__(self, integrand, index, fks_params, bins):
+    def __init__(self, integrand, index):
         self.integrand, self.index = integrand, index
-        self.dimension = integrand.channel_dimension(index)
-        self.vegas = Vegas(self.dimension, bins)
-        self.choice = DiscreteChoice(integrand.choice_count(index))
-        self.trick = VirtualTrick(
-            integrand.nlo_count,
-            fks_params["VirtualFraction"],
-            fks_params["MinVirtualFraction"],
-        )
-        self.reset()
-        self.std = None
-
-    def reset(self):
+        self.name = integrand.channel_name(index)
+        self.state = None
         self.count = 0
-        # the sums of the NLO weight, its LO part, its virtual residual and the
-        # NLO weight at each scale variation and with each PDF member, and the
-        # sums over the iterations of their products about the means of each
-        # iteration
-        size = 3 + len(getattr(self.integrand, "scale_variations", []))
-        size += getattr(self.integrand, "pdf_members", 0)
-        size += getattr(self.integrand, "ew_sudakov_modes", 0)
-        self.sums = np.zeros(size)
-        self.covariance = np.zeros((size, size))
+        self.virtual_fraction = None
+        self.probabilities = []
         self.histograms = None
 
-    @property
-    def name(self):
-        return self.integrand.channel_name(self.index)
-
-    def run(self, points, rng, keep, histograms, batch):
-        """An iteration of points points of the channel, after which its
-        VEGAS grid, its discrete choice and its virtual trick adapt to them,
-        as mint does after each iteration. With keep the
-        points add to the estimates of the channel, with the variance of
-        this iteration, and to its histograms."""
-        weights, residuals = [], []
-        size = len(self.sums)
-        count, sums, products = 0, np.zeros(size), np.zeros((size, size))
-        for start in range(0, points, batch):
-            n = min(batch, points - start)
-            u = rng.random((n, self.dimension))
-            x, jacobian, bins = self.vegas.sample(u)
-            choice, choice_weight = self.choice.sample(rng, n)
-            result = self.integrand.evaluate(
-                self.index, x, choice, choice_weight, self.trick, rng
-            )
-            nlo = result["nlo"] * jacobian
-            lo = result["lo"] * jacobian
-            residual = result["residual"] * jacobian
-            weights.append(nlo)
-            residuals.append(residual)
-            self.trick.add(result["virtual"], result["born"], result["evaluated"])
-            self.vegas.add(bins, nlo)
-            # the n-body part does not depend on the choice
-            nbody = result.get("nbody", 0.0) * jacobian
-            self.choice.add(choice, (nlo - nbody) / choice_weight)
-            if not keep:
-                continue
-            variations = result.get("variations", np.zeros((n, 0))) * jacobian[:, None]
-            sudakov = result.get("ew_sudakov", np.zeros((n, 0))) * jacobian[:, None]
-            values = np.vstack([nlo, lo, residual, variations.T, sudakov.T])
-            count += n
-            sums += values.sum(1)
-            products += values @ values.T
-            if histograms is not None:
-                sums_of = self.integrand.histogram_sums(
-                    histograms, result, jacobian, choice
-                )
-                sums_of = [np.asarray(v).reshape(-1) for v in sums_of]
-                if self.histograms is None:
-                    self.histograms = [np.zeros_like(v) for v in sums_of]
-                for total, value in zip(self.histograms, sums_of):
-                    total += value
-        weights = np.concatenate(weights)
-        residuals = np.concatenate(residuals)
-        error_total = weights.std() / math.sqrt(len(weights))
-        error_virtual = residuals.std() / math.sqrt(len(residuals))
-        self.vegas.adapt()
-        self.choice.adapt()
-        self.trick.adapt(error_virtual, error_total)
-        if count:
-            self.count += count
-            self.sums += sums
-            self.covariance += products - np.outer(sums, sums) / count
-        self.std = weights.std()
-
-    def result(self, k):
-        """The estimate and its error of the k-th sum (NLO, LO, residual, then
-        the scale variations, the PDF members and the modes of the Sudakov
-        approximation)."""
-        if self.count == 0:
-            return 0.0, 0.0
-        coefficients = np.zeros(len(self.sums))
-        coefficients[k] = 1.0
-        return self.combination(coefficients)
-
-    def combination(self, coefficients):
-        """The estimate and its error of a linear combination of the NLO
-        weight, its LO part and its virtual residual on the same points."""
-        if self.count == 0:
-            return 0.0, 0.0
-        c = np.zeros(len(self.sums))
-        c[: len(coefficients)] = coefficients
-        variance = max(c @ self.covariance @ c, 0.0) / self.count**2
-        return c @ self.sums / self.count, math.sqrt(variance)
-
-
-class GeneratorChannel:
-    """A channel of a run through the C++ event generator, with the
-    interface of Channel that the outputs of NLORun read: its results from
-    the NLOIterationState of its ChannelEventGenerator, its histograms from
-    the sums of the generator."""
-
-    class Trick:
-        def __init__(self, fraction):
-            self.fraction = fraction
-
-    class Choice:
-        def __init__(self, probabilities):
-            self.probabilities = np.asarray(probabilities)
-
-    def __init__(self, channel, generator):
-        self.integrand, self.index = channel.integrand, channel.index
-        self.name = channel.name
+    def read(self, generator):
         self.state = generator.iteration_state()
         self.count = self.state.count()
-        self.trick = self.Trick(self.state.virtual_fraction())
-        self.choice = self.Choice(self.state.configuration_probabilities())
-        self.std = self.state.iteration_std()
+        self.virtual_fraction = self.state.virtual_fraction()
+        self.probabilities = list(self.state.configuration_probabilities())
         histograms = generator.histograms()
         self.histograms = None
         if histograms:
@@ -1111,11 +892,16 @@ class GeneratorChannel:
                 self.histograms.append(np.asarray(histogram.bin_errors))
 
     def result(self, k):
+        """The estimate and its error of the k-th value of the state (NLO,
+        LO, residual, then the scale variations, the PDF members and the
+        modes of the Sudakov approximation)."""
         coefficients = np.zeros(k + 1)
         coefficients[k] = 1.0
         return self.combination(coefficients)
 
     def combination(self, coefficients):
+        """The estimate and its error of a linear combination of the values
+        of the state on the same points."""
         if self.count == 0:
             return 0.0, 0.0
         width = self.state.value_count()
@@ -1264,18 +1050,17 @@ class NLORun:
             zero.
         histograms: a TOML file with the histograms (see read_histograms),
             those of default_histograms without.
-        batch: the points of one call of the integrand.
+        batch: the points of a batch of the event generator.
         bins: the bins per dimension of the VEGAS grids.
         run_card, param_card: values in place of those of the cards of the
             output (run_card by name, param_card as read_param_card gives
             it).
         run_path: the directory of info.json and the HwU file, the run in
             Events by default.
-        generator: run the iterations in the C++ event generator of madspace
-            (see the module), on threads threads (all cores by default).
-        madnis_batches: with generator, the batches of a MadNIS training per
-            subprocess between the grid and the integration iterations, none
-            by default.
+        threads: the threads of the event generator, all cores by default.
+        madnis_batches: the batches of a MadNIS training per subprocess
+            between the grid and the integration iterations, none by
+            default.
         madnis_discrete: train a DiscreteFlow of the configurations as well
             (see the module), off by default.
     """
@@ -1299,13 +1084,11 @@ class NLORun:
         run_card=None,
         param_card=None,
         run_path=None,
-        generator=False,
         threads=-1,
         madnis_batches=0,
         madnis_discrete=False,
     ):
         self.output = os.path.realpath(output)
-        self.generator = generator
         self.threads = threads
         self.madnis_batches = madnis_batches
         self.madnis_discrete = madnis_discrete
@@ -1336,7 +1119,6 @@ class NLORun:
         if not self.seed:
             # iseed 0 draws a seed, which info.json keeps
             self.seed = int(np.random.SeedSequence().generate_state(1)[0]) % 2**31 + 1
-        self.rng = np.random.default_rng(self.seed)
         self.batch, self.bins = batch, bins
         self.name = name
         self.run_path = run_path or os.path.join(self.output, "Events", name)
@@ -1350,9 +1132,7 @@ class NLORun:
         ms = madspace()
         # a context of its own, so that its globals (the PDF and alpha_s
         # grids) stay out of the default context of madspace
-        self.context = ms.Context(
-            ms.cpu_device(), self.threads if self.generator else -1
-        )
+        self.context = ms.Context(ms.cpu_device(), self.threads)
         self.couplings = Couplings(
             os.path.join(self.output, "SubProcesses", self.work_directory),
             self.run_card,
@@ -1389,7 +1169,7 @@ class NLORun:
                 )
                 logger.info("poles of %s: checked at %d points", integrand.name, points)
         self.channels = [
-            Channel(integrand, k, self.fks_params, self.bins)
+            Channel(integrand, k)
             for integrand in self.integrands
             for k in range(integrand.channel_count)
         ]
@@ -1404,14 +1184,11 @@ class NLORun:
                 leading.incoming == 1,
                 integer(self.run_card["maxjetflavor"]),
             )
-        self.histogram_runtimes = {}
         if self.histograms:
             jets = self.jets()
             try:
                 for integrand in self.integrands:
-                    self.histogram_runtimes[integrand.name] = (
-                        integrand.histogram_runtime(self.histograms, jets)
-                    )
+                    integrand.histogram_runtime(self.histograms, jets)
             except ValueError as error:
                 # the real processes of QED corrections differ in more than
                 # their QCD partons (a photon, a lepton pair from a photon),
@@ -1419,7 +1196,7 @@ class NLORun:
                 if self.histogram_file:
                     raise
                 logger.warning("no histograms: %s", error)
-                self.histograms, self.histogram_runtimes = None, {}
+                self.histograms = None
 
     def make_integrands(self, directories, n_f, n_l):
         """The integrands of the subprocesses of the output (their P*
@@ -1452,61 +1229,19 @@ class NLORun:
         return mean, math.sqrt(sum(e**2 for _, e in values))
 
     def run(self):
-        """The grid iterations, then the integration iterations to the
-        accuracy, then the outputs of the run. Returns the result."""
-        if self.generator:
-            return self.run_generator()
-        self.setup()
-        try:
-            self.write_status("survey")
-            for iteration in range(self.grid_iterations):
-                points = self.grid_points
-                if not self.fixed_points:
-                    points *= 2**iteration
-                for channel in self.channels:
-                    channel.run(points, self.rng, False, None, self.batch)
-                logger.info("grid iteration %d done", iteration + 1)
-            for channel in self.channels:
-                channel.reset()
-            self.write_status("integration")
-            total = self.points * len(self.channels)
-            for iteration in range(self.max_iterations):
-                for channel, points in zip(self.channels, self.shares(total)):
-                    histograms = self.histogram_runtimes.get(channel.integrand.name)
-                    channel.run(points, self.rng, True, histograms, self.batch)
-                self.iterations = iteration + 1
-                mean, error = self.total(0)
-                logger.info("iteration %d: %.6e +- %.2e", iteration + 1, mean, error)
-                self.write_status("integration")
-                if self.fixed_points:
-                    continue
-                if abs(error) <= self.accuracy * abs(mean):
-                    break
-                total = self.next_points(mean, error)
-            self.write_status("done")
-            self.write_hwu()
-            return self.result()
-        finally:
-            self.close()
-
-    def run_generator(self):
-        """The run of run through the C++ event generator of madspace: the
+        """The run through the C++ event generator of madspace: the
         GeneratorIntegrand of every channel in a ChannelEventGenerator, all of
-        them integrated by EventGenerator.integrate. The channels of the run
-        then read their results from the generator (GeneratorChannel)."""
+        them integrated by EventGenerator.integrate (the grid iterations,
+        then the integration iterations to the accuracy), then the outputs
+        of the run, with the results the channels read from the generators.
+        Returns the result."""
         ms = madspace()
         self.setup()
         try:
-            for integrand in self.integrands:
-                if not hasattr(integrand, "generator_integrand"):
-                    raise NotImplementedError(
-                        f"the event generator of madspace does not run the "
-                        f"{self.scheme} integrands yet"
-                    )
             self.write_status("survey")
             config = ms.GeneratorConfig()
             config.cpu_batch_size = self.batch
-            # the grids adapt as those of the Python iterations
+            # the grids adapt to the absolute weights, as those of mint
             config.vegas_damping = VEGAS_ALPHA
             config.vegas_absolute_weights = True
             jets = self.jets() if self.histograms else None
@@ -1536,10 +1271,8 @@ class NLORun:
                 )
                 integration.grid_iterations = 0
             event_generator.integrate(integration)
-            self.channels = [
-                GeneratorChannel(channel, generator)
-                for channel, generator in zip(self.channels, generators)
-            ]
+            for channel, generator in zip(self.channels, generators):
+                channel.read(generator)
             self.iterations = max(
                 generator.status().iterations for generator in generators
             ) - integration.grid_iterations
@@ -1665,32 +1398,6 @@ class NLORun:
         jets["maxjetflavor"] = integer(jets["maxjetflavor"])
         return jets
 
-    def next_points(self, mean, error):
-        """The points of the next iteration towards the accuracy: those the
-        errors so far imply are missing, by a tenth more, at least points
-        per channel and at most four times the points so far."""
-        done = sum(channel.count for channel in self.channels)
-        least = self.points * len(self.channels)
-        if mean == 0:
-            return least
-        needed = done * (error / (self.accuracy * abs(mean))) ** 2
-        return round(min(max(1.1 * (needed - done), least), 4 * done))
-
-    def shares(self, total):
-        """The points of an iteration per channel, total in all, by the
-        standard deviations of the channels (at least a tenth of an even
-        share), points each with fixed points."""
-        count = len(self.channels)
-        if self.fixed_points:
-            return [self.points] * count
-        std = np.array([c.std or 0.0 for c in self.channels])
-        if std.sum() <= 0:
-            return [round(total / count)] * count
-        share = std / std.sum()
-        share = np.maximum(share, 0.1 / count)
-        share /= share.sum()
-        return [max(round(s * total), self.batch // 10) for s in share]
-
     def channel_status(self):
         status = []
         for channel in self.channels:
@@ -1702,12 +1409,8 @@ class NLORun:
                     mean=mean,
                     error=error,
                     count=channel.count,
-                    virtual_fraction=channel.trick.fraction,
-                    **{
-                        channel.integrand.choice_key: (
-                            channel.choice.probabilities.tolist()
-                        )
-                    },
+                    virtual_fraction=channel.virtual_fraction,
+                    **{channel.integrand.choice_key: channel.probabilities},
                 )
             )
         return status

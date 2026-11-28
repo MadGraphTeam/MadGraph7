@@ -1,9 +1,10 @@
 """The fixed-order NLO run of madspace on an aMC@NLO output: the FKS
-integrand of madspace (FKSKinematics, FKSCrossSection) with the matrix
-elements of the Fortran provider (nlo/provider.py) and the PDFs, alpha_s,
-scales and cuts of the run card, integrated per subprocess and per Born
-channel of MadFKS, with its histograms in the info.json of the run, which
-MadBoard reads.
+integrand of madspace (FKSChannelIntegrand, of FKSKinematics and
+FKSCrossSection) with the matrix elements of the Fortran provider
+(nlo/provider.py) as UMAMI libraries (nlo/libraries.py) and the PDFs,
+alpha_s, scales and cuts of the run card, integrated per subprocess and per
+Born channel of MadFKS by the C++ event generator of madspace (FKSIntegrand),
+with its histograms in the info.json of the run, which MadBoard reads.
 
     python -m madgraph.mg7.nlo.fks OUTPUT [--name RUN] [--accuracy ACC]
 
@@ -92,9 +93,8 @@ import logging
 import math
 import os
 
-import numpy as np
 
-from madgraph.mg7.nlo.provider import FortranProvider, ew_sudakov_inputs, fks_blocks
+from madgraph.mg7.nlo.provider import FortranProvider
 from madgraph.mg7.nlo.core import (  # noqa: F401 (the names the tests import)
     LEPTON_POWER,
     NLORun,
@@ -112,15 +112,6 @@ from madgraph.mg7.nlo.core import (  # noqa: F401 (the names the tests import)
 )
 
 logger = logging.getLogger("madgraph.mg7.nlo.fks")
-
-# the kinematics of FKSObservableHistograms and their weights
-HISTOGRAM_KINEMATICS = (
-    ("momenta", "event_weight"),
-    ("soft_momenta", "soft_weight"),
-    ("collinear_momenta", "collinear_weight"),
-    ("soft_collinear_momenta", "soft_collinear_weight"),
-    ("born_momenta", "nbody_weight"),
-)
 
 
 class SubprocessIntegrand:
@@ -307,27 +298,18 @@ class SubprocessIntegrand:
             self.context,
         )
 
-    def histogram_sums(self, runtime, result, jacobian, fks_index):
-        """The histogram weights of a batch (result of evaluate) with the
-        Jacobian of its VEGAS grid."""
-        outputs = dict(result["outputs"])
-        for name in [w for _, w in HISTOGRAM_KINEMATICS]:
-            outputs[name] = outputs[name] * jacobian
-        sums = runtime.by_name({**result["kinematics"], **outputs}, fks_index=fks_index)
-        return list(sums.values())
-
     def matrix_element_calls(self):
         return self.provider.statistics
 
     def channel_integrand(self, channel, context):
         """The C++ integrand of a channel (FKSChannelIntegrand of madspace)
+        at given random numbers, configurations and points with the virtual,
         with the matrix elements of the provider as UMAMI libraries in the
-        context (ProviderLibraries of nlo/libraries.py, added once), the same
-        integrand as evaluate at the same random numbers, configurations and
-        points with the virtual, with the Borns of the extra counterterms, the
-        reference scale of the user and the Sudakov approximation of the EW
-        corrections. The libraries evaluate at the e of the model, so that
-        the blocks are those of the provider."""
+        context (ProviderLibraries of nlo/libraries.py, added once), the
+        Borns of the extra counterterms, the reference scale of the user and
+        the Sudakov approximation of the EW corrections. The libraries
+        evaluate at the e of the model, so that the blocks are those of the
+        provider."""
         from madgraph.mg7.nlo.libraries import ProviderLibraries
 
         ms = madspace()
@@ -489,134 +471,6 @@ class SubprocessIntegrand:
     def close(self):
         self.provider.close()
 
-    def evaluate(self, channel, x, fks_index, configuration_weight, trick, rng):
-        """The weights of a channel at the points x (n, dimension) of its
-        random numbers, the FKS configurations and the weights of their
-        choice, with the virtual on the fraction of the points of trick:
-        the NLO weight per point, its LO part, its n-body part and its
-        virtual residual (that of the points with the virtual), the outputs
-        of FKSKinematics and
-        FKSCrossSection by name, the virtual and the Born of the points with
-        the virtual."""
-        out = self.kinematics[channel](x, fks_index=fks_index)
-        if self.resonance and "resonance_momentum" not in out:
-            # a channel without resonances
-            out["resonance_momentum"] = np.zeros((len(fks_index), 4))
-        resonance = [out["resonance_momentum"]] if self.resonance else []
-        kernels = self.kernels(
-            out["collinear_momenta"],
-            out["p_i_hat"],
-            out["born_momenta"],
-            *resonance,
-            fks_index=fks_index,
-        )
-        references = {}
-        if self.user_scale:
-            # the reference scales of the user at the event and its
-            # counter-events, the Born at the soft counter-event
-            for name, momenta, valid in (
-                ("reference_scale", "momenta", out["weight"] != 0),
-                (
-                    "soft_reference_scale",
-                    "soft_momenta",
-                    (out["soft_det"] != 0) | (out["born_weight"] != 0),
-                ),
-                (
-                    "collinear_reference_scale",
-                    "collinear_momenta",
-                    out["collinear_det"] != 0,
-                ),
-            ):
-                references[name] = self.provider.reference_scales(out[momenta], valid)
-        user = [references["soft_reference_scale"]] if self.user_scale else []
-        ren_scale = self.born_scale(out["born_momenta"], *user)["ren_scale"]
-        passes = {
-            name: self.pass_cuts(out[name], layout_index=fks_index)["mask"] != 0
-            for name in ("momenta", "soft_momenta", "collinear_momenta")
-        }
-        # the soft counter-event only where it exists, at xi = 0, as
-        # FKSCrossSection
-        passes["soft_momenta"] &= out["soft_xi"] == 0
-        born_mask = passes["momenta"] | passes["soft_momenta"]
-        born_mask |= passes["collinear_momenta"]
-        count = len(fks_index)
-        # the n-body part, the virtual with it, passes the cuts where the soft
-        # counter-event does
-        evaluated = passes["soft_momenta"] & (out["born_weight"] != 0)
-        evaluated &= rng.random(count) < trick.fraction
-        blocks = fks_blocks(
-            self.provider,
-            out,
-            fks_index,
-            kernels["k_perp"],
-            ren_scale,
-            real_mask=passes["momenta"],
-            born_mask=born_mask,
-            virtual_mask=evaluated,
-        )
-        alpha = self.alpha
-        if self.tagged is not None:
-            # the couplings of tagged photons in alpha(0), the others in G_mu
-            for name in ("matrix_element", "virtual"):
-                blocks[name] = blocks[name] * self.tagged["nlo"]
-            for name in ("born", "spin_correlated"):
-                blocks[name] = blocks[name] * self.tagged["born"]
-            b = self.born_count
-            factors = self.tagged["born"][:b, None, None]
-            blocks["color_correlated"] = blocks["color_correlated"] * factors
-            alpha = alpha * self.tagged["alpha"]
-        amp2 = blocks["amp2"]
-        total = amp2.sum(1)
-        channel_weight = np.where(
-            total > 0, amp2[:, channel] / np.where(total > 0, total, 1), 0.0
-        )
-        # the Born orders, without the Borns of the extra counterterms
-        born = blocks["born"][:, : self.born_count]
-        virtual, approximation = trick.inputs(blocks["virtual"], born, evaluated)
-        inputs = dict(out)
-        inputs.update(blocks)
-        inputs.update(references)
-        inputs.update(
-            virtual=virtual,
-            channel_weight=channel_weight,
-            configuration_weight=configuration_weight,
-            alpha=np.full(count, alpha),
-        )
-        if self.ew_sudakov is not None:
-            # at the Born of the points that take it, as compute_ewsudakov
-            # with the Born
-            nbody = born_mask & (out["born_weight"] != 0)
-            inputs["ew_sudakov"] = self.ew_sudakov_factor * ew_sudakov_corrections(
-                self.provider,
-                self.ew_sudakov,
-                out["born_momenta"],
-                fks_index,
-                ren_scale,
-                nbody,
-            )
-        result = self.cross_section.by_name(inputs, fks_index=fks_index)
-        inputs["virtual"] = approximation
-        without = self.cross_section.by_name(inputs, fks_index=fks_index)
-        residual = result["cross_section"] - without["cross_section"]
-        return dict(
-            nlo=result["cross_section"],
-            lo=result["lo_weight"],
-            nbody=result["nbody_weight"],
-            residual=residual,
-            outputs=result,
-            kinematics=out,
-            virtual=blocks["virtual"],
-            born=born,
-            evaluated=evaluated,
-            variations=np.hstack(
-                [
-                    result.get("scale_variations", np.zeros((count, 0))),
-                    result.get("pdf_variations", np.zeros((count, 0))),
-                ]
-            ),
-            ew_sudakov=result.get("ew_sudakov_weights", np.zeros((count, 0))),
-        )
-
 
 def ew_sudakov_order(configurations):
     """The split orders of the Sudakov approximation of the EW corrections,
@@ -655,41 +509,17 @@ def ew_sudakov_runtime(provider, context):
     return Runtime(ew_sudakov(provider.fks_configurations, parameters), context)
 
 
-def ew_sudakov_corrections(provider, runtime, momenta, fks_index, ren_scale, mask):
-    """The outputs of the EWSudakov runtime (batch, modes) at the Born
-    kinematics momenta (batch, n, 4) of the configurations fks_index, with
-    the matrix elements of the provider at g = 1 and the LO2 part at
-    alpha_s = 1 / (4 pi) and the renormalization scale of the Born, zero
-    where mask is false."""
-    count = len(momenta)
-    out = np.zeros((count, runtime.function.mode_count()))
-    points = np.flatnonzero(mask)
-    if len(points) == 0:
-        return out
-    p = np.ascontiguousarray(momenta[points])
-    inputs = ew_sudakov_inputs(provider, runtime.function, p, fks_index[points])
-    out[points] = runtime(
-        p,
-        inputs["diagonal"],
-        inputs["lo2"],
-        inputs["derivatives"],
-        inputs["interference"],
-        np.full(len(points), 1 / (4 * math.pi)),
-        np.asarray(ren_scale)[points],
-    )["sudakov"]
-    return out
-
-
 class FKSRun(NLORun):
     """A fixed-order NLO run of madspace with the FKS integrand on an aMC@NLO
     output (see the module and NLORun of nlo.core for the arguments)."""
 
     scheme = "fks"
     work_directory = "madspace_fks"
+    integrand_class = SubprocessIntegrand
 
     def make_integrands(self, directories, n_f, n_l):
         return [
-            SubprocessIntegrand(
+            self.integrand_class(
                 directory,
                 self.run_card,
                 self.param_card,
@@ -713,18 +543,13 @@ def main(argv=None):
     parser.add_argument("--max-iterations", type=int, help="integration iterations")
     parser.add_argument("--seed", type=int, help="the seed (iseed of the run card)")
     parser.add_argument(
-        "--generator",
-        action="store_true",
-        help="run the iterations in the C++ event generator of madspace",
-    )
-    parser.add_argument(
         "--threads", type=int, default=-1, help="threads of the event generator"
     )
     parser.add_argument(
         "--madnis-batches",
         type=int,
         default=0,
-        help="batches of a MadNIS training per subprocess, with --generator",
+        help="batches of a MadNIS training per subprocess",
     )
     parser.add_argument(
         "--madnis-discrete",
@@ -746,7 +571,6 @@ def main(argv=None):
         max_iterations=args.max_iterations,
         seed=args.seed,
         histograms=args.histograms,
-        generator=args.generator,
         threads=args.threads,
         madnis_batches=args.madnis_batches,
         madnis_discrete=args.madnis_discrete,
