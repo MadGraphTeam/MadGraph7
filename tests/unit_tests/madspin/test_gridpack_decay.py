@@ -391,5 +391,156 @@ class TestDensityMatrixElementCache(unittest.TestCase):
         self.assertTrue(self.madspin.decay_all_events._pickle_status)
 
 
+_HEADER = """<LesHouchesEvents version="3.0">
+<header>
+</header>
+<init>
+2212 2212 6.5000000000e+03 6.5000000000e+03 0 0 331900 331900 4 1
+3.8000000000e+02 4.0000000000e-01 3.8000000000e+02 1
+</init>
+</LesHouchesEvents>
+"""
+
+# the event _write_lhe_npy stores, as madspace's LHE output writes it
+_LHE_EVENT = """<event>
+   4    1 +2.5000000000e+00 1.8000000000e+02 0.0000000000e+00 1.2500000000e-01
+  21   -1    0    0  501  502 +0.0000000000000000e+00 +0.0000000000000000e+00 +5.0000000000000000e+02 5.0000000000000000e+02 0.0000000000000000e+00 0.0000e+00 -1.0000e+00
+  21   -1    0    0  502  503 +0.0000000000000000e+00 +0.0000000000000000e+00 -2.5000000000000000e+02 2.5000000000000000e+02 0.0000000000000000e+00 0.0000e+00 +1.0000e+00
+   6    1    1    2  501    0 +5.0000000000000000e+01 +2.5000000000000000e+01 +1.2500000000000000e+02 2.5000000000000000e+02 1.7300000000000000e+02 0.0000e+00 -1.0000e+00
+  -6    1    1    2    0  503 -5.0000000000000000e+01 -2.5000000000000000e+01 +1.2500000000000000e+02 5.0000000000000000e+02 1.7300000000000000e+02 0.0000e+00 +1.0000e+00
+<scales mur="160" muf="180" muf1="180" muf2="170" pt_clust_3="40.50000" pt_clust_4="60.25000"></scales>
+<rwgt>
+<wgt id='1'> +2.5000000e+00 </wgt>
+<wgt id='2'> +3.1250000e+00 </wgt>
+<wgt id='dim6'> +1.7500000e+00 </wgt>
+</rwgt>
+<beamstrahlung>  1.0000000e+00  7.5000000e-01 </beamstrahlung>
+</event>
+"""
+
+
+def _write_lhe_npy(directory, nb_event=1):
+    """An lhe_npy events.npy (and its header.lhe) holding nb_event copies of
+    _LHE_EVENT: the columns combine_to_lhe_npy writes for an MLM run with
+    systematics, a named reweighting weight and beamstrahlung."""
+    import numpy
+    dtype = [('process_id', 'i4'), ('weight', 'f8'), ('scale', 'f8'),
+             ('alpha_qed', 'f8'), ('alpha_qcd', 'f8'), ('mu_r', 'f8'),
+             ('mu_f1', 'f8'), ('mu_f2', 'f8'), ('xbs1', 'f8'), ('xbs2', 'f8'),
+             ('rwgt_1', 'f8'), ('rwgt_2', 'f8'), ('rwgt_dim6', 'f8')]
+    integral = ('pdg_id', 'status_code', 'mother1', 'mother2', 'color',
+                'anti_color')
+    from MadSpin import interface_madspin
+    # a fifth, padding particle: an event shorter than the longest one
+    for i in range(1, 6):
+        for field in interface_madspin._NPY_PARTICLE_FIELDS:
+            dtype.append(('part%d_%s' % (i, field),
+                          'i4' if field in integral else 'f8'))
+        dtype.append(('part%d_cluster_scale' % i, 'f8'))
+    records = numpy.zeros(nb_event, dtype=dtype)
+    for name, value in (('process_id', 1), ('weight', 2.5), ('scale', 180.),
+                        ('alpha_qcd', 0.125), ('mu_r', 160.), ('mu_f1', 180.),
+                        ('mu_f2', 170.), ('xbs1', 1.), ('xbs2', 0.75),
+                        ('rwgt_1', 2.5), ('rwgt_2', 3.125), ('rwgt_dim6', 1.75)):
+        records[name] = value
+    particles = (
+        (21, -1, 0, 0, 501, 502, 0., 0., 500., 500., 0., 0., -1., 0.),
+        (21, -1, 0, 0, 502, 503, 0., 0., -250., 250., 0., 0., 1., 0.),
+        (6, 1, 1, 2, 501, 0, 50., 25., 125., 250., 173., 0., -1., 40.5),
+        (-6, 1, 1, 2, 0, 503, -50., -25., 125., 500., 173., 0., 1., 60.25))
+    for i, values in enumerate(particles, 1):
+        for field, value in zip(interface_madspin._NPY_PARTICLE_FIELDS
+                                + ('cluster_scale',), values):
+            records['part%d_%s' % (i, field)] = value
+    path = pjoin(directory, 'events.npy')
+    numpy.save(path, records)
+    with open(pjoin(directory, 'header.lhe'), 'w') as fsock:
+        fsock.write(_HEADER)
+    return path
+
+
+class TestNpyProductionFile(unittest.TestCase):
+    """MadSpin reads mg7's lhe_npy production events without an LHE file:
+    each event is the one parsing the LHE output of the same run gives."""
+
+    def setUp(self):
+        try:
+            import numpy  # noqa: F401
+        except ImportError:
+            self.skipTest('numpy is not installed')
+        from MadSpin import interface_madspin
+        self.ms = interface_madspin
+        self.path = tempfile.mkdtemp(prefix='ms_npy_production_')
+        self.addCleanup(shutil.rmtree, self.path, True)
+
+    def test_event_is_the_lhe_one(self):
+        from madgraph.various import lhe_parser
+        npy = _write_lhe_npy(self.path)
+        event = next(self.ms.NpyProductionFile(npy))
+        expected = lhe_parser.Event(_LHE_EVENT)
+        self.assertEqual(event.parse_reweight(), expected.parse_reweight())
+        self.assertEqual(event.reweight_order, expected.reweight_order)
+        self.assertEqual(event.get_scales_attributes(),
+                         expected.get_scales_attributes())
+        self.assertEqual(event.parse_matching_scale(),
+                         expected.parse_matching_scale())
+        self.assertEqual(str(event), str(expected))
+        self.assertEqual(event.ievent, 1)
+        self.assertEqual(len(event), 4)
+        self.assertIs(event[2].mother1, event[0])
+
+    def test_iteration_slice_and_banner(self):
+        npy = _write_lhe_npy(self.path, nb_event=10)
+        events = self.ms.NpyProductionFile(npy)
+        self.assertEqual(len(events), 10)
+        self.assertEqual(sum(1 for _ in events), 10)
+        events.seek(0)
+        self.assertEqual(sum(1 for _ in events), 10)
+        self.assertTrue(self.ms.NpyProductionFile(npy, 10, 10).__bool__())
+        self.assertEqual(events.get_banner().get_cross(), 380.)
+        shard = self.ms._open_production_shard(self.ms._npy_shard(npy, 3, 7))
+        self.assertEqual(len(shard), 4)
+        self.assertEqual(sum(1 for _ in shard), 4)
+        with self.assertRaises(ValueError):
+            events.seek(5)
+
+    def test_split_production_writes_no_shard(self):
+        npy = _write_lhe_npy(self.path, nb_event=10)
+        stub = types.SimpleNamespace(options={'fixed_order': False})
+        split = self.ms.MadSpinInterface._split_production
+        paths, counts = split(stub, self.ms.NpyProductionFile(npy), 4,
+                              pjoin(self.path, 'out.lhe'))
+        self.assertEqual(counts, [3, 3, 3, 1])
+        self.assertEqual(sorted(os.listdir(self.path)),
+                         ['events.npy', 'header.lhe'])
+        self.assertEqual(
+            sum(len(self.ms._open_production_shard(p)) for p in paths), 10)
+
+    def test_without_scales_columns(self):
+        """An lhe_npy file of an older madspace (or one MadtRex rewrote)
+        has no mu_r: no mur/muf, the pt_clust are still there."""
+        import numpy
+        npy = _write_lhe_npy(self.path)
+        records = numpy.load(npy)
+        names = [n for n in records.dtype.names
+                 if n not in ('mu_r', 'mu_f1', 'mu_f2')]
+        numpy.save(npy, records[names])
+        event = next(self.ms.NpyProductionFile(npy))
+        self.assertEqual(event.get_scales_attributes(), {})
+        self.assertEqual(event.parse_matching_scale(), [-1, -1, 40.5, 60.25])
+
+    def test_gridpack_decay_links_the_npy_events(self):
+        npy = _write_lhe_npy(self.path)
+        work = pjoin(self.path, 'work')
+        os.mkdir(work)
+        self.assertEqual(gridpack_decay._link_npy(npy, work), 'events.npy')
+        self.assertTrue(os.path.islink(pjoin(work, 'header.lhe')))
+        os.remove(pjoin(self.path, 'header.lhe'))
+        with self.assertRaisesRegex(gridpack_decay.GridpackDecayError,
+                                    'header.lhe'):
+            gridpack_decay._link_npy(npy, pjoin(self.path, 'other'))
+
+
+
 if __name__ == '__main__':
     unittest.main()

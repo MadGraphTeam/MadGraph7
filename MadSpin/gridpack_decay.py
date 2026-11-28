@@ -28,6 +28,10 @@ gridpack, see :func:`install_runtime`)::
 Both run MadSpin in this process, so each call has to be a process of its own:
 MadSpin seeds Python's random generator only once per process.
 
+``decay`` takes LHE events, or mg7's ``lhe_npy`` events (``events.npy`` with
+the ``header.lhe`` of their run next to it), which MadSpin reads without an
+LHE file in between.
+
 The ms_dir is never written by ``decay``: every run works in a shadow of it
 (:func:`shadow_ms_dir`), where what MadSpin writes -- the decay pools of this
 run, the cards it refreshes -- are files of its own and everything else links
@@ -216,6 +220,17 @@ def _run_madspin_here(command_file, interface_madspin):
     return cmd
 
 
+def _link_npy(events, work):
+    """``events.npy`` and its ``header.lhe`` in ``work``, as links: MadSpin
+    reads them in place and writes its output next to them."""
+    header = os.path.join(os.path.dirname(events), 'header.lhe')
+    if not os.path.exists(header):
+        raise GridpackDecayError('%s has no header.lhe next to it' % events)
+    os.symlink(events, os.path.join(work, 'events.npy'))
+    os.symlink(header, os.path.join(work, 'header.lhe'))
+    return 'events.npy'
+
+
 def _plain_copy(events, target):
     """Copy the LHE file ``events`` (gzipped or not) to ``target`` as plain
     text. MadSpin decompresses its input in place: it works on a copy."""
@@ -330,6 +345,8 @@ def decay(ms_dir, events, seed, output=None, nb_core=None, work_dir=None):
     events = os.path.abspath(events)
     if output is None:
         base = events[:-3] if events.endswith('.gz') else events
+        if base.endswith('.npy'):
+            base = base[:-len('.npy')]
         output = base.replace('.lhe', '_decayed.lhe') + '.gz' \
             if '.lhe' in os.path.basename(base) else base + '_decayed.lhe.gz'
     output = os.path.abspath(output)
@@ -337,11 +354,14 @@ def decay(ms_dir, events, seed, output=None, nb_core=None, work_dir=None):
                             dir=work_dir or os.path.dirname(output))
     try:
         shadow = shadow_ms_dir(ms_dir, os.path.join(work, 'ms_dir'))
-        plain = os.path.join(work, 'events.lhe')
-        _plain_copy(events, plain)
+        if events.endswith('.npy'):
+            name = _link_npy(events, work)
+        else:
+            name = 'events.lhe'
+            _plain_copy(events, os.path.join(work, name))
         command_file = os.path.join(work, 'madspin_card.dat')
         with open(command_file, 'w') as fsock:
-            fsock.write(run_card(body, 'events.lhe', os.path.basename(shadow),
+            fsock.write(run_card(body, name, os.path.basename(shadow),
                                  seed, nb_core))
         _run_madspin(command_file)
         produced = [path for path in (

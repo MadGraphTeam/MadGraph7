@@ -3831,6 +3831,12 @@ PYBIND11_MODULE(_madspace_py, m) {
             &LHEEvent::has_cluster_scales,
             pydoc::doc("LHEEvent::has_cluster_scales")
         )
+        .def_readwrite("mu_r", &LHEEvent::mu_r, pydoc::doc("LHEEvent::mu_r"))
+        .def_readwrite("mu_f1", &LHEEvent::mu_f1, pydoc::doc("LHEEvent::mu_f1"))
+        .def_readwrite("mu_f2", &LHEEvent::mu_f2, pydoc::doc("LHEEvent::mu_f2"))
+        .def_readwrite(
+            "has_scales", &LHEEvent::has_scales, pydoc::doc("LHEEvent::has_scales")
+        )
         .def(
             "format",
             [](const LHEEvent& event) {

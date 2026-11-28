@@ -7,7 +7,8 @@ module covers the case where that request comes *after* the run: it rebuilds
 the LHE file from what the npy run left behind.
 
 * ``output_format = "lhe_npy"``: the file already holds complete LHE events
-  (pdg ids, status, mothers, colour, helicity); they are only reformatted.
+  (pdg ids, status, mothers, colour, helicity, and the mur/muf of the
+  ``<scales>`` tag); they are only reformatted.
 * ``output_format = "compact_npy"``: the file holds the momenta plus the
   subprocess/diagram/colour/flavour/helicity indices the generation picked.
   Those are completed exactly as the direct LHE output does it, with the
@@ -146,17 +147,31 @@ def _lhe_npy_events(ms, events, columns):
     fields = [[events["part%d_%s" % (i + 1, f)] for f in _LHE_PARTICLE_FIELDS]
               for i in range(count)]
     rwgt = [events[c] for c in columns]
+    # the <scales> attributes: mur/muf (the mu_r/mu_f1/mu_f2 columns of a
+    # recent run) and the MLM pt_clust_i (the particles' cluster_scale)
+    scales = [events[c] for c in ("mu_r", "mu_f1", "mu_f2")] \
+        if "mu_r" in names else None
+    clustering = all("part%d_cluster_scale" % (i + 1) in names
+                     for i in range(count)) and count > 0
+    cluster = [events["part%d_cluster_scale" % (i + 1)] for i in range(count)] \
+        if clustering else None
     for n in range(len(events)):
         particles = []
-        for values in fields:
+        for i, values in enumerate(fields):
             if values[0][n] == 0:
                 break
-            particles.append(ms.LHEParticle(
-                *[v[n].item() for v in values]))
+            particle = ms.LHEParticle(*[v[n].item() for v in values])
+            if cluster is not None:
+                particle.cluster_scale = float(cluster[i][n])
+            particles.append(particle)
         event = ms.LHEEvent(int(events["process_id"][n]),
                             events["weight"][n], events["scale"][n],
                             events["alpha_qed"][n], events["alpha_qcd"][n],
                             particles)
+        event.has_cluster_scales = cluster is not None
+        if scales is not None and scales[0][n] > 0:
+            event.mu_r, event.mu_f1, event.mu_f2 = (float(v[n]) for v in scales)
+            event.has_scales = True
         yield event, [float(w[n]) for w in rwgt]
 
 

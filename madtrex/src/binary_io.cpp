@@ -50,6 +50,8 @@ DataLayout detect_lhe_event_layout(const std::string& path) {
         return std::find(names.begin(), names.end(), name) != names.end();
     };
     int event_flags = EventRecord::f_lhe_event;
+    // the <scales> attributes combine_to_lhe_npy keeps (mu_r, mu_f1, mu_f2)
+    if (has("mu_r")) event_flags |= EventRecord::f_lhe_scales;
     if (has("fact_scale1")) event_flags |= EventRecord::f_beam1;
     if (has("fact_scale2")) event_flags |= EventRecord::f_beam2;
     if (has("partial_weight_product")) event_flags |= EventRecord::f_partial_weights;

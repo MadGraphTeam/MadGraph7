@@ -61,6 +61,14 @@ def compress_lhe(path: str, use_pigz="auto", cpu_threads: int = -1) -> None:
     os.remove(path)
 
 
+def _card_flag(run_card, section, key) -> bool:
+    """A boolean of the grid run card, False when it is not set."""
+    try:
+        return bool(run_card[section][key])
+    except (KeyError, TypeError):
+        return False
+
+
 def write_lhe_header(run_path: str, meta) -> None:
     """Write header.lhe next to events.npy: the <header>/<init> blocks the
     npy formats otherwise drop, with no events."""
@@ -341,6 +349,14 @@ def main() -> None:
     # run generation
     event_generator.generate()
     output_format = args.output_format
+    # MadSpin reads the lhe_npy events as they are: no LHE file is written and
+    # parsed in between. Not when the undecayed LHE events are kept, nor with
+    # [systematics] write_inputs, whose <mgrwt> blocks only the LHE output has.
+    madspin_npy = (args.madspin and output_format == "lhe"
+                   and not args.keep_undecayed
+                   and not _card_flag(run_card, "systematics", "write_inputs"))
+    if madspin_npy:
+        output_format = "lhe_npy"
     events_path = os.path.join(run_path, "events.npy")
     if output_format == "compact_npy":
         event_generator.combine_to_compact_npy(
@@ -395,6 +411,8 @@ def main() -> None:
             undecayed_path = events_path
         else:
             os.remove(events_path)
+            if madspin_npy:
+                os.remove(os.path.join(run_path, "header.lhe"))
         events_path = decayed
     if args.done_file:
         with open(os.path.join(_INVOCATION_DIR, args.done_file), "w") as f:
