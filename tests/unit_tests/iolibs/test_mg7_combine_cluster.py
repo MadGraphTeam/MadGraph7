@@ -213,11 +213,17 @@ class TestCombineCluster(unittest.TestCase):
         jobs = self.jobs("lhe", [dict(count=2, mean=10., error=1.),
                                  dict(count=3, mean=12., error=2.)])
         texts = []
-        # blocks that cut the closing tag; the external tool and the gzip module
+        # blocks that cut the closing tag; the external tool and the gzip module.
+        # The tool's options are set with it: an earlier test that made an
+        # interface may have configured pigz (-p N), which Apple's gzip
+        # refuses, still with exit code 0 and an empty output.
         for index, tool in enumerate(("gzip", None)):
             with mock.patch.object(combine, "_COPY_CHUNK", 7), \
                     mock.patch.object(combine, "_TAIL", 24), \
-                    mock.patch.object(combine.misc, "_gzip_tool", tool):
+                    mock.patch.object(combine.misc, "_gzip_tool", tool), \
+                    mock.patch.object(combine.misc,
+                                      "_gzip_tool_supports_multithreading", False), \
+                    mock.patch.object(combine.misc, "_gzip_tool_max_cores", None):
                 combine.combine_runs(jobs, self.path("out%d" % index))
             with gzip.open(self.path("out%d/events.lhe.gz" % index), "rt") as f:
                 texts.append(f.read())
