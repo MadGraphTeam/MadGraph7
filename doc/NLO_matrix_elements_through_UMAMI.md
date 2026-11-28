@@ -1,6 +1,6 @@
 # NLO matrix elements through UMAMI
 
-Nov 17, 2026, last updated Nov 25, 2026 · @Ramon
+Nov 17, 2026, last updated Nov 28, 2026 · @Ramon
 
 ## What this is
 
@@ -76,6 +76,7 @@ New metadata:
 - `META_ALPHA_SCHEME`, the scheme of the electroweak coupling (alpha(0), G\_mu or alpha(m\_Z)), which fixes the renormalization of the EW virtual and the alpha the caller multiplies with (new)
 - `META_LOOP_SCHEME`, the regularization scheme of the virtual, such as CDR (kept from Theo's design)
 - `META_TAGGED_PHOTONS`, int, the number of tagged photons, whose couplings the library takes in the alpha(0) scheme (new)
+- `META_EW_SUDAKOV_INTERFERENCE_COUNT`, int, the number of interference amplitudes of the EW Sudakov blocks, with their helicity combinations those of `META_HELICITY_COUNT` (new, see [EW Sudakov](#ew-sudakov))
 
 ## Keys by correlation order
 
@@ -89,6 +90,9 @@ NLO needs four new outputs, besides the existing `OUT_DIAGRAM_AMP2`. A correlati
 | one loop (0, 0) | `OUT_LOOP` | `(orders, 3)` | `IN_SCALE`, the renormalization scale | the virtual | NLO |
 | one loop | `OUT_LOOP_STATUS`, `OUT_LOOP_ACCURACY` | `()` | none | stability of the virtual | reserved |
 | tree, colour flows | `OUT_COLOR_FLOW_WEIGHTS` | `(flows)` | none | colour partners of MC@NLO | reserved |
+| tree, EW Sudakov | `OUT_EW_SUDAKOV_DIAGONAL`, `OUT_EW_SUDAKOV_LO2` | `(h)` | none | the Sudakov approximation of the EW virtual | NLO EW |
+| tree, EW Sudakov | `OUT_EW_SUDAKOV_DERIVATIVES` | `(h, 6)` | none | its parameter renormalization | NLO EW |
+| tree, EW Sudakov | `OUT_EW_SUDAKOV_INTERFERENCE` | `(h, t, 2)` | none | its non-diagonal terms | NLO EW |
 
 n\_c is the number of coloured external legs, those with a representation other than 1 in `META_COLOR_REPRESENTATIONS`. The colour-correlated output holds one value per pair of them, see Conventions.
 
@@ -119,8 +123,21 @@ MadFKS calls the EW corrections QED. Their virtual has the full EW loops, their 
 - **Extra counterterms.** A quark pair can come from a gluon or a photon, whose Borns can be different processes. The caller calls the Born library of the other process at the same Born momenta (R11).
 - **Virtual.** The EW virtual depends on the scheme of alpha through its renormalization, not only through the power of e. The loop library renormalizes in its `META_ALPHA_SCHEME`, and the caller multiplies with the alpha of that scheme. Another scheme takes another library.
 - **Tagged photons.** MadFKS takes the couplings of tagged photons in the alpha(0) scheme and the others in the G\_mu scheme. The conversion of the virtual (get\_virtual\_a0Gmu\_conv) changes its renormalization, so the loop library applies it, in the MadLoop shim. The factor of each contribution, a power of alpha(0) / alpha(G\_mu), stays with the caller.
-- **EW Sudakov.** The Sudakov approximation of the EW virtual takes complex Born amplitudes per helicity, also of the processes with legs replaced by their SU(2) partners. It needs the complex axis and keys of its own, not designed yet.
+- **EW Sudakov.** The Sudakov approximation of the EW virtual takes blocks of its own, see below.
 - **Beams.** Photon and lepton densities and the luminosities of mixed corrections stay with the caller and need nothing from UMAMI.
+
+## EW Sudakov
+
+The Sudakov approximation of the EW corrections (Denner and Pozzorini, as compute\_ewsudakov of MadFKS and the `EWSudakov` of madspace) takes the Born per helicity combination h, of the `META_HELICITY_COUNT` of the library. The base amplitude of h is the Born, or the Goldstone amplitude where the longitudinal W and Z bosons of h are replaced by their Goldstone bosons. Four outputs give its blocks, all averaged and with the identical-particle factor of the Born, in the centre-of-mass frame of the incoming particles (open question 8, the first of its ways).
+
+- `OUT_EW_SUDAKOV_DIAGONAL`, double `(h)`, |M\_h|^2 of the base amplitude at the LO1, the leading coupling order of the Born.
+- `OUT_EW_SUDAKOV_LO2`, double `(h)`, the same at the LO2, with two powers of g\_s more.
+- `OUT_EW_SUDAKOV_DERIVATIVES`, double `(h, 6)`, the derivatives of the first with respect to the six parameters of its parameter renormalization: 1/alpha or G\_F by the scheme of the EW input parameters, M\_Z, M\_W, m\_t with the Yukawa coupling, M\_H and the tadpole switch (numder\_\*.f).
+- `OUT_EW_SUDAKOV_INTERFERENCE`, double `(h, t, 2)`, the interference M'\_t M\_h^\* of the base amplitude with each interference amplitude t of its base (a process with legs replaced by their SU(2) partners, at momenta reshuffled to their masses as momentum\_reshuffling.f does), at the LO1, zero for the interference amplitudes of another base, complex as the last axis. t is `META_EW_SUDAKOV_INTERFERENCE_COUNT`.
+
+The caller takes the logarithms, the coefficients of the helicity combinations and interferences (ewsudakov\_functions.f) and the parameter renormalization from the process and the parameters, and the strong coupling and the scale of the LO2 part from its own scales. The blocks carry the couplings of `IN_ALPHA_S` and `IN_G_EW` as the others.
+
+These keys follow the algorithm of MadGraph (Goldstone amplitudes, reshuffling, the parameters of numder) and fix it in the interface. Complex helicity amplitudes of every partner process would be more general but need many more calls. The prototype of madspace has the four outputs as provisional keys, served by the Fortran provider, and runs EW Sudakov through its C++ integrand with them.
 
 ## The MadLoop shim
 
@@ -191,7 +208,7 @@ What it showed:
 - FKS takes the Born, amp2 and both correlations in one call per Born kinematics, so one Born library call per event suffices.
 - The scale and PDF variations need no key beyond these.
 
-Since then the prototype takes `IN_G_EW` (the libraries at the e of the model), the Borns of the extra counterterms (one Born library per extra counterterm, which the integrand calls at the Born momenta of the configurations with it, R11) and the scale of the user (a scale library with the scale outputs UMAMI has, through `CustomFunction` at the kinematics of the real process). Not covered yet: the EW Sudakov blocks (open question 8) and the status and accuracy of the loop. QED corrections and tagged photons work. Among the 13 processes are p p > e+ e- \[QED\] and p p > a a with tagged photons, whose factors per order the integrand applies and whose conversion of the virtual comes with the loop library, as BinothLHA adds it.
+Since then the prototype takes `IN_G_EW` (the libraries at the e of the model), the Borns of the extra counterterms (one Born library per extra counterterm, which the integrand calls at the Born momenta of the configurations with it, R11) and the scale of the user (a scale library with the scale outputs UMAMI has, through `CustomFunction` at the kinematics of the real process). Not covered yet: the status and accuracy of the loop. The EW Sudakov blocks come through the four provisional outputs of [EW Sudakov](#ew-sudakov) (open question 8). QED corrections and tagged photons work. Among the 13 processes are p p > e+ e- \[QED\] and p p > a a with tagged photons, whose factors per order the integrand applies and whose conversion of the virtual comes with the loop library, as BinothLHA adds it.
 
 ## Open questions for the meeting
 
@@ -202,12 +219,7 @@ Since then the prototype takes `IN_G_EW` (the libraries at the e of the model), 
 5. **The loop.** The MadLoop shim first, or the one loop of pyAmpliCol?
 6. **Flavours.** One flavour index across the Born, real and loop libraries of a subprocess, or a translation in the caller?
 7. **Colour flows.** `OUT_COLOR_FLOW_WEIGHTS` summed or per order, and whether the colour choice of LO takes the same weights.
-8. **EW Sudakov.** The `EWSudakov` of madspace (compute\_ewsudakov of MadFKS) takes per Born helicity h the square of its base amplitude (the Born, or the Goldstone amplitude for longitudinal W and Z bosons) at the LO1 and at the LO2, its derivatives with respect to the six parameters of the renormalization (numder\_\*.f), and per interference term t the complex interference of the base amplitude with an amplitude of a process with legs replaced by their SU(2) partners, at momenta reshuffled to their masses (momentum\_reshuffling.f). None of them is a UMAMI output, so the C++ integrand leaves EW Sudakov to the driver in Python for now. Three ways:
-   - Keys for these blocks, `OUT_EW_SUDAKOV_DIAGONAL` (h), `OUT_EW_SUDAKOV_LO2` (h), `OUT_EW_SUDAKOV_DERIVATIVES` (h, 6) and `OUT_EW_SUDAKOV_INTERFERENCE` (t, 2), with h and t as metadata. Closest to the Fortran of MadGraph, but they fix its algorithm (Goldstone amplitudes, reshuffling, the parameters of numder) in the interface.
-   - Complex helicity amplitudes, `OUT_HELICITY_AMPLITUDES` (h, 2), one library per partner process and per Goldstone amplitude, and the derivatives from calls at shifted parameters (`umami_set_parameter`). The caller builds the products and the reshuffling. More general, more calls.
-   - The correction itself per mode, computed in the library. Simplest for the caller, but every provider then carries the Sudakov logic.
-
-   Which one, and can pyAmpliCol or MadMatrix give helicity amplitudes? The status and accuracy of the loop are not designed yet either.
+8. **EW Sudakov.** The proposal is the first of the three ways, keys for the blocks of the Born that the `EWSudakov` of madspace (compute\_ewsudakov of MadFKS) takes, written out in [EW Sudakov](#ew-sudakov) and in the prototype as provisional keys. The other ways were complex helicity amplitudes of every partner process with the derivatives from calls at shifted parameters, more general but with many more calls, and the correction itself per mode computed in the library, which would put the Sudakov logic into every provider. Open: whether the keys are acceptable as they are, and whether pyAmpliCol or MadMatrix can give the Goldstone and interference amplitudes. The interference output is `(h, t, 2)` rather than the `(t, 2)` of the first draft, since the interferences are those of the base amplitude of each helicity combination. The status and accuracy of the loop are not designed yet either.
 9. **MadLoop setup.** How the shim finds the resources of moved or gridpack trees, and which settings are cheap per call (the scale) and which only per handle (the scheme).
 10. **Colour accuracy.** A library at leading colour, as pyAmpliCol by default, fills the same pairs, with zeros for the pairs that no colour line joins, which ones depending on the process. The caller needs to know it, for the leading-colour Casimirs of the diagonal (C\_F becomes N\_c / 2). A sparse output of only the non-zero pairs, linear rather than quadratic in n\_c, can come later as a key of its own for high multiplicities.
 
@@ -231,6 +243,7 @@ Theo's design of 1 November routed every block through an aggregating library pe
 | Metadata | a row table, the blocks per row, split order names, Born charges, loop scheme | order count and powers, coupling names, colour representations and charges per leg, loop scheme, alpha scheme and tagged photons | 14 and 17 November |
 | EW coupling | `IN_G_EW`, for the EW virtuals | kept, in the same form as the strong coupling, the unit value for the blocks without e | 17 November |
 | Tagged photons | the conversion of the virtual (get\_virtual\_a0Gmu\_conv) in the MadLoop shim | kept in the loop library, the factor of each order with the caller | 17 November |
+| EW Sudakov | not covered | four outputs for the blocks of the Born per helicity combination and the interference count as metadata, a proposal (open question 8) | 28 November |
 | Reserved | MC@NLO colour flows as a separate design | colour flows and the status of the loop named now, NNLO left to later keys | 14 and 17 November |
 | Version | 1.2 | 1.3, since 1.2 now carries other keys | 14 November |
 
