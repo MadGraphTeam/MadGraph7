@@ -20,7 +20,9 @@ suffix 56), TIRUST_LIBEP (TIRust d17085a with the bridge patch v2 for the gate, 
 tiers, the low words and the extended inputs, whose metadata has raised_power_extended_inputs:
 the cases with the suffix ep, which run with #PWaveExtendedPrecision .TRUE.), TIRUST_LIB16
 (TIRust da7902b with the bridge patch v16: the suffixes 16 and 16ep), NWORKERS (16),
-NPOINTS (to override the number of points)."""
+NPOINTS (to override the number of points). The cases with the suffix 6ba run on the configured
+TIRust (HEPTools), which must be the pin 6ba4b53; the S-wave cases without a suffix ran on the
+pin of their date, 1c130a81."""
 import concurrent.futures
 import json
 import math
@@ -77,6 +79,10 @@ CASES.update({c + 'ep': CASES[c][:2] + ('TIRUST_LIBEP', CASES[c][3]) for c in PW
 CASES.update({c + '16': CASES[c][:2] + ('TIRUST_LIB16', CASES[c][3]) for c in PWAVE + SWAVE})
 EXTENDED += [c + '16ep' for c in PWAVE]
 CASES.update({c + '16ep': CASES[c][:2] + ('TIRUST_LIB16', CASES[c][3]) for c in PWAVE})
+# every S and P wave on the configured TIRust, which must be the pin 6ba4b53 (since 2026-11-27;
+# the cases without a suffix and a build ran on the pin before it, 1c130a81)
+PIN = '6ba4b53'
+CASES.update({c + '6ba': CASES[c][:2] + (None, CASES[c][3]) for c in PWAVE + SWAVE})
 SETUPS = {
     # name: (sqrt(s) in GeV, p_T cut in GeV)
     'A': (1000., 50.),   # the setup of arXiv:1604.01363
@@ -134,6 +140,12 @@ def run_case(work, outjson, case, setup, nworkers):
     if tirust_env:
         tirust = os.environ[tirust_env]
         extra = ['set tirust %s --no_save' % tirust]
+    elif case.endswith('6ba'):
+        config = json.load(open(os.path.join(ROOT, 'HEPTools', 'tirust', 'lib', 'tirust-config.json')))
+        revision = config['local_sources']['tirust']['revision']
+        if not revision.startswith(PIN):
+            raise RuntimeError('the configured TIRust is %s, not the pin %s' % (revision, PIN))
+        tirust = 'pinned %s (HEPTools)' % revision[:9]
     outdir = olc.output_process(model, process, os.path.join(work, case), extra=extra,
                                 regenerate=not os.path.isdir(os.path.join(work, case)))
     pdir = olc.subprocess_dir(outdir)

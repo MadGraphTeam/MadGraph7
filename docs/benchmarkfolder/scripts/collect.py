@@ -90,7 +90,11 @@ STATUS_LINES = [
     'relation tiers and a binary64 gate (MadGraph7\\#528) fixes all three: no point of any '
     'process above $10^(-3)$, no S wave above $10^(-6)$, no rescue at 1 TeV, 18–49% more time '
     'for the P waves at 20 GeV (@stability). The P-wave octets '
-    '$e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ stay below $10^(-4)$ even with 48958d1.',
+    '$e^+ e^- -> Q overline(Q) thin [n^((8))] thin g$ stay below $10^(-4)$ even with 48958d1. '
+    'On the pin `6ba4b53` (@stability-pin) no point is refused and no S wave is at or above '
+    '$10^(-3)$, but MadGraph\'s bridge has neither the gate nor the relation tiers: the '
+    '$J\\/psi$, $Upsilon$ tail stays (1.9% and 1.7% at 1 TeV), and the P-wave estimates are '
+    'those of 48958d1 and 370b632.',
     '*80-bit switch for the P waves* (@ep): `#PWaveExtendedPrecision` (off by default) '
     'computes the double-precision passes in extended precision. At 1 TeV it gains about three '
     'digits ($u overline(u) -> chi_(c 0) thin g$: $2 dot 10^(-8)$ worst instead of '
@@ -127,11 +131,13 @@ STATUS_LINES = [
 OPEN_ITEMS = [
     '*P-wave in TIRust:* the raised powers at threshold are pinned (`6ba4b53`, @pin6ba). For '
     'double precision at high energy, the relation tiers of \\#56 (5025e12) with their bridge '
-    'patch (@stability); the profiles of @stability are not rerun on the pin.',
+    'patch (@stability): MadGraph\'s bridge does not enable them, so on the pin 75% of the '
+    '$u overline(u) -> chi_(c 0) thin g$ points at 1 TeV still need the quadruple-precision '
+    'rescue (@stability-pin).',
     '*Binary64 gate of the bridge* (patch 0006, gate $10^(-10)$; MadGraph7\\#528): it removes '
     'the true double-precision errors of the $J\\/psi$, $Upsilon$ tail (@stability). A bridge '
     'patch with the gate and the relation tiers together exists; neither is on `onia_loop`\'s '
-    'bridge yet.',
+    'bridge yet, and the tail stays on the pin (@stability-pin).',
     '*Soft jets:* TIRust refuses the Coulomb triangle and boxes and pentagons with a jet of '
     '$p_T$ below about 0.05 GeV (charmonium) to 0.9 GeV ($g g -> eta_b\\/Upsilon thin g$); such '
     'points are reported unstable. TIRust 08edee3 serves them, and MadLoop\'s double precision '

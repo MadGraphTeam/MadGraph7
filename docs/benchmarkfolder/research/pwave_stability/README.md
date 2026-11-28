@@ -146,6 +146,7 @@ The S-wave profiles were also run on 5025e12, with the same build. The relation-
   - the pinned build is off by the same at 10 of them, by 1.1·10⁻⁵ to 1.7·10⁻⁵ at five, and by 0.32 at one where it refuses an integral (that point is then reported unstable);
   - 08edee3 with the gate patch is off by at most 2.3·10⁻¹⁰.
 - So it is the gate, not the TIRust revision, that removes the tail. Patch 0006 does not apply on top of the relation-tier patch, because both change the same `EmbedderOptions` block.
+- The pin 6ba4b53 (since 2026-11-27, MadGraph's bridge without the gate) keeps the tail: 1.90% (J/ψ) and 1.68% (Υ) of the points at 1 TeV are at or above 10⁻⁶ (`data/raw/stability/*6ba_*.json` of the report). `tail.py` on the first 16 tail points of its own J/ψ profile (`data/tail_jpsig_A_6ba4b53.json`): off by 1.2·10⁻⁸ to 3.2·10⁻⁶ against QP, MadLoop's estimate at least twice that. At the 15 of them shared with the 5025e12 check, its DP values equal those of 5025e12 to 1.2·10⁻¹⁴, and the QP values of both agree to 6·10⁻¹⁵.
 
 ## Everything on 5025e12 with the gate and the relation tiers
 

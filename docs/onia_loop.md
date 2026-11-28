@@ -402,6 +402,13 @@ Status:
 - The quadruple-precision path agrees with the double-precision one
   (1e-14 to 4e-13 away from threshold) and rescues points that fail the
   double-precision tests.
+- At high energy double precision loses digits in TIRust's pentagons with a
+  doubled line. On the pin 6ba4b53 with MadGraph's bridge the estimates are
+  those of 48958d1 and 370b632: at 1 TeV MadLoop's stability test sends 75%
+  of the `u u~ > chic0 g` points and 40% of the `g g > chic0 g` points to
+  quadruple precision. TIRust's relation tiers (PR #56), which only a bridge
+  patch enables so far, bring every point below the threshold (stability
+  profiles in `docs/benchmarkfolder/benchmark.pdf`).
 - `docs/benchmarkfolder/research/pwave_fd/` checks the derivative, doubled
   lines included, against finite differences at a relative momentum
   `q0 != 0`.
