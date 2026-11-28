@@ -35,11 +35,13 @@ it would outside tutorial mode, and the tutorial only comments on it.
 from __future__ import absolute_import
 
 import logging
+import os
 
 import madgraph.interface.extended_cmd as extended_cmd
 import madgraph.various.misc as misc
 from madgraph.interface.tutorials._style import to_terminal
-from madgraph.interface.tutorials.session import Exercise, replay_line
+from madgraph.interface.tutorials.session import (Exercise, command_signature,
+                                                  replay_line)
 
 logger_tuto = logging.getLogger('tutorial')
 logger = logging.getLogger('madgraph')
@@ -158,6 +160,11 @@ class TutorialMixin(object):
 
         found = session.step_for(line, self)
         if found is None:
+            step = session.current
+            note = step.get_aside(self, line) if step is not None else None
+            note = note or self._tutorial_off_path(session, line)
+            if note:
+                emit(note)
             return stop
 
         index, step = found
@@ -190,6 +197,45 @@ class TutorialMixin(object):
         session.advance(index)
         emit(step.render(self))
         return stop
+
+    def _tutorial_off_path(self, session, line):
+        """What to say about a command that ran but is not the one the lesson
+        waits for, when silence would mislead: an `output` in another format
+        than the lesson's (`output madevent DIR` by habit, where the lesson
+        builds on the mg7 output), which no later step will ever take up."""
+
+        step = session.current
+        if step is None or session.tutorial.order != 'sequence':
+            return None
+        expected = step.get_solution(self)
+        if not expected:
+            return None
+        mine, wanted = command_signature(line), command_signature(expected)
+        if mine[:1] == ('generate',) and wanted[:2] == ('add', 'process'):
+            return ("`generate` starts the list of processes over: the ones "
+                    "before it are gone. Type the `generate` line of before "
+                    "again, then the one this lesson waits for:\n  %s"
+                    % expected)
+        if mine[:1] != ('output',) or wanted[:1] != ('output',) or mine == wanted:
+            return None
+        return ("That made %s output, but this lesson builds on the %s output, "
+                "so the tutorial stays where it is. It is still waiting for:\n"
+                "  %s" % (_article(mine[1]), wanted[1], expected))
+
+    def default(self, line, *args, **opts):
+        """An unknown command: a program typed at the prompt -- a path to an
+        executable, like a gridpack's bin/generate_events -- runs with
+        `shell` in front."""
+
+        result = super(TutorialMixin, self).default(line, *args, **opts)
+        first = (line or '').split()[:1]
+        if (first and getattr(self, '_tutorial_session', None) is not None
+                and getattr(self, 'exec_cmd_depth', 0) == 0
+                and (os.sep in first[0] or os.path.isfile(first[0]))):
+            emit("`%s` is a program, not an MG7 command. To run it from this "
+                 "prompt, put `shell` in front:\n\n  shell %s"
+                 % (first[0], line.strip()))
+        return result
 
     def _tutorial_join(self, message, session):
         """A passed exercise's verdict, followed by whatever comes next.
@@ -380,6 +426,10 @@ class TutorialMixin(object):
 #===============================================================================
 
 _WRAPPED = {}       # base class -> class with the mixin in front
+
+
+def _article(word):
+    return '%s `%s`' % ('an' if word[:1].lower() in 'aeiou' else 'a', word)
 
 
 def _wrap(base):

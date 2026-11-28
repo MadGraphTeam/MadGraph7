@@ -137,6 +137,44 @@ def _gridpack_events(interface=None):
     return os.path.join(events, 'run_01', 'events.lhe.gz')
 
 
+def _gridpack_events_found(interface=None):
+    """The events of the newest run of the gridpack, or None when no run of
+    it wrote any."""
+
+    found = _gridpack_events(interface)
+    return found if os.path.exists(found) else None
+
+
+def _gridpack_made(interface, line=None):
+    """Gate: the run made the gridpack the lessons after it are about."""
+
+    run = _latest_run(interface)
+    if run is not None and any(
+            os.path.exists(os.path.join(run, name))
+            for name in ('gridpack', 'gridpack.tar.gz')):
+        return None
+    return ("""
+That run made no gridpack%s, so the tutorial stays here. The output of the
+run above says why. Launch again, and check that `save_gridpack` is true at
+the card question:
+
+%s %s""" % (' in %s' % _shown(run) if run else '', P, _launch(interface)))
+
+
+def _gridpack_ran(interface, line=None):
+    """Gate: the gridpack run wrote its events."""
+
+    if _gridpack_events_found(interface):
+        return None
+    return ("""
+That gridpack run wrote no events in %s, so the tutorial stays here. Its
+output above says why. A path typed wrong is the usual reason: the gridpack
+is %s. Run it again:
+
+%s %s""" % (_shown(os.path.join(_gridpack_dir(interface), 'Events')),
+            _gridpack_dir(interface), P, _run_gridpack(interface)))
+
+
 def _grid_run_card(interface=None):
     """The gridpack's own run card, as typed at the prompt (in the unpacked
     directory when `compress` packed the gridpack)."""
@@ -171,6 +209,44 @@ def _run_parallel(interface=None):
     return 'shell %s & %s & wait' % tuple(
         command % (gridpack, 42 + i, _half_cores(), job, job)
         for i, job in enumerate(JOBS))
+
+
+def _job_seed(number):
+    """The seed job `number` of the parallel run used, from its info.json,
+    or None."""
+
+    import json
+    try:
+        with open(os.path.join(JOBS[number - 1], 'info.json')) as f:
+            return json.load(f)['seed']
+    except Exception:
+        return None
+
+
+def _jobs_ran(interface, line=None):
+    """Gate: both parallel jobs wrote events, with different seeds."""
+
+    missing = [job for job in JOBS if not _events_in(job)]
+    if missing:
+        return ("""
+%s wrote no events, so the tutorial stays here. Its log, %s.log, says why.
+Run the two jobs again:
+
+%s %s""" % (' and '.join(missing), missing[0], P, _run_parallel(interface)))
+    seeds = [_job_seed(1), _job_seed(2)]
+    if seeds[0] is not None and seeds[0] == seeds[1]:
+        return ("""
+Both jobs ran with seed %s, so JOB_2 holds exactly the events of JOB_1: the
+same seed gives the same events. Two jobs make one larger sample only with
+different seeds. Run them again, with `--seed 42` and `--seed 43`:
+
+%s %s""" % (seeds[0], P, _run_parallel(interface)))
+    return None
+
+
+def _job_seed_text(number):
+    seed = _job_seed(number)
+    return 'seed %s' % (seed if seed is not None else 41 + number)
 
 
 def _job_events(number):
@@ -461,7 +537,7 @@ def _next_move():
 
 
 def _first_launch_progress(interface, line):
-    words = (line or '').replace('=', ' ').split()
+    words = (line or '').lower().replace('=', ' ').split()
     if words[:2] in (['help', 'run_mode'], ['help', 'gridpack.run_mode']):
         return RUN_MODE_ADVICE % {'next': _next_move()}
     if words[:2] in (['set', 'run_mode'], ['set', 'gridpack.run_mode']):
@@ -548,14 +624,21 @@ def _question_switch(name):
         return None
 
 
+def _madspin_unavailable():
+    """Whether the question asked right now shows MadSpin as not available."""
+
+    return (_question_switch('madspin') or '').startswith('NOT AVAIL')
+
+
 def _madspin_on():
     """The madspin switch of the question asked right now: True or False, or
-    None when the question asked is not one with that switch."""
+    None when the question asked has no such switch, or shows MadSpin as not
+    available (nothing to switch on: the next lesson says so)."""
 
     value = _question_switch('madspin')
-    if value is None:
+    if value is None or _madspin_unavailable():
         return None
-    return value not in ('OFF', 'NOT AVAIL.', 'NOT AVAIL', 'NONE', '')
+    return value not in ('OFF', 'NONE', '')
 
 
 def _madspin_next_move():
@@ -572,6 +655,9 @@ def _madspin_launch_progress(interface, line):
     words = (line or '').replace('=', ' ').split()
     lowered = [word.lower() for word in words]
     if lowered[:1] == ['madspin'] or lowered[:2] == ['set', 'madspin']:
+        if _madspin_unavailable():
+            return ("MadSpin is not available in this installation, so this "
+                    "gridpack cannot decay its events.")
         if _madspin_on():
             return ("MadSpin is on: its card, `madspin_card.dat`, is in the "
                     "list above. Now the decays, or " + _madspin_next_move())
@@ -580,8 +666,8 @@ def _madspin_launch_progress(interface, line):
         return ("`madspin_card.dat` now decays %s that way. %s"
                 % (words[1] if len(words) > 1 else 'that particle',
                    _madspin_next_move()))
-    if words[:2] in (['set', 'save_gridpack'],
-                     ['set', 'gridpack.save_gridpack']):
+    if lowered[:2] in (['set', 'save_gridpack'],
+                       ['set', 'gridpack.save_gridpack']):
         if _save_gridpack_on() is False:
             return ("`save_gridpack` is false: the run would make no gridpack. "
                     + TURN_IT_ON)
@@ -609,15 +695,77 @@ def _decayed_result(directory):
     import gzip
     path = os.path.join(directory or '', 'events_decayed.lhe.gz')
     try:
+        # line by line to the <init> block: the banner before it carries every
+        # card, a large param card included
+        init = None
         with gzip.open(path, 'rt') as f:
-            text = f.read(200000)
-        init = text[text.index('<init>'):text.index('</init>')].splitlines()
+            for line in f:
+                if init is None:
+                    if line.strip().startswith('<init>'):
+                        init = [line]
+                elif line.strip().startswith('</init>'):
+                    break
+                else:
+                    init.append(line)
         return textwrap.fill(
             'Their cross section, in the <init> block, is %.4g pb: the '
             'production cross section times the branching ratio of the '
             'decays.' % float(init[2].split()[0]), width=76) + '\n\n'
     except Exception:
         return ''
+
+
+def _gridpack_has_madspin(interface):
+    """Whether the gridpack of the newest run carries a prepared MadSpin; in
+    the archive when `compress` packed it."""
+
+    run = _latest_run(interface)
+    if run is None:
+        return False
+    card = os.path.join('madspin', 'ms_dir', 'madspin_card.dat')
+    if os.path.exists(os.path.join(run, 'gridpack', card)):
+        return True
+    archive = os.path.join(run, 'gridpack.tar.gz')
+    if os.path.exists(archive):
+        import tarfile
+        try:
+            with tarfile.open(archive) as tar:
+                return any(member.name.endswith(card) for member in tar)
+        except Exception:
+            return True
+    return False
+
+
+def _madspin_gridpack_made(interface, line=None):
+    """Gate: the run made a gridpack that decays its events."""
+
+    refusal = _gridpack_made(interface)
+    if refusal:
+        return refusal
+    if _gridpack_has_madspin(interface):
+        return None
+    return ("""
+That gridpack carries no MadSpin (it has no madspin/ms_dir), so it would not
+decay its events. MadSpin was off at the card question, or is not available
+in this installation. The tutorial stays here. Launch again, with
+`madspin=ON` and the decay lines:
+
+%s %s""" % (P, _launch(interface)))
+
+
+def _decayed_ran(interface, line=None):
+    """Gate: the run of the MadSpin gridpack wrote decayed events."""
+
+    found = _gridpack_events_found(interface)
+    if found is None:
+        return _gridpack_ran(interface)
+    if os.path.basename(found) == 'events_decayed.lhe.gz':
+        return None
+    return ("""
+That run wrote undecayed events, %s, so the tutorial stays here. With
+`--no_madspin` a gridpack skips its decays. Run it without that option:
+
+%s %s""" % (found, P, _run_gridpack(interface)))
 
 
 def _gridpack_run_dir(interface=None):
@@ -670,11 +818,63 @@ def _cluster_launch_hint(interface=None):
         'share': _cores_word(max(1, _cores_here() // at_once))}
 
 
+def _card_value(name):
+    """Parameter `name` (section.key) of the run card being edited right
+    now, or None when the question asked has no such card."""
+
+    run_card = getattr(extended_cmd.active_question, 'run_card', None)
+    try:
+        return run_card[name]
+    except Exception:
+        return None
+
+
 def _cluster_launch_progress(interface, line):
-    words = (line or '').replace('=', ' ').split()
+    words = (line or '').lower().replace('=', ' ').split()
     if words[:2] == ['set', 'cluster.events_per_job']:
+        missing = _cluster_missing()
+        if missing:
+            return missing
         return "That is everything. Press Enter to start the run."
     return None
+
+
+def _cluster_missing():
+    """What the cluster run of this lesson still needs in the card, or
+    None."""
+
+    if _card_value('cluster.enable') is False:
+        return ("Not yet: cluster mode is off. Type `set cluster enable`, "
+                "then press Enter.")
+    if _card_value('cluster.type') == 'auto':
+        return ("Not yet: `cluster.type` is auto, which takes the batch "
+                "system of your MadGraph configuration. This tutorial runs "
+                "the jobs on this machine: type `set cluster.type "
+                "local_parallel`, then press Enter.")
+    return None
+
+
+def _cluster_launch_gate(interface, line):
+    """The run this lesson starts is a cluster run on this machine: Enter,
+    done or 0 wait for cluster mode and a batch system."""
+
+    return _cluster_missing()
+
+
+def _cluster_ran(interface, line=None):
+    """Gate: the cluster run combined its events into a run directory."""
+
+    run = _latest_run(interface)
+    if run is not None and os.path.isdir(os.path.join(run, 'cluster')) and \
+            _events_in(run):
+        return None
+    return ("""
+That cluster run did not finish%s, so the tutorial stays here. Its output above
+says why, and the log of each job is in the cluster/ directory of the run.
+Launch again: the run continues where it stopped, once the cause is fixed.
+
+%s %s""" % (' (%s holds no events)' % _shown(run) if run else '', P,
+            _launch(interface)))
 
 
 GRIDPACK_ONLY_HINT = """
@@ -689,10 +889,63 @@ The [gridpack] options also apply to the merged gridpack.
 
 
 def _gridpack_only_progress(interface, line):
-    words = (line or '').replace('=', ' ').split()
+    words = (line or '').lower().replace('=', ' ').split()
     if words[:2] == ['set', 'madnis.train_batches']:
-        return "That is everything. Press Enter to start the run."
+        return _gridpack_only_missing() or \
+            "That is everything. Press Enter to start the run."
     return None
+
+
+def _gridpack_only_missing():
+    """What the training-only run of this lesson still needs in the card, or
+    None."""
+
+    if _card_value('cluster.enable') is False:
+        return ("Not yet: cluster mode is off. Type `set cluster enable`, "
+                "then press Enter.")
+    if _card_value('cluster.mode') not in (None, 'gridpack_only'):
+        return ("Not yet: `cluster.mode` is %s, so the run would generate "
+                "events, not stop after the training. Type `set cluster.mode "
+                "gridpack_only` (with an underscore), then press Enter."
+                % _card_value('cluster.mode'))
+    if _card_value('madnis.enable') is not None and \
+            _card_value('madnis.enable') is not True:
+        return ("Not yet: MadNIS is not on. Type `set madnis enable`, then "
+                "press Enter.")
+    return None
+
+
+def _gridpack_only_gate(interface, line):
+    """Enter, done or 0 wait until the run stops after the MadNIS
+    training."""
+
+    return _gridpack_only_missing()
+
+
+def _merged_gridpack_made(interface, line=None):
+    """Gate: the training-only run left its merged gridpack."""
+
+    run = _latest_run(interface)
+    if run is not None and os.path.isdir(os.path.join(run, 'cluster')) and any(
+            os.path.exists(os.path.join(run, name))
+            for name in ('gridpack', 'gridpack.tar.gz')):
+        return None
+    return ("""
+That run left no merged gridpack%s, so the tutorial stays here. Its output
+above says why. Launch again, with `cluster.mode` set to gridpack_only:
+
+%s %s""" % (' in %s' % _shown(run) if run else '', P, _launch(interface)))
+
+
+def _merged_decay_note(interface):
+    """Whether the merged gridpack decayed the events it just made."""
+
+    found = _gridpack_events_found(interface) or ''
+    if os.path.basename(found) == 'events_decayed.lhe.gz':
+        return (' MadSpin is still on, so the merged gridpack\ncarries it '
+                'too and has decayed them.')
+    return (' MadSpin was off for this run, so the merged\ngridpack does not '
+            'decay them.')
 
 
 tutorial = Tutorial(
@@ -782,6 +1035,7 @@ script would call the gridpack on a cluster node.
        'run_gp': _run_gridpack(interface),
        'grid_card': _grid_run_card(interface)},
      title='what is in a gridpack',
+     gate=_gridpack_made,
      hint="`shell PATH/bin/generate_events --events N --seed S` runs the "
           "gridpack.",
      solution=_run_gridpack),
@@ -817,6 +1071,7 @@ to JOB_1.log and JOB_2.log.
 """ % {'p': P, 'events': _gridpack_events(interface),
        'cores': _cores_here(), 'parallel': _run_parallel(interface)},
      title='running a gridpack',
+     gate=_gridpack_ran,
      hint="Two `generate_events` commands joined by `&`, each with its own "
           "`--seed` and `--output_dir`, then `& wait` (no `;`: MG7 splits "
           "the line there).",
@@ -826,8 +1081,8 @@ Step('shell', lambda interface: """
 Both jobs ran at the same time, on %(half)d cores each. Each one wrote its
 events into its own directory, and the last line of its log says where:
 
-  %(job1)s      seed 42
-  %(job2)s      seed 43
+  %(job1)s      %(seed1)s
+  %(job2)s      %(seed2)s
 
 Different seeds give independent samples, so the two files together are one
 sample twice as large. The same seed twice would give the same events twice.
@@ -857,9 +1112,11 @@ MadSpin on: the card question explains it and lists the lines to type.
 
 %(p)s %(launch)s
 """ % {'p': P, 'half': _half_cores(), 'job1': _job_events(1),
-       'job2': _job_events(2),
+       'job2': _job_events(2), 'seed1': _job_seed_text(1),
+       'seed2': _job_seed_text(2),
        'launch': _launch(interface)},
      title='parallel gridpack jobs, and what to put in a gridpack',
+     gate=_jobs_ran,
      question_hint=lambda interface: MADSPIN_LAUNCH_HINT % {
          'decays': _decay_lines(interface)},
      question_progress=_madspin_launch_progress,
@@ -889,6 +1146,7 @@ Run it as before.
 """ % {'p': P, 'found': _gridpack_found(interface),
        'run_gp': _run_gridpack(interface)},
      title='decays in the gridpack',
+     gate=_madspin_gridpack_made,
      hint="`shell PATH/bin/generate_events --events N --seed S` runs the "
           "gridpack.",
      solution=_run_gridpack),
@@ -919,8 +1177,10 @@ lists the lines to type.
        'xsec': _decayed_result(_gridpack_run_dir(interface)),
        'launch': _launch(interface)},
      title='running a gridpack with decays',
+     gate=_decayed_ran,
      question_hint=_cluster_launch_hint,
      question_progress=_cluster_launch_progress,
+     question_gate=_cluster_launch_gate,
      hint="At the card question, `set cluster enable` and "
           "`set cluster.type local_parallel`, then Enter.",
      solution=_launch),
@@ -975,8 +1235,10 @@ short training that finishes quickly here. For a real sample, use more
                      os.path.join(output_name(interface, RUN), 'Events',
                                   'run_02'))},
      title='a cluster run, locally',
+     gate=_cluster_ran,
      question_hint=GRIDPACK_ONLY_HINT,
      question_progress=_gridpack_only_progress,
+     question_gate=_gridpack_only_gate,
      hint="At the card question, `set cluster.mode gridpack_only`, "
           "`set madnis enable` and `set madnis.train_batches 2000`, "
           "then Enter.",
@@ -997,14 +1259,14 @@ Run it the same way as the first one.
 """ % {'p': P, 'found': _gridpack_found(interface),
        'run_gp': _run_gridpack(interface)},
      title='training only, a merged gridpack',
+     gate=_merged_gridpack_made,
      hint="`shell PATH/bin/generate_events --events N --seed S` runs the "
           "gridpack.",
      solution=_run_gridpack),
 
 Step('shell', lambda interface: """
 These events come from the merged gridpack, with the trained MadNIS
-channels. MadSpin is still on, so the merged gridpack carries it too and has
-decayed them. They are in
+channels.%(decayed)s They are in
 
   %(events)s
 
@@ -1040,8 +1302,10 @@ The documentation lists every option.
 
 Leave with `tutorial stop`.
 """ % {'events': _gridpack_events(interface), 'docs': DOCS,
+       'decayed': _merged_decay_note(interface),
        'see_also': tutorials.where_next()},
-     title='running the merged gridpack'),
+     title='running the merged gridpack',
+     gate=_gridpack_ran),
 
     ],
 )
