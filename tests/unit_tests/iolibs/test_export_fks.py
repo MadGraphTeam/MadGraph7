@@ -325,10 +325,14 @@ class IOExportFKSTest(IOTests.IOTestManager):
         """Create a process"""
 
         def run_cmd(cmd):
+            # The references are written without the optional reduction
+            # libraries: a configured one (mg7_configuration.txt) would add
+            # its code paths to the MadLoop V0_* files.
             opt = dict(interface.options)
             opt['ninja'] = None
             opt['collier'] = None
             opt['ninjars'] = None
+            opt['tirust'] = None
             with misc.TMP_variable(interface, 'options', opt):
                 interface.exec_cmd(cmd, errorhandling=False, printcmd=False, 
                                precmd=True, postcmd=True)
