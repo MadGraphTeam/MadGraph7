@@ -381,7 +381,8 @@ end module
                 with self.subTest(ninjars_available=available,
                                   color_flows=color_flows):
                     with FortranWriter(str(self.work / 'exit.f')) as writer:
-                        writer.writelines(source % {'proc_prefix': 'TEST_'},
+                        writer.writelines(source % {'proc_prefix': 'TEST_',
+                                                'virtual_flavor_array_function': ''},
                                           context={
                                               'ninjars_available': available,
                                               'tirust_available': False,
@@ -408,11 +409,12 @@ end subroutine
     def test_public_wrapper_resets_retry_on_entry_and_early_return(self):
         source = (TEMPLATE / 'loop_matrix_standalone.inc').read_text()
         source = source[:source.index(
-            '      SUBROUTINE %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,ANS)')]
+            '      SUBROUTINE %(proc_prefix)sSLOOPMATRIX_RETRY_IMPL(P_USER,FLAV_IDX,ANS)')]
         source += '## }\n'
         with FortranWriter(str(self.work / 'entry.f')) as writer:
             writer.writelines(source % {
-                'proc_prefix': 'TEST_', 'nexternal': 3, 'real_dp_format': 'REAL*8'},
+                'proc_prefix': 'TEST_', 'nexternal': 3, 'real_dp_format': 'REAL*8',
+                'nSquaredSO': 0, 'get_nsqso_born': 'INTEGER, PARAMETER :: NSQSO_BORN=0'},
                 context={'ninjars_available': True})
         (self.work / 'entry_driver.f90').write_text('''
 program entry_check
@@ -425,12 +427,17 @@ p=0
 do i=1,2
   mode=.true.
   used=.true.
-  call TEST_SLOOPMATRIX(p,ans)
-  if(mode.or..not.used.or.any(ans/=777d0)) stop 61
+  if (i==1) then
+    call TEST_SLOOPMATRIX(p,ans)
+  else
+    call TEST_SLOOPMATRIX_FLAVOR(p,i,ans)
+  endif
+  if(mode.or..not.used.or.any(ans/=777d0+i)) stop 61
 enddo
 end program
-subroutine TEST_SLOOPMATRIX_RETRY_IMPL(p,ans)
+subroutine TEST_SLOOPMATRIX_RETRY_IMPL(p,flav_idx,ans)
 implicit none
+integer :: flav_idx
 logical :: mode,used
 common /TEST_NRS_RETRY_FLAGS/ mode,used
 integer :: count,passed,failed,hard
@@ -441,7 +448,7 @@ real(8) :: p(0:3,3),ans(0:3,0:0)
 if(mode.or.used) stop 62
 if(count/=0.or.passed/=0.or.failed/=0.or.hard/=0) stop 63
 if(native_acc/=-1d0.or.comp_acc/=-1d0) stop 64
-ans=777
+ans=777+flav_idx
 mode=.true.
 used=.true.
 count=1

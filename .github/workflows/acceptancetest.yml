@@ -1091,6 +1091,149 @@ jobs:
           done
           gh run cancel "$RUN_ID" --repo "$REPO" || true
 
+  acceptancetest_fks_standalone_limits_pp_ttx:
+    # soft and collinear limits of p p > t t~ [QCD] via the FKS standalone
+    # output ('output standalone_fortran --fks --limits'): launch runs
+    # test_soft_col_limits in every partonic channel (built-in PDF set, no
+    # LHAPDF) and the test requires all of them to pass.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_all
+
+      - name: test soft/collinear limits of p p > t t~ [QCD] (FKS standalone --limits)
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_fks_standalone_limits_pp_ttx -pA -t0 -l INFO
+
+  acceptancetest_bundle_fks_standalone:
+    # FKS Born-building-block standalone oracle. Keep the broad numerical and
+    # production-equivalence matrix together, then run the multi-channel pp
+    # limit check as a separate step so either result remains visible.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5
+      - uses: ./.github/actions/restore_all
+
+      - name: "FKS standalone: values, production equivalence, multi-point and limits"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_fks_standalone_born_values test_fks_standalone_vs_amcatnlo test_fks_standalone_multi_point test_fks_standalone_grouped_physical_flavors test_fks_standalone_grouped_real_vs_pre_grouping test_fks_standalone_grouped_mixed_wj_tree_values test_fks_standalone_invalid_options test_nonconverging_limit_sequence_fails_safely test_fks_standalone_limits -pA -t0 -l INFO
+
+      # a real emission with 120 colour flows: it was exactly zero while the
+      # FKS output wrote the compressed colour matrix without INIT_CF
+      - name: "FKS real: colour matrix and value of g g > g g g g"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_fks_real_color_matrix_gg_gggg -pA -t0 -l INFO
+
+      - name: "FKS standalone: grouped virtual physical rows"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_grouped_nlo_virtual_values_all_physical_rows test_grouped_nlo_virtual_values_ttx_all_physical_rows test_grouped_nlo_virtual_values_zj_open_cuts -pA -t0 -l INFO
+
+      - name: "MadLoop: grouped QED, forbidden internal flavours and ggZZ"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_grouped_nlo_qed_virtual_values_all_physical_rows test_grouped_qed_forbidden_internal_flavor_matches_oracle test_grouped_loop_induced_ggzz_matches_physical_oracle -pA -t0 -l INFO
+
+      - name: "FKS standalone: Phase-04 real-amplitude oracle"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_grouped_qcd_ttx_real_components test_grouped_mixed_wj_real_components -pA -t0 -l INFO
+
+      - name: "FKS standalone: batched Fortran real amplitudes (helicity filter)"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_grouped_qcd_ttx_fortran_vector_real test_grouped_mixed_wj_fortran_vector_real -pA -t0 -l INFO
+
+      - name: "FKS standalone: all p p > t t~ Born-channel limits"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_fks_standalone_limits_pp_ttx -pA -t0 -l INFO
+
+      - name: "FKS: polarized Born, real, linked and ISR frame routing"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py TestNLOFrameRouting -pA -t0 -l INFO
+
+
+  acceptancetest_bundle_15:
+    # former jobs, run one after the other:
+    #   acceptancetest_density_LI_standalone1
+    #   acceptancetest_density_LI_standalone2
+    #   acceptancetest_density_LI_standalone3
+    # Each keeps its own steps, run even when an earlier one failed.
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+
+      # ---- acceptancetest_density_LI_standalone1 ----
+      - name: "acceptancetest_density_LI_standalone1: test the loop induced standalone mode of the density matrix code"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_loop_induced_standalone1 -pA -t0 -l INFO
+
+      # ---- acceptancetest_density_LI_standalone2 ----
+      - name: "acceptancetest_density_LI_standalone2: test the loop induced standalone mode of the density matrix code"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_loop_induced_standalone2 -pA -t0 -l INFO
+
+      # ---- acceptancetest_density_LI_standalone3 ----
+      - name: "acceptancetest_density_LI_standalone3: test the loop induced standalone mode of the density matrix code"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_loop_induced_standalone3 -pA -t0 -l INFO
+
+
+  acceptancetest_density_LI_f2py:
+    # The type of runner that the job will run on
+    runs-on: ${{ matrix.os }}
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.fork == true
+    strategy:
+      matrix:
+        os: [ubuntu-24.04]
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
+      - uses: actions/checkout@v2
+      - uses: ./.github/actions/checkout_mg5 
+      - uses: ./.github/actions/restore-pip-cache
+      - uses: ./.github/actions/restore_heptools
+
+      - name: Install Meson and Ninja
+        run: |
+           sudo apt-get update
+           sudo apt-get install -y meson ninja-build
+
+      # Runs a set of commands using the runners shell
+      - name: test one of the density mode for f2py loop-induced
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py test_density_mode_vs_standalone_LI1 -pA -t0 -l INFO
+
+
   acceptancetest_107:
     # The type of runner that the job will run on
     runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON('["self-hosted", "alma10", "large"]') }}

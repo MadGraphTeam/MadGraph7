@@ -236,7 +236,9 @@ class SubProcessGroup(base_objects.PhysicsObject):
         fs = [(l.get('id'), l) for l in process.get('legs') if l.get('state')]
         name = ""
         for i, beam in enumerate(beam):
-            part = process.get('model').get_particle(beam)
+            model = process.get('model')
+            part = model.get_particle(beam)
+            merged_kind = model.get_merged_particle_kind(beam)
 
             if criteria == 'gpu':
                 name += part.get_name().replace('~', 'x').\
@@ -249,8 +251,9 @@ class SubProcessGroup(base_objects.PhysicsObject):
                             replace('+', 'p').replace('-', 'm')
             elif part.get('mass').lower() == 'zero' and part.is_fermion() and \
                    part.get('color') == 1 and \
-            (part.get('pdg_code') % 2 == 1 or abs(part.get('pdg_code')) == 82):
-                if abs(part.get('pdg_code')) == 82:
+            (merged_kind == 'lepton' or
+             (merged_kind is None and part.get('pdg_code') % 2 == 1)):
+                if merged_kind == 'lepton':
                     flavor =process.get('legs')[i].get('flavor')
                     if not flavor or len(flavor)>1:
                         name += "l"
@@ -264,7 +267,9 @@ class SubProcessGroup(base_objects.PhysicsObject):
                     name += "l"
 
             elif part.get('mass').lower() == 'zero' and part.is_fermion() and \
-                   part.get('color') == 1 and part.get('pdg_code') % 2 == 0:
+                   part.get('color') == 1 and \
+                   (merged_kind == 'neutrino' or
+                    (merged_kind is None and part.get('pdg_code') % 2 == 0)):
                 name += "vl"
             else:
                 name += part.get_name().replace('~', 'x').\

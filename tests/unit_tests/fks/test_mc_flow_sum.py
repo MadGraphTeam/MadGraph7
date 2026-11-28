@@ -65,7 +65,8 @@ class TestMCFlowSum(unittest.TestCase):
                 'nexternal.inc': 'integer nexternal,nincoming\n'
                                  'parameter(nexternal=5,nincoming=2)',
                 'born_nhel.inc': 'integer max_bcol\nparameter(max_bcol=3)',
-                'orders.inc': 'integer nsplitorders\nparameter(nsplitorders=1)',
+                'orders.inc': 'integer nsplitorders,amp_split_size\n'
+                              'parameter(nsplitorders=1,amp_split_size=2)',
                 'run.inc': 'integer ickkw\ncommon/test_run/ickkw',
             }
             for name, source in includes.items():
@@ -74,6 +75,7 @@ class TestMCFlowSum(unittest.TestCase):
             (work / 'weights.f').write_text('\n'.join([
                 fortran_routine(TEMPLATE / 'driver_mintMC.f',
                                 'compute_NLOPS_flow_weights'),
+                fortran_routine(TEMPLATE / 'driver_mintMC.f', 'advance_native_flows'),
                 fortran_routine(TEMPLATE / 'fks_singular.f',
                                 'include_born_flow_weight'),
                 fortran_routine(TEMPLATE / 'fks_singular.f',
@@ -83,7 +85,7 @@ class TestMCFlowSum(unittest.TestCase):
             result = subprocess.run([
                 shutil.which('gfortran'), '-O2', '-std=legacy', '-fcheck=all',
                 '-ffixed-line-length-none', '-I', str(work),
-                str(TEMPLATE / 'FKSParams.f90'),
+                str(TEMPLATE / 'FKSParams.f90'), str(TEMPLATE / 'mc_point_state.f'),
                 str(ROOT / 'tests/input_files/check_mc_flow_sum.f90'),
                 str(work / 'weights.f'), '-o', str(executable)],
                 cwd=work, capture_output=True, text=True)

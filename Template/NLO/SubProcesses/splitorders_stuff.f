@@ -58,7 +58,7 @@ C     the iamp-th amp_split
       end
       
       
-      integer function orders_to_amp_split_pos(ord)
+      recursive integer function orders_to_amp_split_pos(ord)
 C helper function to keep track of the different coupling order combinations
 C given the squared orders ord, return the corresponding position into the amp_split array
       implicit none

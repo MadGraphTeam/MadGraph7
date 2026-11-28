@@ -2,6 +2,9 @@ module flow_fixture
   use weight_lines
   implicit none
   double precision :: values(3)=[1d0,3d0,0d0],uniform=0.5d0,last_grid_weight=-1d0
+  integer :: n_groups=1,group_labels(8)=1,group_pick=1,ini_fin=0
+  real(8) :: group_prob(8)=1d0,born_jac
+  logical :: observe_lanes=.false.
   integer :: draws=0,born_calls=0,fail_native_fold=0
   integer :: nlo_calls=0,s_only_calls=0,native_calls=0
   logical :: real_point_active=.false.,born_cuts=.true.
@@ -28,7 +31,7 @@ end module
 
 module fks_phase_space
   use fks_phase_space_data
-  use flow_fixture, only: outer_no_endpoint,real_no_endpoint,no_event_projection
+  use flow_fixture, only: outer_no_endpoint,real_no_endpoint,no_event_projection,born_jac,observe_lanes
   implicit none
   type born_fixture
     logical :: valid=.false.,event_projection=.true.
@@ -36,15 +39,28 @@ module fks_phase_space
   end type
   type fks_phase_space_point
     double precision :: p(0:3,5)=1d0,p_lab(0:3,5)=1d0,p_cms(0:3,5)=1d0
+    integer :: config=1
+    real(8) :: weight=1d0
     type(born_fixture) :: born
   end type
 contains
+  subroutine capture_fks_phase_space(point)
+    type(fks_phase_space_point) point
+  end subroutine
+  subroutine restore_fks_phase_space(point)
+    type(fks_phase_space_point) point
+  end subroutine
+  subroutine initialize_fks_phase_space(config)
+    integer config
+  end subroutine
   subroutine generate_born_contribution(ndim,config,jac,x,point)
     integer :: ndim,config
     double precision :: jac,x(99)
     type(fks_phase_space_point) :: point
     integer :: i_fks,j_fks
     common/fks_indices/i_fks,j_fks
+    if(observe_lanes.and.point%born%valid)error stop 'Inherited sampled Born at fresh fold'
+    born_jac=jac
     point=fks_phase_space_point()
     point%born%event_projection=.not.no_event_projection
     p_born=1d0
@@ -70,7 +86,40 @@ end module
 module mc_native_context
   use flow_fixture, only: real_point_active
   implicit none
+  logical :: native_mapping=.false.,shared_real_active=.false.
+  type native_provider_request
+    integer :: slot
+  end type
+  type native_provider_point_state
+    integer :: slot
+  end type
 contains
+  subroutine mc_capture_provider_point(state)
+    type(native_provider_point_state) state
+  end subroutine
+  subroutine mc_restore_provider_model(state)
+    type(native_provider_point_state) state
+  end subroutine
+  subroutine mc_activate_provider_point(state,model_is_active)
+    logical,optional :: model_is_active
+    type(native_provider_point_state) state
+  end subroutine
+  subroutine mc_prepare_provider_request(provider,p,owner,seq,fold)
+    use iso_fortran_env, only: int64
+    type(native_provider_request) provider
+    real(8) p(0:3,5)
+    integer(int64) owner
+    integer seq,fold
+    error stop 'Rejected mock has no pending real requests'
+  end subroutine
+  subroutine mc_consume_provider_result(provider,w,split,owner,seq,fold)
+    use iso_fortran_env, only: int64
+    integer(int64) owner
+    integer seq,fold
+    type(native_provider_request) provider
+    real(8) w,split(*)
+    error stop 'Rejected mock has no pending real requests'
+  end subroutine
   subroutine mc_begin_real_point(p)
     double precision :: p(0:3,5)
     if(real_point_active)error stop 'real-point cache was not closed'
@@ -119,3 +168,24 @@ module scale_module
   double precision :: emsca_H(1,8,5,5)=1d0
   double precision :: shower_scale_n1body(5,5)=1d0,shower_scale_nbody(4,4)=1d0
 end module
+
+module mc_shower_state
+  type native_shower_state
+    integer :: slot
+  end type
+contains
+  subroutine park_native_shower(state)
+    type(native_shower_state) state
+  end subroutine
+  subroutine activate_native_shower(state)
+    type(native_shower_state) state
+  end subroutine
+  subroutine materialize_native_shower()
+  end subroutine
+  subroutine forget_parked_shower()
+  end subroutine
+end module
+
+integer(8) function native_provider_result_bytes()
+  native_provider_result_bytes=0_8
+end function

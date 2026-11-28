@@ -248,6 +248,7 @@ class InterferenceProcessTest(unittest.TestCase):
             again = self.cmd.extract_process(printed)
             self.assertEqual(again['interference_mode'], procdef['interference_mode'])
             self.assertEqual(again['squared_orders'], procdef['squared_orders'])
+            self.assertEqual(again['legs'], procdef['legs'])
             self.assertEqual(again['interference_process']['legs'],
                              procdef['interference_process']['legs'])
             self.assertEqual(again['interference_process']['required_s_channels'],

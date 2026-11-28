@@ -29,6 +29,7 @@ import madgraph.various.misc as misc
 import madgraph.various.process_checks as process_checks
 import madgraph.various.banner as banner_mod
 import madgraph.interface.extended_cmd as extended_cmd
+from madgraph import MadGraph5Error
 import sys
 
 #from madgraph import MG4DIR, MG5DIR, MadGraph5Error
@@ -592,12 +593,12 @@ class SALauncher(ExtLauncher):
 class FKSSALauncher(ExtLauncher):
     """Launch the FKS Born building-block standalone check ('check_fks').
 
-    Produced by 'output standalone_fortran --fks'. ExtLauncher.run() first offers to
-    edit the param_card (bypassed with -f); launch_program() then compiles the
+    Produced by 'output standalone_fortran --fks'. ExtLauncher.run() first
+    offers to edit the param_card (bypassed with -f); launch_program() compiles
     Source libraries, builds 'check_fks' in every born subprocess directory and
-    runs it, echoing the Born, spin-correlated Born and color/charge-linked
-    Borns for one phase-space point. The --energy / --timings / --nb_run
-    options are honoured.
+    runs it, echoing the momenta, Born, spin-correlated Born and
+    color/charge-linked Borns. The --energy, --points, --seed, --flavor,
+    --timings and --nb_run options are honoured.
 
     For an output made with '--limits', it then also builds and runs the
     aMC@NLO soft/collinear limit test (test_soft_col_limits) in every born
@@ -613,6 +614,21 @@ class FKSSALauncher(ExtLauncher):
     def __init__(self, cmd_int, running_dir, **options):
         """initialize the FKS standalone version"""
         ExtLauncher.__init__(self, cmd_int, running_dir, './Cards', **options)
+        self.points = int(getattr(self, 'points', 1))
+        self.timings = int(getattr(self, 'timings', 0))
+        self.nb_run = int(getattr(self, 'nb_run', 1))
+        self.flavor = int(getattr(self, 'flavor', 0))
+        self.seed_ij, self.seed_kl = self._parse_seed(
+            getattr(self, 'seed', '1802,9373'))
+        if self.points < 1:
+            raise MadGraph5Error('--points must be a positive integer')
+        if self.timings < 0:
+            raise MadGraph5Error('--timings must be non-negative')
+        if self.flavor < 0:
+            raise MadGraph5Error('--flavor must be a non-negative integer')
+        if self.timings and self.nb_run < 1:
+            raise MadGraph5Error(
+                '--nb_run must be positive when --timings is enabled')
         self.with_limits = os.path.isfile(
             pjoin(running_dir, 'SubProcesses', 'check_sa_fks_limits'))
         self.cards = ['param_card.dat']
@@ -623,6 +639,7 @@ class FKSSALauncher(ExtLauncher):
     def launch_program(self):
         """compile and run check_fks in each born subprocess directory."""
         me_dir = self.running_dir
+        self._set_nlo_real_backend(me_dir)
         logger.info(
             'Compiling Source libraries for the FKS standalone check...')
         misc.compile(cwd=pjoin(me_dir, 'Source'))
@@ -632,37 +649,67 @@ class FKSSALauncher(ExtLauncher):
                            if p.startswith('P') and os.path.isfile(
                                pjoin(sub_path, p, 'check_sa_fks.f')))
         if not born_dirs:
-            logger.error(
+            raise MadGraph5Error(
                 'No FKS standalone born directory found in %s' % sub_path)
-            return
 
         energy = float(getattr(self, 'energy', 0) or 0)
-        timings = int(getattr(self, 'timings', 0) or 0)
-        nb_run = int(getattr(self, 'nb_run', 1) or 1)
 
         for born_path in born_dirs:
             pdir = os.path.basename(born_path)
             logger.info('Building check_fks in %s ...' % pdir)
             misc.compile(['check_fks'], cwd=born_path)
             logger.info('==== %s ====' % pdir)
-            # print the building-block values once (honouring --energy)
-            output = subprocess.Popen(
-                ['./check_fks', self._energy_arg(energy)],
+            # Print each scientific point once. Timing repetitions are run in
+            # separate processes below, with one point and the same seed.
+            process = subprocess.Popen(
+                ['./check_fks'] + self._driver_args(
+                    energy, 1, self.points, self.seed_ij, self.seed_kl,
+                    self.flavor),
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                cwd=born_path).communicate()[0]
+                cwd=born_path)
+            output = process.communicate()[0]
             if isinstance(output, bytes):
                 output = output.decode('utf-8', errors='replace')
             logger.info(output)
-            if timings > 0:
-                self._run_with_timings(born_path, energy, timings, nb_run)
+            if process.returncode:
+                raise MadGraph5Error(
+                    'check_fks failed in %s with status %d' %
+                    (pdir, process.returncode))
+            point_count = len(re.findall(r'^POINT\s+\d+\s*$', output,
+                                         re.MULTILINE))
+            if point_count != self.points:
+                raise MadGraph5Error(
+                    'check_fks in %s produced %d of %d requested points' %
+                    (pdir, point_count, self.points))
+            if self.timings > 0:
+                self._run_with_timings(born_path, energy, self.timings,
+                                       self.nb_run, self.flavor)
 
         if self.with_limits:
             failed = [os.path.basename(p) for p in born_dirs
                       if not self._run_limits(p)]
             if failed:
-                from madgraph import MadGraph5Error
                 raise MadGraph5Error('Soft/collinear limit test FAILED in %s '
                     '(see test_ME.log there)' % ', '.join(failed))
+
+    @staticmethod
+    def _set_nlo_real_backend(me_dir):
+        """For an output made with --me_exporter=mg7, compile the run_card
+        nlo_real_backend into the real-emission wrapper, as the aMC@NLO run
+        interface does. The run_card is the only source of the backend."""
+        if not misc.glob(pjoin(me_dir, 'SubProcesses', 'P*',
+                               'nlo_real_offload.mk')):
+            return
+        run_card_path = pjoin(me_dir, 'Cards', 'run_card.dat')
+        backend = 'fortran'
+        if os.path.isfile(run_card_path):
+            backend = banner_mod.RunCardNLO(run_card_path)['nlo_real_backend']
+        import madgraph.interface.common_run_interface as common_run_interface
+        common_run_interface.CommonRunCmd.update_make_opts_full(
+            pjoin(me_dir, 'Source', 'make_opts'),
+            {'NLO_REAL_RUNTIME_BACKEND': backend})
+        logger.info('NLO real-emission backend (run_card nlo_real_backend): '
+                    '%s' % backend)
 
     def _run_limits(self, born_path):
         """build and run test_soft_col_limits; True if no check FAILED."""
@@ -674,17 +721,23 @@ class FKSSALauncher(ExtLauncher):
             fsock.write(self.limits_input)
         with open(pjoin(born_path, 'test_ME_input.txt')) as stdin, \
                 open(log, 'w') as stdout:
-            misc.call(['./test_soft_col_limits'], cwd=born_path, stdin=stdin,
-                      stdout=stdout, stderr=subprocess.STDOUT)
-        content = open(log, errors='replace').read()
+            returncode = misc.call(
+                ['./test_soft_col_limits'], cwd=born_path, stdin=stdin,
+                stdout=stdout, stderr=subprocess.STDOUT)
+        with open(log, errors='replace') as fsock:
+            content = fsock.read()
+        if returncode:
+            logger.error('%s: test_soft_col_limits exited with status %d; '
+                         'see %s' % (pdir, returncode, log))
+            return False
         if 'incoming j_fks, but fixed shat' in content:
             # an initial-state FKS parton needs a varying momentum fraction,
             # i.e. PDF beams; for incoming leptons ([QED]) that means lepton
             # densities, which the default run_card does not set up
-            logger.warning('%s: soft/collinear limit test NOT RUN: an FKS '
+            logger.error('%s: soft/collinear limit test NOT RUN: an FKS '
                 'parton is in the initial state, which needs PDF beams '
                 '(set lpp1/lpp2 in Cards/run_card.dat). See %s' % (pdir, log))
-            return True
+            return False
         npass, nfail = content.count('PASSED'), content.count('FAILED')
         if nfail or not npass:
             logger.error('%s: soft/collinear limit test FAILED '
@@ -700,15 +753,42 @@ class FKSSALauncher(ExtLauncher):
         """command-line sqrt(s) for check_fks; '0' means built-in default."""
         return ('%.16g' % energy) if energy and energy > 0 else '0'
 
-    def _run_with_timings(self, born_path, energy, nb_try, nb_run):
+    @staticmethod
+    def _parse_seed(seed):
+        """Return a validated RANMAR (IJ, KL) seed pair."""
+        try:
+            parts = str(seed).split(',')
+            if len(parts) != 2:
+                raise ValueError
+            ij, kl = (int(part.strip()) for part in parts)
+        except (TypeError, ValueError):
+            raise MadGraph5Error(
+                '--seed must have the form IJ,KL (for example 1802,9373)')
+        if not 0 <= ij <= 31328 or not 0 <= kl <= 30081:
+            raise MadGraph5Error(
+                '--seed requires 0 <= IJ <= 31328 and 0 <= KL <= 30081')
+        return ij, kl
+
+    @classmethod
+    def _driver_args(cls, energy, ncalls, points, seed_ij, seed_kl, flavor=0):
+        """Build the positional check_fks arguments used behind the CLI."""
+        return [cls._energy_arg(energy), str(ncalls), str(points),
+                str(seed_ij), str(seed_kl), str(flavor)]
+
+    def _run_with_timings(self, born_path, energy, nb_try, nb_run, flavor=0):
         """time nb_try Born re-evaluations, averaged over nb_run repetitions."""
         run_times = []
         for _ in range(nb_run):
             t0 = time.time()
-            subprocess.call(
-                ['./check_fks', self._energy_arg(energy), str(nb_try)],
+            returncode = subprocess.call(
+                ['./check_fks'] + self._driver_args(
+                    energy, nb_try, 1, self.seed_ij, self.seed_kl, flavor),
                 cwd=born_path, stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL)
+            if returncode:
+                raise MadGraph5Error(
+                    'timed check_fks failed in %s with status %d' %
+                    (os.path.basename(born_path), returncode))
             run_times.append(time.time() - t0)
         avg = sum(run_times) / len(run_times)
         if len(run_times) > 1:

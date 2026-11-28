@@ -1468,6 +1468,38 @@ class LoopDiagramFDStructTest(unittest.TestCase):
         self.mymodel.set('interactions', self.myinterlist)
         self.myproc.set('model',self.mymodel)
 
+    def test_loop_identification_tag_supports_flavor_couplings(self):
+        """Loop-identification tags must contain immutable coupling data.
+
+        A FLV_Coupling is a mutable PhysicsObject and therefore cannot itself
+        be a dictionary key.  Its canonical key must also distinguish two
+        physically different flavor tables even if their generated names are
+        the same.
+        """
+        first = base_objects.FLV_Coupling(
+            'FLV_TEST', {(1, 1): 'GC_1', (2, 2): 'GC_2'})
+        second = base_objects.FLV_Coupling(
+            'FLV_TEST', {(1, 1): 'GC_1', (2, 2): 'GC_3'})
+
+        interaction = self.mymodel.get_interaction(3)
+        original = interaction.get('couplings')[(0, 0)]
+        interaction.get('couplings')[(0, 0)] = first
+        try:
+            diagram = loop_base_objects.LoopDiagram()
+            diagram.set('canonical_tag', [[1, [], 3]])
+            tag_first = diagram.build_loop_tag_for_diagram_identification(
+                self.mymodel, loop_base_objects.FDStructureList())
+            hash(tag_first)
+
+            interaction.get('couplings')[(0, 0)] = second
+            tag_second = diagram.build_loop_tag_for_diagram_identification(
+                self.mymodel, loop_base_objects.FDStructureList())
+            hash(tag_second)
+        finally:
+            interaction.get('couplings')[(0, 0)] = original
+
+        self.assertNotEqual(tag_first, tag_second)
+
     def test_gg_5gglgl_bubble_tag(self):
         """ Test the gg>ggggg g*g* tagging of a bubble"""
 
@@ -1607,10 +1639,12 @@ class LoopEWDiagramGenerationTest(unittest.TestCase):
     def setUp(self):
         """Load different objects for the tests."""
         
-        # Make sure to only load the model once
+        # Make sure to only load the model once.  The reference diagram
+        # counts are for physical (ungrouped) flavours.
         if len(self.myloopmodel['particles'])==0:
             self.myloopmodel = models.import_model(os.path.join(\
-            _input_file_path,'LoopSMEWTest'))
+            _input_file_path,'LoopSMEWTest'),
+            options={'apply_flavor_grouping': False})
         self.myloopmodel.actualize_dictionaries()
         
         self.mypartlist = self.myloopmodel['particles']
@@ -2261,6 +2295,329 @@ class LoopEWDiagramGenerationTest(unittest.TestCase):
             for loop_UVCT_diag in myloopamplitude.get('loop_UVCT_diagrams'):
                 sumUV+=len(loop_UVCT_diag.get('UVCT_couplings'))
             self.assertEqual(sumUV,nUVGoal)
+
+class GroupedPhysicalLoopTest(unittest.TestCase):
+    """Closed fermion cycles must retain physical charges and CKM choices."""
+
+    def test_forbidden_ckm_counterterms_match_physical_rows(self):
+        from collections import Counter
+
+        physical = models.import_model(os.path.join(_input_file_path, 'LoopSMEWTest'),
+            restrict=False, options={'apply_flavor_grouping': False})
+        for pdg in (1, 2, 3, 4):
+            physical.get_particle(pdg).set('mass', 'ZERO')
+        physical.reset_dictionaries()
+        grouped = copy.deepcopy(physical)
+        for original, duplicate in zip(physical['interactions'], grouped['interactions']):
+            duplicate.set('color', original['color'])
+        grouped.merge_flavor([1, 2, 3, 4])
+        grouped.reset_dictionaries()
+
+        def count(model, quark, forbidden):
+            model.actualize_dictionaries()
+            q = next((merged for merged, ids in model['merged_particles'].items()
+                      if quark in ids), quark)
+            process = base_objects.Process({'model': model,
+                'legs': base_objects.LegList([base_objects.Leg({'id': pdg,
+                    'number': n, 'state': n > 2})
+                    for n, pdg in enumerate((q, -q, 11, -11), 1)]),
+                'orders': {'QCD': 0}, 'perturbation_couplings': ['QED'],
+                'squared_orders': {}, 'forbidden_particles': forbidden})
+            amplitude = loop_diagram_generation.LoopAmplitude()
+            amplitude.set('process', process)
+            amplitude.generate_diagrams()
+            counts = Counter()
+            for diagram in amplitude['loop_diagrams']:
+                for vertex in diagram['CT_vertices']:
+                    inter = model.get_interaction(vertex['id'])
+                    flavor = tuple(quark if abs(p.get_pdg_code()) == 81 else 0
+                                   for p in inter['particles'])
+                    for coupling in inter['couplings'].values():
+                        if isinstance(coupling, base_objects.FLV_Coupling):
+                            coupling = coupling['flavors'].get(flavor)
+                        if coupling:
+                            counts[inter['type'], coupling] += 1
+            return counts
+
+        for forbidden in ([3], [1, 3]):
+            for quark in (2, 3, 4, 6):
+                with self.subTest(forbidden=forbidden, quark=quark):
+                    # An excluded internal species is still a legal external row.
+                    self.assertEqual(count(grouped, quark, forbidden),
+                                     count(physical, quark, forbidden))
+
+    def test_closed_ckm_cycles_match_ungrouped_diagrams(self):
+        from collections import Counter
+        from unittest.mock import patch
+
+        model = models.import_model(os.path.join(
+            _input_file_path, 'LoopSMEWTest'), restrict=False,
+            options={'apply_flavor_grouping': False})
+        # Keep all symbolic CKM entries, but give the four light quarks the
+        # identical kinematic properties required for grouping.
+        for pdg in (1, 2, 3, 4):
+            model.get_particle(pdg).set('mass', 'ZERO')
+        model.reset_dictionaries()
+        grouped = copy.deepcopy(model)
+        # Color algebra objects must not be deep-copied (same precaution as
+        # Model.merge_flavor itself).
+        for original, duplicate in zip(model['interactions'],
+                                       grouped['interactions']):
+            duplicate.set('color', original.get('color'))
+        grouped.merge_flavor([1, 2, 3, 4])
+        grouped.reset_dictionaries()
+
+        def cycles(current, forbidden, incoming=21):
+            current.actualize_dictionaries()
+            process = base_objects.Process({
+                'legs': base_objects.LegList([
+                    base_objects.Leg({'id': pdg, 'number': number,
+                                      'state': number > 2})
+                    for number, pdg in enumerate((incoming, incoming, 24, -24), 1)]),
+                'model': current, 'orders': {}, 'has_born': incoming == 22,
+                'perturbation_couplings': ['QCD' if incoming == 21 else 'QED'],
+                'squared_orders': {},
+                'forbidden_particles': forbidden})
+            amplitude = loop_diagram_generation.LoopAmplitude()
+            amplitude.set('process', process)
+            # Compare physical diagrams before numerical identification can
+            # combine equal flavours into a multiplier.
+            with patch.object(loop_diagram_generation.LoopAmplitude,
+                              'identify_loop_diagrams', return_value=0):
+                amplitude.generate_diagrams()
+            if current.get('merged_particles'):
+                registry = current._loop_interactions.copy()
+                self.assertTrue(registry)
+                self.assertFalse(set(registry).intersection(
+                    inter['id'] for inter in current['interactions']))
+                # Rebuilding caches must retain lookup without adding physical
+                # variants to any subsequent tree-generation dictionary.
+                current.set('interactions', current['interactions'])
+                current.reset_dictionaries()
+                current.actualize_dictionaries()
+                for key, interaction in registry.items():
+                    self.assertIs(current.get_interaction(key), interaction)
+                generated = {vertex for values in current.get('ref_dict_to1').values()
+                             for unused, vertex in values}
+                self.assertFalse(set(registry).intersection(generated))
+            signatures = Counter()
+            for diagram in amplitude.get('loop_diagrams'):
+                if not diagram.is_fermion_loop(current):
+                    continue
+                sequence = []
+                for leg, structures, inter_id in diagram['tag']:
+                    self.assertNotIn(abs(leg['id']),
+                                     current.get('merged_particles'))
+                    self.assertNotIn(abs(leg['id']), forbidden)
+                    interaction = current.get_interaction(inter_id)
+                    self.assertTrue(all(isinstance(c, str) for c in
+                                        interaction['couplings'].values()))
+                    bindings = tuple(sorted(
+                        (amplitude['structure_repository'][sid]['binding_leg']['id'],
+                         tuple(l['number'] for l in
+                         amplitude['structure_repository'][sid]['external_legs']))
+                        for sid in structures))
+                    sequence.append((leg['id'], bindings,
+                                     interaction.canonical_repr()))
+                signatures[tuple(sequence)] += 1
+                self.assertEqual(diagram['vertices'][-1]['legs'][0]['id'],
+                                 diagram['tag'][0][0]['id'])
+            self.assertTrue(signatures)
+            return signatures
+
+        for cutting in ('optimal', 'default'):
+            for forbidden in ([], [3]):
+                with self.subTest(cutting=cutting, forbidden=forbidden), \
+                     patch.object(loop_base_objects.LoopDiagram,
+                                  'cutting_method', cutting):
+                    self.assertEqual(cycles(grouped, forbidden),
+                                     cycles(model, forbidden))
+
+        # Charged-lepton and neutrino merging revisits W interactions. Retain
+        # original sources and scalar structures through either merge order.
+        for pdg in (11, 13, 15):
+            model.get_particle(pdg).set('mass', 'ZERO')
+        model.reset_dictionaries()
+        for groups in (([11, 13, 15], [12, 14, 16]),
+                       ([12, 14, 16], [11, 13, 15])):
+            with self.subTest(groups=groups):
+                grouped_leptons = copy.deepcopy(model)
+                for original, duplicate in zip(model['interactions'],
+                                               grouped_leptons['interactions']):
+                    duplicate.set('color', original.get('color'))
+                for group in groups:
+                    grouped_leptons.merge_flavor(group)
+                grouped_leptons.reset_dictionaries()
+                self.assertEqual(cycles(grouped_leptons, [], incoming=22),
+                                 cycles(model, [], incoming=22))
+
+
+class GroupedLoopCounterTermTest(unittest.TestCase):
+    """Counterterms and closed loops of merged (flavour-grouped) quarks."""
+
+    grouped_loop_sm = None
+
+    def setUp(self):
+        if GroupedLoopCounterTermTest.grouped_loop_sm is None:
+            GroupedLoopCounterTermTest.grouped_loop_sm = \
+                models.import_model('loop_sm')
+        self.model = GroupedLoopCounterTermTest.grouped_loop_sm
+        self.model.actualize_dictionaries()
+        self.assertEqual(self.model.get('merged_particles')[81], [1, 2, 3, 4])
+
+    def test_grouped_gqq_counterterms_are_not_collapsed(self):
+        """Each g q q~ R2/UV counterterm survives flavour merging.
+
+        R2_GQQ and the UV counterterms share particles and orders.  Only the
+        flavour partners of one counterterm may be merged, and the number of
+        loop_particles entries (one contribution each) must not change."""
+
+        found = sorted(
+            (inter.get('type'),
+             [coupling for coupling in inter.get('couplings').values()],
+             inter.get('loop_particles'))
+            for inter in self.model.get('interactions')
+            if inter.get('type') != 'base' and sorted(
+                abs(p.get_pdg_code()) for p in inter.get('particles')) ==
+            [21, 81, 81])
+        self.assertEqual(found, sorted([
+            ('R2', ['R2_GQQ'], [[21, 81]]),
+            ('UVloop1eps', ['UV_GQQb_1eps'], [[81], [81], [81]]),
+            ('UVloop1eps', ['UV_GQQb_1eps'], [[81]]),
+            ('UVloop', ['UV_GQQb'], [[5]]),
+            ('UVloop1eps', ['UV_GQQb_1eps'], [[5]]),
+            ('UVloop', ['UV_GQQt'], [[6]]),
+            ('UVloop1eps', ['UV_GQQb_1eps'], [[6]]),
+            ('UVloop1eps', ['UV_GQQg_1eps'], [[21]])]))
+
+    def test_forbidden_uvloop_flavours_match_physical_counterterms(self):
+        """Apply internal-flavour exclusions before CT loop keys are merged."""
+        from collections import Counter
+
+        def counterterms(model, physical_quark, forbidden):
+            quark = 81 if model['merged_particles'] else physical_quark
+            references = [copy.deepcopy(model.get(name))
+                          for name in ('ref_dict_to0', 'ref_dict_to1')]
+            process = base_objects.Process({
+                'legs': base_objects.LegList([
+                    base_objects.Leg({'id': pdg, 'number': number,
+                                      'state': number > 2})
+                    for number, pdg in enumerate((quark, -quark, 6, -6), 1)]),
+                'model': model, 'orders': {'QED': 0},
+                'perturbation_couplings': ['QCD'], 'squared_orders': {},
+                'forbidden_particles': forbidden})
+            amplitude = loop_diagram_generation.LoopAmplitude()
+            amplitude.set('process', process)
+            amplitude.generate_diagrams()
+            self.assertEqual(references, [model.get(name)
+                             for name in ('ref_dict_to0', 'ref_dict_to1')])
+            self.assertNotIn('UVCT_SPECIAL', model['order_hierarchy'])
+            self.assertTrue(all('UVCT_SPECIAL' not in inter['orders']
+                                for inter in model.get('interaction_dict').values()))
+            result = Counter()
+
+            def add(interaction, multiplicity=1):
+                flavor = tuple(physical_quark if abs(p.get_pdg_code()) == 81 else 0
+                               for p in interaction['particles'])
+                for coupling in interaction['couplings'].values():
+                    if isinstance(coupling, base_objects.FLV_Coupling):
+                        coupling = coupling['flavors'].get(flavor)
+                    if coupling:
+                        result[interaction['type'], coupling] += multiplicity
+
+            for diagram in amplitude['loop_diagrams']:
+                for vertex in diagram['CT_vertices']:
+                    add(model.get_interaction(vertex['id']))
+            for diagram in amplitude['loop_UVCT_diagrams']:
+                for vertex in diagram['vertices']:
+                    interaction = model.get_interaction(vertex['id'])
+                    if interaction and interaction.is_UVtree():
+                        add(interaction, diagram['UVCT_couplings'][0])
+            return result
+
+        for uv_type in ('UVloop', 'UVtree'):
+            physical = models.import_model('loop_sm',
+                options={'apply_flavor_grouping': False})
+            if uv_type == 'UVtree':
+                # Synthetic factorizing UVtree vertices exercise the same
+                # physical loop-content multiplicities through Born generation.
+                for interaction in physical['interactions']:
+                    if interaction.is_UVloop():
+                        interaction.set('type', interaction['type'].replace('UVloop', 'UVtree'))
+            grouped = copy.deepcopy(physical)
+            for original, duplicate in zip(physical['interactions'], grouped['interactions']):
+                duplicate.set('color', original['color'])
+            grouped.merge_flavor([1, 2, 3, 4])
+            for model in (physical, grouped):
+                model.actualize_dictionaries()
+            for forbidden in ([3], [1, 3]):
+                for quark in (q for q in (1, 2, 3, 4) if q not in forbidden):
+                    with self.subTest(kind=uv_type, forbidden=forbidden, quark=quark):
+                        self.assertEqual(counterterms(grouped, quark, forbidden),
+                                         counterterms(physical, quark, forbidden))
+
+    def test_grouped_closed_light_quark_loop(self):
+        """A closed merged-quark loop sums its flavours and keeps its R2s.
+
+        Ungrouped, the u/d/s/c loops of q q~ > t t~ are one identified
+        diagram with multiplier 4 and four R2 counterterms; the physically
+        expanded loop of the grouped model must be equivalent."""
+
+        legs = base_objects.LegList([
+            base_objects.Leg({'id': 81, 'state': False}),
+            base_objects.Leg({'id': -81, 'state': False}),
+            base_objects.Leg({'id': 6, 'state': True}),
+            base_objects.Leg({'id': -6, 'state': True})])
+        process = base_objects.Process({
+            'legs': legs, 'model': self.model, 'orders': {'QED': 0},
+            'perturbation_couplings': ['QCD'], 'squared_orders': {}})
+        amplitude = loop_diagram_generation.LoopAmplitude()
+        amplitude.set('process', process)
+        amplitude.generate_diagrams()
+
+        closed = [diag for diag in amplitude.get('loop_diagrams')
+                   if set(abs(self.model.get_particle(tag[0]).get_pdg_code())
+                          for tag in diag['canonical_tag']).issubset({1, 2, 3, 4})]
+        self.assertEqual(len(closed), 1)
+        self.assertEqual(closed[0].get('multiplier'), 4)
+        self.assertEqual(
+            [self.model.get_interaction(ct.get('id')).get('couplings')
+             for ct in closed[0].get('CT_vertices')],
+            [{(0, 0): 'R2_GGq'}] * 4)
+        self.assertEqual(sum(len(diag.get('CT_vertices'))
+                             for diag in amplitude.get('loop_diagrams')), 27)
+
+    def test_grouped_flavour_dependent_closed_loop_matches_physical(self):
+        """Photon-coupled loops preserve physical multiplicities and CTs."""
+
+        model = models.import_model(os.path.join(
+            _input_file_path, 'LoopSMEWTest'))
+        self.assertTrue(model.get('merged_particles'))
+        legs = base_objects.LegList([
+            base_objects.Leg({'id': 22, 'state': False}),
+            base_objects.Leg({'id': 22, 'state': False}),
+            base_objects.Leg({'id': 6, 'state': True}),
+            base_objects.Leg({'id': -6, 'state': True})])
+        process = base_objects.Process({
+            'legs': legs, 'model': model, 'orders': {},
+            'perturbation_couplings': ['QED'], 'squared_orders': {}})
+        amplitude = loop_diagram_generation.LoopAmplitude()
+        amplitude.set('process', process)
+        amplitude.generate_diagrams()
+        physical = copy.copy(process)
+        physical.set('model', models.import_model(os.path.join(
+            _input_file_path, 'LoopSMEWTest'),
+            options={'apply_flavor_grouping': False}))
+        reference = loop_diagram_generation.LoopAmplitude()
+        reference.set('process', physical)
+        reference.generate_diagrams()
+        for key in ('born_diagrams', 'loop_diagrams'):
+            self.assertEqual(len(amplitude[key]), len(reference[key]))
+        self.assertEqual(sum(d['multiplier'] for d in amplitude['loop_diagrams']),
+                         sum(d['multiplier'] for d in reference['loop_diagrams']))
+        self.assertEqual(sum(len(d['CT_vertices']) for d in amplitude['loop_diagrams']),
+                         sum(len(d['CT_vertices']) for d in reference['loop_diagrams']))
+
 
 if __name__ == '__main__':
         # Save this model so that it can be loaded by other loop tests

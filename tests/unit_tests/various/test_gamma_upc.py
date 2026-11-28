@@ -332,7 +332,7 @@ class TestGammaUPCMakefiles(unittest.TestCase):
 class TestGammaUPCExporters(unittest.TestCase):
 
     def test_pdf_lines_upc_condition(self):
-        """a a > mu+ mu-: LO and NLO call PHOTONPDFSQUARE on the same condition"""
+        """All gamma-UPC label families work in LO and physical NLO rows."""
 
         import madgraph.models.import_ufo as import_ufo
         import madgraph.core.base_objects as base_objects
@@ -351,9 +351,18 @@ class TestGammaUPCExporters(unittest.TestCase):
 
         lo = export_v4.ProcessExporterFortranME().get_pdf_lines(me, 2)[2]
         nlo = export_fks.ProcessExporterFortranFKS().get_pdf_lines_mir(me, 2)[2]
-        condition = "IF (ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND.(PDLABEL(1:2).EQ.'ed'.OR.PDLABEL(1:2).EQ.'ch'))THEN"
+        # Prefix checks include neutron-tagged labels, not only edff/chff.
+        condition = ("ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND."
+                     "(PDLABEL(1:2).EQ.'ed'.OR.PDLABEL(1:2).EQ.'ch')")
+        self.assertIn('IF(' + condition + ')THEN', ''.join(lo.split()))
+        # NLO rows can share one topology: only the selected physical photon
+        # pair takes the correlated flux, all other rows retain ordinary PDFs.
+        physical = ('PDG_TYPE_D(NFKSPROCESS,1).EQ.22.AND.'
+                    'PDG_TYPE_D(NFKSPROCESS,2).EQ.22.AND.' + condition)
+        compact_nlo = ''.join(nlo.replace('$', '').split())
+        self.assertIn('IF(' + physical + ')THEN', compact_nlo)
+        self.assertIn('IF(.NOT.(' + physical + '))THEN', compact_nlo)
         for lines in [lo, nlo]:
-            self.assertIn(condition, lines)
             self.assertIn('PHOTONPDFSQUARE(XBK(1),XBK(2))', lines)
 
 

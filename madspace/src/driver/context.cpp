@@ -87,6 +87,23 @@ void MatrixElementApi::init_functions(
     require(bool(_functions.initialize), "umami_initialize");
     require(bool(_functions.matrix_element), "umami_matrix_element");
     require(bool(_functions.free), "umami_free");
+    // The unreleased NLO prototype used minor 1.4 with key numbers that now
+    // belong to the public 1.3 flavour-switch interface. Capability queries
+    // cannot distinguish those meanings (including double versus int outputs).
+    // Older public providers need not expose ABI metadata, so only reject an
+    // explicitly reported experimental version, before initializing instances.
+    int abi_major = 0;
+    int abi_minor = 0;
+    if (_functions.get_meta(UMAMI_META_ABI_MAJOR_VERSION, &abi_major) ==
+            UMAMI_SUCCESS &&
+        _functions.get_meta(UMAMI_META_ABI_MINOR_VERSION, &abi_minor) ==
+            UMAMI_SUCCESS &&
+        abi_major == 1 && abi_minor == 4) {
+        throw_error(
+            "experimental UMAMI 1.4 provider uses incompatible key numbers; "
+            "regenerate it with the current MadGraph7 version"
+        );
+    }
     // Implementations may not report which keys they support; queries for that
     // information then fail with UMAMI_ERROR_NOT_IMPLEMENTED.
     if (!_functions.supported_inputs) {

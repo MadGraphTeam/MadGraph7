@@ -4249,11 +4249,18 @@ class HelasMatrixElement(base_objects.PhysicsObject):
 
     # Customized constructor
     def __init__(self, amplitude=None, optimization=1,
-                 decay_ids=[], gen_color=True):
+                 decay_ids=[], gen_color=True, enumerate_all_flavors=None):
         """Constructor for the HelasMatrixElement. In particular allows
         generating a HelasMatrixElement from an Amplitude, with
         automatic generation of the necessary wavefunctions
         """
+
+        # FKS identifies an emitter/spectator before mapping a real row back
+        # to its Born. Permuting equal grouped legs is not an equivalence at
+        # that stage. Set the instance policy before eager flavor population;
+        # standalone/LO callers retain their existing class-level default.
+        if enumerate_all_flavors is not None:
+            self.enumerate_all_flavors = bool(enumerate_all_flavors)
 
         if amplitude != None:
             if isinstance(amplitude, diagram_generation.Amplitude):
@@ -6301,6 +6308,9 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         if model is None:
             model = self.get('processes')[0].get('model')
 
+        # Any previously built exact-lookup tables belong to the old validity
+        # pass.  They are reconstructed lazily by get_external_flavor_index().
+        self._external_flavor_index_maps = {}
         # The store below is what the flavor masks are read from, so rebuilding
         # it retires any masks computed against the previous one.
         self._flavor_epoch = getattr(self, '_flavor_epoch', 0) + 1
@@ -6526,6 +6536,46 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         else:
             return self['allowed_flavors']
 
+    def get_external_flavor_index(self, flavor, from_pdgs=False):
+        """Return the one-based local row for an exact external assignment.
+
+        ``flavor`` is a per-leg group-position vector by default.  With
+        ``from_pdgs=True`` it is the signed physical-PDG vector in generated
+        external-leg order.  Zero is the same invalid/unresolved sentinel used
+        by generated ``GET_FLAVOR_INDEX`` routines.
+
+        The index is local to this matrix element.  In particular, callers
+        must resolve Born and real assignments independently rather than pass a
+        row number from one matrix element to another.
+        """
+        flavors, pdgs = self.get_external_flavors(return_pdgs=True)
+        source = pdgs if from_pdgs else flavors
+        cache_name = 'pdgs' if from_pdgs else 'flavors'
+        cache = getattr(self, '_external_flavor_index_maps', None)
+        if cache is None:
+            cache = {}
+            self._external_flavor_index_maps = cache
+        if cache_name not in cache:
+            cache[cache_name] = dict(
+                (tuple(row), index)
+                for index, row in enumerate(source, start=1))
+        try:
+            return cache[cache_name].get(tuple(flavor), 0)
+        except TypeError:
+            return 0
+
+    def get_external_flavor(self, index, return_pdgs=False):
+        """Return one local flavor row, or ``None`` for an invalid index.
+
+        The public Python API deliberately does not map an invalid index to row
+        one: doing so would silently evaluate the wrong physical NLO channel.
+        """
+        flavors, pdgs = self.get_external_flavors(return_pdgs=True)
+        source = pdgs if return_pdgs else flavors
+        if not isinstance(index, int) or index < 1 or index > len(source):
+            return None
+        return source[index - 1]
+
     def get_external_flavors_with_iden(self, return_pdgs=False):
         if self['allowed_flavors_with_iden']:
             if return_pdgs:
@@ -6726,13 +6776,40 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                 diag['wavefunctions'][:0] = restored
 
         initial_len = len(self.get('diagrams'))
+        kept_positions = [i for i, diag in enumerate(self.get('diagrams'))
+                          if diag.valid_flavors]
 
-        self['diagrams'] = HelasDiagramList([diag for diag in self.get('diagrams') if diag.valid_flavors])
+        if len(kept_positions) < initial_len:
+            # Virtual-Born exports can copy a color basis while leaving the
+            # base amplitude lazy. Reconstruct it before compacting the HELAS
+            # list, so its diagram positions still match that copied basis.
+            base_amplitude = self.get('base_amplitude')
+            base_diagrams = base_amplitude.get('diagrams')
+
+        self['diagrams'] = HelasDiagramList(
+            [self.get('diagrams')[i] for i in kept_positions])
         final_len = len(self.get('diagrams'))
         if final_len < initial_len:
             logger.info('removed %d diagrams which were incompatible with flavor restriction: remain %d'%(initial_len - final_len, final_len))
             for i, diag in enumerate(self.get('diagrams')):
                 diag.set('number', i+1)
+
+            # The color basis stores zero-based diagram positions.  Restricted
+            # grouped processes can drop only some topology diagrams after the
+            # basis was built; compacting the HELAS list without rebuilding the
+            # base amplitude leaves stale positions and makes JAMP generation
+            # index beyond the retained list.
+            if len(base_diagrams) == initial_len:
+                base_amplitude.set(
+                    'diagrams',
+                    base_objects.DiagramList(
+                        [base_diagrams[i] for i in kept_positions]))
+                # Decay sub-MEs defer color construction until their open
+                # endpoint has been combined with the production process.
+                # Only rebuild a basis that already existed before trimming.
+                if self.get('color_basis'):
+                    self.set('color_basis', color_amp.ColorBasis())
+                    self.process_color()
 
         # reset wfct numbers for those dropped
         for i,wfct in enumerate(self.get_all_wavefunctions()):
@@ -6829,6 +6906,14 @@ class HelasMatrixElement(base_objects.PhysicsObject):
         diagrams = self.get('diagrams')
         all_wfs = [wf for diag in diagrams for wf in diag.get('wavefunctions')]
         all_amps = [amp for diag in diagrams for amp in diag.get('amplitudes')]
+        if type(self).get_all_amplitudes is not HelasMatrixElement.get_all_amplitudes:
+            # MadLoop includes counterterms and nested loop objects in these
+            # views; the tree-only flattening above is not equivalent there.
+            all_wfs = self.get_all_wavefunctions()
+            outer_amplitudes = all_amps
+            all_amps = self.get_all_amplitudes()
+            known = {id(amp) for amp in all_amps}
+            all_amps += [amp for amp in outer_amplitudes if id(amp) not in known]
 
         token = self._flavor_mask_token(allowed_flavors, all_wfs, all_amps)
         if getattr(self, '_flavor_mask_cache', None) == token:
@@ -6853,9 +6938,13 @@ class HelasMatrixElement(base_objects.PhysicsObject):
                     mask |= (1 << flav_idx)
             diag['flavor_mask'] = mask
             # amplitudes of a diagram share the diagram's flavor validity
-            for amp in diag.get('amplitudes'):
+            pending = list(diag.get('amplitudes'))
+            while pending:
+                amp = pending.pop()
                 amp['flavor_mask'] = mask
                 amp.valid_flavors = set(diag.valid_flavors)
+                if 'amplitudes' in amp:
+                    pending.extend(amp['amplitudes'])
 
         # 2) Initialise every wavefunction mask to 0, then OR each amplitude's
         # mask into all reachable ancestor wavefunctions via the 'mothers'
@@ -7654,7 +7743,14 @@ class HelasMatrixElement(base_objects.PhysicsObject):
             if output == str:
                 return [[x] for x in flav_name + other_coupling + c_coupling]
             elif output == "set":
-                return misc.make_unique([[x] for x in flav_name + other_coupling + c_coupling])
+                # Flavour couplings are mapping objects and the API returns
+                # singleton lists. Both are unhashable; misc.make_unique now
+                # uses dict/set keys, so retain stable equality-based grouping.
+                unique = []
+                for coupling in flav_name + other_coupling + c_coupling:
+                    if [coupling] not in unique:
+                        unique.append([coupling])
+                return unique
         else:
             if output == str:
                 return [ [t] if not t.startswith('-') else [t[1:]] for t2 in tmp for t in t2]

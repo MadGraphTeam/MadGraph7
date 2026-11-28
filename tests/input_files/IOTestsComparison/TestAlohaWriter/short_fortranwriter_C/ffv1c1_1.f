@@ -1,4 +1,4 @@
-subroutine FFV1C1_1(F1, V3, COUP, M2, W2,F2)
+recursive subroutine FFV1C1_1(F1, V3, COUP, M2, W2,F2)
 use aloha_object
 implicit none
  complex*16 CI

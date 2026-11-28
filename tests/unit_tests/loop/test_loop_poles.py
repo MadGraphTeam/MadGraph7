@@ -377,7 +377,8 @@ C     Legacy choices remain active after returning from an explicit mode.
       SUBROUTINE ''' + prefix + '''EVALUATE(SELECTED)
       IMPLICIT NONE
       INCLUDE 'MadLoopParams.inc'
-      INTEGER SELECTED
+      INTEGER SELECTED,FILTER_FLAV_IDX
+      PARAMETER(FILTER_FLAV_IDX=1)
       LOGICAL ML_INIT
       COMMON/ML_INIT/ML_INIT
       CHARACTER*512 PARAMFN

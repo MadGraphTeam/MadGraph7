@@ -2863,8 +2863,12 @@ class MadgraphProcess:
         incoming = data["incoming"]
         flavor0 = event_flavors(data, self)[0]["options"][0]
         init_pdgs = flavor0[:len(incoming)]
-        beam_pdgs = [pdg if abs(code) in (81, 82) else code
-                     for code, pdg in zip(incoming, init_pdgs)]
+        merged = data.get(
+            "merged_incoming",
+            [abs(code) in (81, 82, 83) for code in incoming])
+        beam_pdgs = [pdg if is_merged else code
+                     for code, pdg, is_merged in zip(
+                         incoming, init_pdgs, merged)]
         return beam_pdgs, list(self.beam_energies)
 
     def _lhapdf_id(self, beam=1):

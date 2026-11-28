@@ -828,13 +828,14 @@ c selection is requested outside an active inner-history evaluation.
       common /to_itree/itree,iconf
       double precision ran2,rnd
       integer i,j,order(-nexternal:0),ipos,ns_channel,npos
-     $     ,pos(nexternal),ord(-nexternal:0)
+     $     ,pos(nexternal)
       logical done(-nexternal:nexternal)
       external ran2
-      save ord
-      if (.not. new_point) then
+      if (.not.allocated(mint_schannel_order)) then
+         allocate(mint_schannel_order(-nexternal:0))
+      elseif (.not.new_point) then
          do j=-1,-ns_channel,-1
-            order(j)=ord(j)
+            order(j)=mint_schannel_order(j)
          enddo
          return
       endif
@@ -856,15 +857,15 @@ c selection is requested outside an active inner-history evaluation.
          if (npos.gt.1) then
             rnd=ran2()
             ipos=min(int(rnd*npos)+1,npos)
-            ord(j)=pos(ipos)
+            mint_schannel_order(j)=pos(ipos)
             done(pos(ipos))=.true.
          elseif (npos.eq.1) then
-            ord(j)=pos(npos)
+            mint_schannel_order(j)=pos(npos)
             done(pos(npos))=.true.
          else
             write (*,*) 'ERROR in sChan_order',npos
          endif
-         order(j)=ord(j)
+         order(j)=mint_schannel_order(j)
       enddo
       new_point=.false.
       return

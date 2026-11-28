@@ -304,6 +304,17 @@ C         Handle the possible requirement of specific polarizations
             HEL_MULT=1
           ENDIF
 
+          DO I=1,NBORNAMPS
+            AMP(I)=(ZERO,ZERO)
+            DP_AMP(I)=(0.0D0,0.0D0)
+          ENDDO
+          DO K=1,3
+            DO I=1,NCTAMPS
+              AMPL(K,I)=(ZERO,ZERO)
+              DP_AMPL(K,I)=(0.0D0,0.0D0)
+            ENDDO
+          ENDDO
+
 
           IF (COMPUTE_INTEGRAND_IN_QP) THEN
             CALL ML5_0_MP_HELAS_CALLS_AMPB_1(MP_P,NHEL,H,IC)

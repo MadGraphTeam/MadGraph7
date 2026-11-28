@@ -19,7 +19,13 @@ UmamiStatus umami_get_meta(UmamiMetaKey meta_key, void* result) {
     case UMAMI_META_DEVICE: {
         *static_cast<UmamiDevice*>(result) = UMAMI_DEVICE_CPU;
         break;
-    } case UMAMI_META_PARTICLE_COUNT:
+    } case UMAMI_META_ABI_MAJOR_VERSION:
+        *static_cast<int*>(result) = UMAMI_MAJOR_VERSION;
+        break;
+    case UMAMI_META_ABI_MINOR_VERSION:
+        *static_cast<int*>(result) = UMAMI_MINOR_VERSION;
+        break;
+    case UMAMI_META_PARTICLE_COUNT:
         *static_cast<int*>(result) = CPPProcess::nexternal;
         break;
     case UMAMI_META_DIAGRAM_COUNT:

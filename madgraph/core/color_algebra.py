@@ -87,6 +87,17 @@ class ColorObject(array.array):
 
     __copy__ = create_copy
 
+    def __deepcopy__(self, memo):
+        """Keep the tensor type instead of array.array's base-array copy.
+
+        Copied model interactions must still distinguish T, f, Tr, etc. when
+        an exporter rebuilds a colour basis from their indices.
+        """
+        result = self.create_copy()
+        memo[id(self)] = result
+        result.__dict__.update(copy.deepcopy(self.__dict__, memo))
+        return result
+
 
 #===============================================================================
 # Tr

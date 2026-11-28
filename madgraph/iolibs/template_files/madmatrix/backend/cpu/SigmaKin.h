@@ -10,6 +10,7 @@
 #ifndef SIGMAKIN_H
 #define SIGMAKIN_H 1
 
+#include <cstddef>
 #include "MadMatrixConfig.h"
 #include "MadMatrixCxtypes.h" // for cxtype, fptype_amp_sv
 
@@ -86,7 +87,9 @@ namespace madmatrix
             // input: the helicity index [0,ncomb) of each event, which is then evaluated for that
             // helicity alone (and returns its contribution to the helicity-summed |M|^2, see
             // umami_matrix_element); nullptr, the default, sums over the good helicities
-            const int* allihel = nullptr );
+            const int* allihel = nullptr,
+            fptype* allSquaredOrderMEs = nullptr,
+            const std::size_t squaredOrderStride = 0 );
 
   // What the spin-density matrix (Density.cc) needs on top of sigmaKin: the
   // jamps of one event page for any helicity combination hel[npar], the

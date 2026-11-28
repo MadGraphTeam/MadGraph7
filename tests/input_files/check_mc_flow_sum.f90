@@ -272,9 +272,11 @@ program check_mc_flow_sum
   print *, 'PASS Born-flow sum, sampling, compensation and owner restoration'
 end program
 
-subroutine compute_native_NLOPS_weights(p,p_cms,cuts_born,cuts_real,probne)
+subroutine prepare_native_NLOPS_weights(p,p_cms,cuts_born,cuts_real,probne,emission)
   use flow_test_state
+  use mc_point_state, only: native_real_emission,request_native_real
   implicit none
+  type(native_real_emission) emission
   real(8) :: p(0:3,5),p_cms(0:3,5),probne
   logical :: cuts_born,cuts_real
   real(8) :: real_weight,mc_weight,g_weight,c_weight,contribution(2)
@@ -305,6 +307,9 @@ subroutine compute_native_NLOPS_weights(p,p_cms,cuts_born,cuts_real,probne)
     matching=-12d0*matching
     pdfscheme=-13d0*pdfscheme
   endif
+  ! Force every mock flow to yield. The flow owner, accumulated probability and
+  ! counterterm factors must survive until the next call to advance_native_flows.
+  call request_native_real(emission%request,p,1d0,0d0)
 end subroutine
 
 subroutine init_process_module_n1body_flow(flow,preserve_event_owner)
@@ -347,3 +352,16 @@ real(8) function mc_born_flow_weight(flow)
   integer :: flow
   mc_born_flow_weight=raw_weights(flow)
 end function
+
+subroutine resolve_native_real_scalar(request)
+  use mc_point_state
+  type(native_real_request) request
+  call complete_native_real(request,5d0,[8d0,-3d0])
+end subroutine
+subroutine compute_real_emission_finish(emission)
+  use mc_point_state
+  type(native_real_emission) emission
+  real(8) w,components(2)
+  call consume_native_real(emission%request,w,components)
+  if(w/=5d0.or.any(components/=[8d0,-3d0]))error stop 'incorrect mock flow continuation'
+end subroutine

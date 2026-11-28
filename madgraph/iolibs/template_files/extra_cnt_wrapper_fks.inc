@@ -28,6 +28,7 @@ integer ncnt,i
 parameter (ncnt=%(ncnt)d)
 integer cnt_color(ncnt,nexternalb)
 %(cnt_color_lines)s
+%(cnt_metadata_common)s
 
 if (icnt.gt.ncnt.or.icnt.le.0) then
 write(*,*) 'ERROR#1 in get_extra_cnt_color', icnt
@@ -38,7 +39,7 @@ write(*,*) 'ERROR#2 in get_extra_cnt_color', ipart
 stop
 endif
 
-get_extra_cnt_color=cnt_color(icnt,ipart)
+%(cnt_color_result)s
 
 return
 end
@@ -55,6 +56,7 @@ integer ncnt,i
 parameter (ncnt=%(ncnt)d)
 integer cnt_pdg(ncnt,nexternalb)
 %(cnt_pdg_lines)s
+%(cnt_metadata_common)s
 
 if (icnt.gt.ncnt.or.icnt.le.0) then
 write(*,*) 'ERROR#1 in get_extra_cnt_pdg', icnt
@@ -65,7 +67,7 @@ write(*,*) 'ERROR#2 in get_extra_cnt_pdg', ipart
 stop
 endif
 
-get_extra_cnt_pdg=cnt_pdg(icnt,ipart)
+%(cnt_pdg_result)s
 
 return
 end
@@ -82,6 +84,7 @@ integer ncnt,i
 parameter (ncnt=%(ncnt)d)
 double precision cnt_charge(ncnt,nexternalb)
 %(cnt_charge_lines)s
+%(cnt_metadata_common)s
 
 if (icnt.gt.ncnt.or.icnt.le.0) then
 write(*,*) 'ERROR#1 in get_extra_cnt_charge', icnt
@@ -92,7 +95,7 @@ write(*,*) 'ERROR#2 in get_extra_cnt_charge', ipart
 stop
 endif
 
-get_extra_cnt_charge=cnt_charge(icnt,ipart)
+%(cnt_charge_result)s
 
 return
 end

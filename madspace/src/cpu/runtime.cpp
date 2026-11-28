@@ -186,6 +186,11 @@ void op_matrix_element(
         std::copy(output_shape.begin(), output_shape.end(), shape.begin() + 1);
         output = Tensor(instruction.output_dtypes[i], shape, device);
         output_ptrs[i] = output.data();
+        if (me_index != 0xBADCAFE && output_keys[i] == UMAMI_OUT_SQUARED_ORDERS &&
+            (shape.size() != 2 || static_cast<std::size_t>(shape[1]) !=
+                instruction.runtime.context().matrix_element(me_index).squared_order_count())) {
+            throw std::invalid_argument("squared order output extent differs from the provider");
+        }
         if (me_index == 0xBADCAFE) {
             // flat dummy matrix element for testing
             switch (output_keys[i]) {
@@ -196,6 +201,7 @@ void op_matrix_element(
                     std::fill(ptr, ptr + batch_size, 1.);
                 });
                 break;
+            case UMAMI_OUT_SQUARED_ORDERS:
             case UMAMI_OUT_DIAGRAM_AMP2:
                 device.submit([=]() mutable {
                     double* ptr = static_cast<double*>(output_ptrs[i]);

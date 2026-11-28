@@ -6362,6 +6362,20 @@ class RunCardNLO(RunCard):
         self.add_param('nevents', 10000)
         self.add_param('req_acc', -1.0, include=False)
         self.add_param('nevt_job', -1, include=False)
+        self.add_param(
+            'vector_size', 1, include=False, hidden=True,
+            comment='maximum independent native MINT draws per integration batch')
+        self.add_param(
+            'nlo_gen_vector_size', 0, include=False, hidden=True,
+            comment='maximum generation candidates per batch, capped by vector_size. '
+                    '0 chooses up to 8 CPU candidates or the integration capacity on GPU')
+        self.add_param(
+            'nlo_real_backend', 'fortran', include=False, hidden=True,
+            allowed=['fortran', 'scalar', 'simd_128', 'simd_256',
+                     'avx512y', 'simd_512', 'cuda', 'hip'],
+            comment='real-emission matrix-element backend of an output '
+                    'made with --me_exporter=mg7 (fortran: retained '
+                    'Fortran, no MadMatrix)')
         self.add_param("time_of_flight", -1.0, include=False)
         self.add_param('event_norm', 'average')
         #FO parameter
@@ -7046,9 +7060,20 @@ class RunCardNLO(RunCard):
         # check for beam_id
         beam_id = set()
         for proc in proc_def:
+            try:
+                merged = proc.get('model').get('merged_particles') or {}
+            except Exception:
+                merged = {}
             for leg in proc['legs']:
                 if not leg['state']:
-                    beam_id.add(leg['id'])
+                    # A flavour-grouped (merged) particle stands for its
+                    # physical flavours, e.g. the quarks of q q~ > e+ e-.
+                    physical = merged.get(abs(leg['id']))
+                    if physical:
+                        sign = 1 if leg['id'] > 0 else -1
+                        beam_id.update(sign * abs(pdg) for pdg in physical)
+                    else:
+                        beam_id.add(leg['id'])
         if any(i in beam_id for i in [1,-1,2,-2,3,-3,4,-4,5,-5,21,22]):
             # the default follows the flavour scheme of the model, the same
             # number that defines the default 'p'/'j' multiparticles

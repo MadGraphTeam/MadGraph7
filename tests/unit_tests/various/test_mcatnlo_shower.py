@@ -172,9 +172,11 @@ class TestMatchingContract(unittest.TestCase):
         run_card = {'parton_shower': 'pythia8', 'mcatnlo_delta': False,
                     'ickkw': 3, 'ptj': 20., 'shower_scale_factor': 1.,
                     'lpp1': 1, 'lpp2': 1}
+        characteristics = banner_mod.ProcCharacteristic()
+        characteristics['splitting_types'] = ['QCD', 'QED']
+        characteristics['max_n_matched_jets'] = 2
         contract = mcatnlo_shower.contract_from_generation(
-            self.root, run_card, {'splitting_types': ['QCD', 'QED'],
-                                  'max_n_matched_jets': 2},
+            self.root, run_card, characteristics,
             [self.write('events.lhe', events)])
         self.assertEqual(contract['parton_shower'], 'PYTHIA8')
         self.assertTrue(contract['qed_matching'])

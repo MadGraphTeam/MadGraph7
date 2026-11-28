@@ -29,7 +29,8 @@
 
 #define gpuMemcpy( dstData, srcData, srcBytes, func ) checkGpu( cudaMemcpy( dstData, srcData, srcBytes, func ) )
 #define gpuMemset( data, value, bytes ) checkGpu( cudaMemset( data, value, bytes ) )
-#define gpuMemcpyAsync( dstData, srcData, srcBytes, func, stream ) checkGpu( cudaMemcpyAsync( dstData, srcData, srcBytes, func, stream ) )
+#define gpuMemcpyAsync( dst, src, bytes, kind, stream ) checkGpu( cudaMemcpyAsync( dst, src, bytes, kind, stream ) )
+#define gpuMemcpyDefault cudaMemcpyDefault
 #define gpuMemsetAsync( data, value, bytes, stream ) checkGpu( cudaMemsetAsync( data, value, bytes, stream ) )
 #define gpuMemcpyHostToDevice cudaMemcpyHostToDevice
 #define gpuMemcpyDeviceToHost cudaMemcpyDeviceToHost
@@ -102,7 +103,8 @@
 
 #define gpuMemcpy( dstData, srcData, srcBytes, func ) checkGpu( hipMemcpy( dstData, srcData, srcBytes, func ) )
 #define gpuMemset( data, value, bytes ) checkGpu( hipMemset( data, value, bytes ) )
-#define gpuMemcpyAsync( dstData, srcData, srcBytes, func, stream ) checkGpu( hipMemcpyAsync( dstData, srcData, srcBytes, func, stream ) )
+#define gpuMemcpyAsync( dst, src, bytes, kind, stream ) checkGpu( hipMemcpyAsync( dst, src, bytes, kind, stream ) )
+#define gpuMemcpyDefault hipMemcpyDefault
 #define gpuMemsetAsync( data, value, bytes, stream ) checkGpu( hipMemsetAsync( data, value, bytes, stream ) )
 #define gpuMemcpyHostToDevice hipMemcpyHostToDevice
 #define gpuMemcpyDeviceToHost hipMemcpyDeviceToHost

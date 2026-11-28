@@ -45,6 +45,17 @@ class FKSProcessError(Exception):
     pass
 
 
+class FKSFlavorNotInTopology(FKSProcessError):
+    """A physical flavour row is not a member of a grouped FKS topology.
+
+    This is the one mapping failure callers may intentionally skip while
+    constructing the union of physical flavour classes.  Malformed FKS
+    metadata continues to raise :class:`FKSProcessError` and must not be
+    mistaken for ordinary non-membership.
+    """
+    pass
+
+
 # the processes of the ncores_for_proc_gen mode (low_mem_multicore_nlo_generation)
 
 class RemoteTraceback(Exception):
@@ -68,7 +79,8 @@ def run_low_mem_task(function, arg, connection):
     except Exception:
         # the result or the error cannot be pickled
         connection.send(('error', (None, output[1][1] if output[0] == 'error' \
-                                         else traceback.format_exc())))
+                         else 'Cannot pickle low-memory worker result:\n' +
+                              traceback.format_exc())))
     connection.close()
 
 
@@ -182,6 +194,25 @@ def external_process_identity(process, particle_tags=None):
         'forbidden_particles', 'is_decay_chain'))
     decays = tuple(external_process_identity(decay) for decay in process['decay_chains'])
     return (constraints, decays), tuple(states)
+
+
+def physical_fks_processes(matrix_element, info, role='real'):
+    """Return the native PDF list for this physical FKS sector.
+
+    Physical-class exports select one flavour through NFKSPROCESS and expose
+    IPROC=1. Ungrouped exports retain their complete ordered process list.
+    Copying the representative preserves restrictions, tags and polarization.
+    """
+    if 'flavor_class' not in info:
+        return list(matrix_element['processes'])
+    process = copy.deepcopy(matrix_element['processes'][0])
+    pdgs = info['flavor_class'][role + '_pdgs']
+    legs = process.get_legs_with_decays()
+    if len(legs) != len(pdgs):
+        raise FKSProcessError('Physical FKS identity has an inconsistent leg count')
+    for leg, pdg in zip(legs, pdgs):
+        leg.set('id', pdg)
+    return [process]
 
 
 class FKSDiagramTag(diagram_generation.DiagramTag): #test written
@@ -665,9 +696,11 @@ def insert_legs(leglist_orig, leg, split,pert='QCD'):
     for col in set([l[color] for l in leglist[firstfinal:] if l['massless']]):
         col_maxindex[col] = max([0] + [leglist.index(l) for l in leglist[firstfinal:]\
                                         if l[color] == col and l['massless']])
-    for col in set([abs(l[color]) for l in leglist[firstfinal:] if not l['massless']]):
+    for col in set([abs(l[color]) for l in leglist[firstfinal:]
+                    if not l['massless']]):
         mass_col_maxindex[col] = max([0] + [leglist.index(l) for l in leglist[firstfinal:]\
-                                             if abs(l[color]) == col and not l['massless']])
+                                             if not l['massless'] and
+                                             abs(l[color]) == col])
     #no need to keep info on particles with color > i
     if pert == 'QCD':
         for col in copy.copy(list(col_maxindex.keys())):
@@ -683,7 +716,12 @@ def insert_legs(leglist_orig, leg, split,pert='QCD'):
     # merge of the EW branch in aMC@NLO trunk.
     #if split[1][color] > 0:
         try:
-            del col_maxindex[-split[1][color]]
+            opposite_color = split[1][color]
+            if isinstance(opposite_color, tuple):
+                opposite_color = tuple(-value for value in opposite_color)
+            else:
+                opposite_color = -opposite_color
+            del col_maxindex[opposite_color]
         except KeyError:
             pass
     #so now the maximum of the max_col entries should be the position to insert leg i
@@ -759,6 +797,97 @@ def combine_ij( i, j, model, dict, pert='QCD'): #test written
                     'number': num}))
 
     return to_fks_legs(ij, model)       
+
+
+def map_real_to_born_pdgs(real_pdgs, fks_info, model,
+                          underlying_index=0):
+    """Map one physical real-emission PDG row to its underlying Born row.
+
+    ``fks_info`` stores topology-level (and possibly merged) PDGs.  At runtime
+    the real matrix element instead selects one concrete physical row.  Remove
+    the FKS daughters ``i`` and ``j``, reconstruct their mother at position
+    ``ij``, and validate the result against the requested topology-level
+    ``underlying_born`` entry.
+
+    The mother of a merged quark is resolved from whichever daughter belongs to
+    that merged group; only its flavor is inherited, while the sign comes from
+    ``ij_id``.  An unmerged mother (for example a gluon from q q~) is already
+    fully specified by ``ij_id``.
+    """
+    real_pdgs = list(real_pdgs)
+    try:
+        i_fks = fks_info['i']
+        j_fks = fks_info['j']
+        ij_fks = fks_info['ij']
+        primary_mother_id = fks_info['ij_id']
+        underlying = list(
+            fks_info['underlying_born'][underlying_index])
+    except (KeyError, IndexError, TypeError):
+        raise FKSProcessError('Incomplete FKS information for physical flavor mapping')
+
+    if not all(isinstance(index, int)
+               for index in (i_fks, j_fks, ij_fks)) or \
+            i_fks == j_fks or \
+            min(i_fks, j_fks) < 1 or \
+            max(i_fks, j_fks) > len(real_pdgs) or \
+            ij_fks < 1 or ij_fks > len(real_pdgs) - 1:
+        raise FKSProcessError(
+            'Invalid FKS leg positions i=%s, j=%s, ij=%s for %d real legs'
+            % (i_fks, j_fks, ij_fks, len(real_pdgs)))
+
+    # The primary underlying Born has the original ij_id.  An extra
+    # counterterm can use a different mother (for example photon instead of
+    # gluon), recorded in its own underlying_born row at the same ij position.
+    mother_id = (primary_mother_id if underlying_index == 0
+                 else underlying[ij_fks - 1])
+    if underlying_index == 0 and underlying[ij_fks - 1] != mother_id:
+        raise FKSProcessError(
+            'Primary FKS mother %s does not match underlying Born topology %s'
+            % (mother_id, underlying))
+
+    merged = model.get('merged_particles')
+    members = merged.get(abs(mother_id))
+    if members:
+        abs_members = set(abs(member) for member in members)
+        daughter_flavors = set(
+            abs(real_pdgs[position - 1])
+            for position in (i_fks, j_fks)
+            if abs(real_pdgs[position - 1]) in abs_members)
+        if len(daughter_flavors) != 1:
+            raise FKSFlavorNotInTopology(
+                'Cannot resolve merged mother %s from physical daughters %s and %s'
+                % (mother_id, real_pdgs[i_fks - 1], real_pdgs[j_fks - 1]))
+        physical_member = daughter_flavors.pop()
+        mother_pdg = physical_member if mother_id > 0 else -physical_member
+    else:
+        mother_pdg = mother_id
+
+    born_pdgs = [pdg for position, pdg in enumerate(real_pdgs, start=1)
+                 if position not in (i_fks, j_fks)]
+    born_pdgs.insert(ij_fks - 1, mother_pdg)
+
+    if len(born_pdgs) != len(underlying):
+        raise FKSProcessError(
+            'Physical underlying Born has %d legs, expected %d'
+            % (len(born_pdgs), len(underlying)))
+
+    for physical_pdg, topology_pdg in zip(born_pdgs, underlying):
+        topology_members = merged.get(abs(topology_pdg))
+        if topology_members:
+            valid_member = abs(physical_pdg) in set(
+                abs(member) for member in topology_members)
+            same_orientation = ((topology_pdg > 0 and physical_pdg > 0) or
+                                (topology_pdg < 0 and physical_pdg < 0))
+            if not valid_member or not same_orientation:
+                raise FKSFlavorNotInTopology(
+                    'Physical underlying Born row %s does not match topology %s'
+                    % (born_pdgs, underlying))
+        elif physical_pdg != topology_pdg:
+            raise FKSFlavorNotInTopology(
+                'Physical underlying Born row %s does not match topology %s'
+                % (born_pdgs, underlying))
+
+    return born_pdgs
 
 
 def find_pert_particles_interactions(model, pert_order = 'QCD'): #test written
@@ -1349,6 +1478,42 @@ class FKSLeg(MG.Leg):
         keys += ['fks', 'color','charge', 'massless', 'spin','is_tagged','is_part','self_antipart',]
         return keys
 
+    def get_charge_for_pdg(self, physical_pdg, model):
+        """Return the scalar charge for one physical member of this FKS leg.
+
+        Merged particles can carry several charges.  Their tuple is structural
+        metadata only and must never be flattened to a representative value for
+        a QED kernel or charge-linked Born.  Numerical users name the signed
+        physical PDG explicitly; this method validates that it belongs to the
+        merged leg and then delegates charge conjugation to the physical model
+        particle.
+        """
+        leg_pdg = self.get('id')
+        merged = model.get('merged_particles')
+        members = merged.get(abs(leg_pdg))
+        if members:
+            same_orientation = ((leg_pdg > 0 and physical_pdg > 0) or
+                                (leg_pdg < 0 and physical_pdg < 0))
+            if abs(physical_pdg) not in members or not same_orientation:
+                raise FKSProcessError(
+                    'Physical PDG %s is not a member of merged FKS leg %s'
+                    % (physical_pdg, leg_pdg))
+        elif physical_pdg != leg_pdg:
+            raise FKSProcessError(
+                'Physical PDG %s does not match FKS leg %s'
+                % (physical_pdg, leg_pdg))
+
+        particle = model.get_particle(physical_pdg)
+        if particle is None:
+            raise FKSProcessError(
+                'Physical PDG %s is not present in the model' % physical_pdg)
+        charge = particle.get_charge()
+        if isinstance(charge, tuple):
+            raise FKSProcessError(
+                'Physical PDG %s still resolves to a merged charge %s'
+                % (physical_pdg, charge))
+        return charge
+
     
     def filter(self, name, value):
         """Filter for valid leg property values."""
@@ -1367,7 +1532,10 @@ class FKSLeg(MG.Leg):
                 raise self.PhysicsObjectError("%s is not a valid boolean for leg flag %s" % \
                                                                     (str(value), name))
         if name == 'charge':
-            if not isinstance(value, float):
-                raise self.PhysicsObjectError("%s is not a valid float for leg flag charge" \
-                    % str(value))                                                           
+            if not isinstance(value, (float, tuple)) or \
+                    isinstance(value, tuple) and \
+                    not all(isinstance(charge, float) for charge in value):
+                raise self.PhysicsObjectError(
+                    "%s is not a valid float or tuple of floats for leg flag charge"
+                    % str(value))
         return super(FKSLeg,self).filter(name, value)

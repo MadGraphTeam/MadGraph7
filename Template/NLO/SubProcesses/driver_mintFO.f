@@ -56,7 +56,8 @@ c statistics for MadLoop
 
       double precision virtual_over_born
       common/c_vob/virtual_over_born
-      include 'orders.inc'
+      include 'pineappl_common.inc'
+      integer orders(nsplitorders)
 
 c timing statistics
       double precision job_started,job_finished,tTot
@@ -117,6 +118,10 @@ c
       TIRUST_QP_USAGE=0
       
       call setrun                !Sets up run parameters
+      if (ickkw.eq.-1) then
+         write(*,*) 'VETO XSec mode is not supported by current main'
+         stop 1
+      endif
       call configure_fxfx_sudakov(ickkw,nlo_ps,shower_mc,.true.)
       call print_fks_isr_mapping(nlo_ps,shower_mc)
       call setpara('param_card.dat')   !Sets up couplings and masses
@@ -204,6 +209,24 @@ c Don't safe the reweight information when just setting up the grids.
 c
          write (*,*) 'imode is ',imode
 
+         if (ickkw.eq.-1) then
+            min_virt_fraction=1d0
+            do kchan=1,nchans
+               virtual_fraction(kchan)=1d0
+            enddo
+         endif
+c A grouped real contribution can survive failed Born phase-space
+c generation. Book histograms before either contribution is evaluated.
+c PineAPPL needs the coupling orders before the analysis books its grids.
+         if (pineappl) then
+            appl_amp_split_size=amp_split_size
+            do j=1,amp_split_size
+               call amp_split_pos_to_orders(j,orders)
+               appl_qcdpower(j)=orders(qcd_pos)
+               appl_qedpower(j)=orders(qed_pos)
+            enddo
+         endif
+         call initplot
          call mint(sigint)
          call topout
          call deallocate_weight_lines
@@ -273,6 +296,17 @@ c
 
 
       double precision function sigint(xx,vegas_wgt,ifl,f)
+      use fks_phase_space_data, only: jac_cnt
+      use fks_phase_space_data, only: p1_cnt
+      use fks_phase_space_data, only: p_born
+      use fks_phase_space_data, only: p_born_coll
+      use fks_phase_space_data, only: p_born_ev
+      use fks_phase_space_data, only: p_born_norad
+      use fks_phase_space_data, only: p_i_fks_cnt
+      use fks_phase_space_data, only: p_i_fks_ev
+      use fks_phase_space_data, only: xi_i_fks_cnt
+      use fks_phase_space_data, only: xi_i_fks_ev
+      use fks_phase_space_data, only: y_ij_fks_ev
       use fks_phase_space_data, only: p1_cnt,p_born
       use fks_phase_space, only: fks_phase_space_point,
      $     generate_born_contribution,generate_real_phase_space
@@ -280,15 +314,22 @@ c
       use extra_weights
       use mint_module
       implicit none
+      logical calculatedBorn
+      common/ccalculatedBorn/calculatedBorn
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
       include 'run.inc'
       include 'orders.inc'
       include 'fks_info.inc'
+      include 'genps.inc'
+      include 'born_nhel.inc'
       double precision xx(ndimmax),vegas_wgt,f(nintegrals),jac,p(0:3
      $     ,nexternal),rwgt,vol,sig,x(99),MC_int_wgt
-      integer ifl,nFKS_born,nFKS_picked,iFKS,nFKS_min,iamp
-     $     ,nFKS_max,izero,ione,itwo,mohdr,i,iran_picked,dum
+     $     ,f_class(nintegrals),sig_no_nbody
+      double precision bsv_virt_cache(0:amp_split_size)
+      integer ifl,nFKS_born,nFKS_picked,iFKS,nFKS_min,iamp,igroup
+     $     ,nFKS_max,izero,ione,itwo,mohdr,i,j,iran_picked,nFKS_sector
+     $     ,iflav_config,born_class,dum
       parameter (izero=0,ione=1,itwo=2,mohdr=-100)
       logical passcuts,passcuts_nbody,passcuts_n1body,sum,firsttime
       data firsttime/.true./
@@ -302,6 +343,9 @@ c
       common/tosigint/nndim
       logical       nbody
       common/cnbody/nbody
+      double precision wgt_cnt(-2:2),pswgt_cnt(-2:2)
+      
+
       double precision virtual_over_born
       common/c_vob/virtual_over_born
       character*4      abrv
@@ -312,8 +356,67 @@ c PineAPPL
       double precision       wgt_ME_born,wgt_ME_real
       common /c_wgt_ME_tree/ wgt_ME_born,wgt_ME_real
       integer ini_fin_fks_map(0:2,0:fks_configs)
-      save ini_fin_fks_map
+      integer physical_fks_group_count(0:2)
+      integer physical_fks_group_size(fks_configs,0:2)
+      integer physical_fks_group_offset(fks_configs,0:2)
+      integer physical_fks_members(fks_configs,0:2)
+      save ini_fin_fks_map,physical_fks_group_count
+      save physical_fks_group_size,physical_fks_group_offset
+      save physical_fks_members
       include 'has_ewsudakov.inc'
+
+C Born variables
+      double precision born_amp2(ngraphs), born_jamp2(0:ncolor)
+      double precision ev_amp2(ngraphs),norad_amp2(ngraphs)
+      complex*16 born_ans_cnt(2,nsplitorders)
+      double precision born_amp_split(amp_split_size)
+      double precision born_bsv_output(amp_split_size)
+      double complex born_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex born_saveamp(ngraphs,max_bhel)
+      double precision wgt_born
+
+C Storage for born-like collinears
+      double precision coll_amp2(ngraphs), coll_jamp2(0:ncolor)
+      complex*16 coll_ans_cnt(2,nsplitorders)
+      double precision coll_amp_split(amp_split_size)
+      double complex coll_amp_split_cnt(amp_split_size,2,nsplitorders)
+      double complex coll_saveamp(ngraphs,max_bhel)
+      double precision wgt_coll
+
+C Virtual variables
+      double precision amp_split_virt(amp_split_size),
+     &     amp_split_born_for_virt(amp_split_size),
+     &     amp_split_avv(amp_split_size)
+      double precision amp_split_wgtnstmp(amp_split_size),
+     $                 amp_split_wgtwnstmpmuf(amp_split_size),
+     $                 amp_split_wgtwnstmpmur(amp_split_size)
+      double precision bsv_wgt,virt_wgt,born_wgt
+
+C Real variables
+      double precision zero, one
+      double precision projection_scale(0:3,nexternal)
+      parameter (zero=0d0,one=1d0)
+      double precision real_amp_split(amp_split_size),
+     $                 ret_amp_split(amp_split_size)
+      double precision fx_ev, fx_s, fx_c, fx_sc
+      double precision deg_xi_c, deg_lxi_c, deg_xi_sc, deg_lxi_sc
+C Real deg amplitudes
+      double precision amp_split_collrem_xi(amp_split_size), 
+     $                 amp_split_collrem_lxi(amp_split_size),
+     $                 amp_split_wgtdegrem_xi(amp_split_size),
+     $                 amp_split_wgtdegrem_lxi(amp_split_size),
+     $                 amp_split_wgtdegrem_muF(amp_split_size)
+      double precision amp_split_wgtpsch_p(amp_split_size),
+     $                 amp_split_wgtpsch_l(amp_split_size),
+     $                 amp_split_wgtpsch_d(amp_split_size)
+      double precision p_born_used(0:3,nexternal-1)
+
+      logical storeCalculatedBorn
+      integer iextra_cnt,isplitorder_born,isplitorder_cnt
+      common /c_extra_cnt/iextra_cnt,isplitorder_born,isplitorder_cnt
+
+      integer              nFKSprocess
+      common/c_nFKSprocess/nFKSprocess
 
       logical use_evpr, passcuts_coll
       common /to_use_evpr/use_evpr
@@ -329,6 +432,11 @@ c Share the sampled Born within this evaluation when sectors permit it.
       if (firsttime) then
          firsttime=.false.
          call setup_ini_fin_fks_map(ini_fin_fks_map)
+         if (HAS_PHYSICAL_FKS_CLASSES) then
+            call setup_physical_fks_map(physical_fks_group_count,
+     $           physical_fks_group_size,physical_fks_group_offset,
+     $           physical_fks_members)
+         endif
          write (*,*) 'initial-final FKS maps:'
          write (*,*) 0 ,':',ini_fin_fks_map(0,:)
          write (*,*) 1 ,':',ini_fin_fks_map(1,:)
@@ -338,6 +446,7 @@ c Share the sampled Born within this evaluation when sectors permit it.
          write (*,*) 'ERROR ifl not equal to zero in sigint',ifl
          stop 1
       endif
+      bsv_virt_cache(:)=0d0
       if (pineappl .and. sum) then
          write (*,*) 'WARNING: PineAPPL only possible '/
      &        /'with MC over FKS directories',pineappl,sum
@@ -351,8 +460,8 @@ c Share the sampled Born within this evaluation when sectors permit it.
          born_wgt_mint(iamp)=0d0
       enddo
       virtual_over_born=0d0
-      wgt_me_born=0d0
-      wgt_me_real=0d0
+c      wgt_me_born=0d0
+c      wgt_me_real=0d0
       if (ickkw.eq.3) call set_FxFx_scale(0,p)
       call update_vegas_x(xx,x)
       if (real_channel_type.eq.1) then
@@ -362,15 +471,352 @@ c sums only the FKS sectors owned by this subprocess and real ME.
          call compute_hard_real_channels(nndim,iconfig,x,p,vegas_wgt)
          goto 12
       endif
-      call get_MC_integer(max(ini_fin_fks(ichan),1)
-     $     ,ini_fin_fks_map(ini_fin_fks(ichan),0),iran_picked,vol)
-      nFKS_picked=ini_fin_fks_map(ini_fin_fks(ichan),iran_picked)
-      
+      nFKS_sector=ini_fin_fks(ichan)
+
+c Sample grouped fixed-order contributions by physical FKS topology. Sum all
+c physical Born flavours there at the same phase-space point, so
+c that flavour is stratified rather than Monte Carlo sampled.
+      if (HAS_PHYSICAL_FKS_CLASSES) then
+         call get_MC_integer(max(nFKS_sector,1),
+     $        physical_fks_group_count(nFKS_sector),iran_picked,vol)
+         if (sum) then
+            nFKS_min=1
+            nFKS_max=physical_fks_group_count(nFKS_sector)
+            MC_int_wgt=1d0
+         else
+            nFKS_min=iran_picked
+            nFKS_max=iran_picked
+            MC_int_wgt=1d0/vol
+         endif
+         f(1:nintegrals)=0d0
+         sig_no_nbody=0d0
+
+         do iflav_config=1,NBORN_FLAVOR_CONFIGS
+            icontr=0
+            vs_vcomp=.false.
+            vs_ratio_set=.false.
+            do iamp=0,amp_split_size
+               virt_wgt_mint(iamp)=0d0
+               born_wgt_mint(iamp)=0d0
+            enddo
+            virtual_over_born=0d0
+            wgt_me_born=0d0
+            wgt_me_real=0d0
+            if (ickkw.eq.3) call set_FxFx_scale(0,p)
+
+            nFKS_born=BORN_FKS_CONFIG_D(iflav_config)
+            born_class=BORN_FLAVOR_INDEX_D(nFKS_born)
+
+c The n-body contribution is independent of which topology was selected.
+c Evaluate each physical Born class once without a topology correction.
+            if (abrv.ne.'real') then
+               nbody=.true.
+               call refresh_born_cache()
+               call update_fks_dir_FO(nFKS_born)
+               if (nFKS_sector.eq.0) then
+                  jac=1d0
+               else
+                  jac=0.5d0
+               endif
+               if (nbody) then
+                  call generate_born_contribution(nndim,iconfig,jac,x,
+     $                 phase_space)
+               else
+                  call generate_real_phase_space(nndim,iconfig,jac,x,
+     $                 phase_space)
+               endif
+               p=phase_space%p
+               if (p_born(0,1).ge.0d0) then
+                  call compute_prefactors_nbody(vegas_wgt)
+                  call set_cms_stuff(izero)
+                  if (ickkw.eq.3)
+     $                 call set_FxFx_scale(1,p1_cnt(0,1,0))
+                  passcuts_nbody=passcuts(p1_cnt(0,1,0),rwgt)
+                  if (passcuts_nbody) then
+                     pass_cuts_check=.true.
+                     call set_alphaS(p1_cnt(0,1,0))
+                      call sborn_amp_frame(p_born,born_amp2,
+     $                     born_jamp2,born_amp_split,
+     $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
+     $                     born_saveamp)
+                      call include_multichannel_enhance_buffered(1,born_amp2,
+     $                     ev_amp2,norad_amp2)
+                      if (abrv(1:2).ne.'vi') then
+                         call compute_born_buffered(born_amp_split,wgt_born)
+                         if(abrv.ne.'born'.and.abrv.ne.'bovi')
+     $                       call compute_ewsudakov_buffered(p_born,wgt_born,
+     $                       born_saveamp)
+                      endif
+                      if (abrv.ne.'born'.and.abrv.ne.'bosk') then
+                      born_bsv_output=born_amp_split
+                         call bornsoftvirtual_buffered(p1_cnt(0,1,0),p_born,
+     $                    bsv_wgt,virt_wgt,born_wgt,
+     $                    amp_split_virt,amp_split_born_for_virt,
+     $                    amp_split_avv,amp_split_wgtnstmp,
+     $                    amp_split_wgtwnstmpmuf,
+     $                    amp_split_wgtwnstmpmur,wgt_born,
+     $                    born_ans_cnt,born_amp_split_cnt,
+     $                    born_saveamp,born_bsv_output,bsv_virt_cache)
+                         call compute_nbody_noborn_buffered(p1_cnt(0,1,0),
+     $                    bsv_wgt,virt_wgt,born_wgt,
+     $                    amp_split_virt,amp_split_born_for_virt,
+     $                    amp_split_avv,amp_split_wgtnstmp,
+     $                    amp_split_wgtwnstmpmuf,
+     $                    amp_split_wgtwnstmpmur,born_amp_split,
+     $                    wgt_born)
+                      endif
+                  endif
+               endif
+            endif
+
+c Sum mode visits every topology exactly. Otherwise the n+1-body contribution
+c belongs to the sampled topology and receives inverse topology probability
+c through the phase-space Jacobian.
+            do igroup=nFKS_min,nFKS_max
+               do j=1,physical_fks_group_size(igroup,nFKS_sector)
+                  i=physical_fks_group_offset(igroup,nFKS_sector)+j
+                  iFKS=physical_fks_members(i,nFKS_sector)
+                  if (BORN_FLAVOR_INDEX_D(iFKS).ne.born_class) cycle
+                  if (abrv(1:4).eq.'born' .or.
+     $             abrv(1:4).eq.'bovi' .or.
+     $             abrv(1:4).eq.'bosk' .or.
+     $               abrv(1:2).eq.'vi') cycle
+                  nbody=.false.
+                  call refresh_born_cache()
+c MZ this is a temporary fix for processes without soft singularities
+c associated to the initial state. Do not extend this to event generation.
+                  wgt_me_born=0d0
+                  wgt_me_real=0d0
+                  jac=MC_int_wgt
+                  call update_fks_dir_FO(iFKS)
+                  if (nbody) then
+                  call generate_born_contribution(nndim,iconfig,jac,x,
+     $                 phase_space)
+               else
+                  call generate_real_phase_space(nndim,iconfig,jac,x,
+     $                 phase_space)
+               endif
+               p=phase_space%p
+                  if (p_born(0,1).ge.0d0) then
+                  call compute_prefactors_n1body(vegas_wgt,jac)
+                  call set_cms_stuff(izero)
+                  if (ickkw.eq.3)
+     $                 call set_FxFx_scale(2,p1_cnt(0,1,0))
+                  passcuts_nbody=passcuts(p1_cnt(0,1,0),rwgt)
+                  call set_cms_stuff(ione)
+                  passcuts_coll=(use_evpr.and.passcuts_nbody).or.
+     $                 passcuts(p1_cnt(0,1,1),rwgt)
+                  call set_cms_stuff(mohdr)
+                  if (ickkw.eq.3)
+     $                 call set_FxFx_scale(3,p)
+                  passcuts_n1body=passcuts(p,rwgt)
+                  if (passcuts_nbody .and. abrv.ne.'real') then
+                     pass_cuts_check=.true.
+                     call set_cms_stuff(izero)
+                     call set_alphaS(p1_cnt(0,1,0))
+                      call sborn_amp_frame(p_born,born_amp2,
+     $                     born_jamp2,real_amp_split,
+     $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
+     $                     born_saveamp)
+                      call include_multichannel_enhance_buffered(3,
+     $                     born_amp2,ev_amp2,norad_amp2)
+                      call sreal_store_buffered(p1_cnt(0,1,0),0d0,
+     $                     y_ij_fks_ev,fx_s,ret_amp_split,
+     $                     real_amp_split,born_amp_split,born_ans_cnt,
+     $                     born_amp_split_cnt,born_saveamp,
+     $                     coll_amp_split,coll_ans_cnt,
+     $                     coll_amp_split_cnt,coll_saveamp)
+                      call compute_soft_counter_term_buffered(0d0,
+     $                     ret_amp_split,fx_s)
+                      call set_cms_stuff(itwo)
+                      call refresh_born_cache()
+                      call sborn_amp_frame(p_born,born_amp2,
+     $                     born_jamp2,born_amp_split,
+     $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
+     $                     born_saveamp)
+
+                      call refresh_born_cache()
+                      call sborn_amp_frame(p_born_coll,coll_amp2,
+     $                     coll_jamp2,coll_amp_split,
+     $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
+     $                     coll_saveamp)
+                      call sreal_deg_buffered(p1_cnt(0,1,2),zero,one,
+     $                     deg_xi_sc,deg_lxi_sc,
+     $                     amp_split_wgtdegrem_xi,
+     $                     amp_split_wgtdegrem_lxi,
+     $                     amp_split_wgtdegrem_muF,
+     $                     amp_split_wgtpsch_p,
+     $                     amp_split_wgtpsch_l,
+     $                     amp_split_wgtpsch_d,born_ans_cnt,
+     $                     born_amp_split_cnt,coll_ans_cnt,
+     $                     coll_amp_split_cnt)
+                      p_born_used(:,:)=p_born(:,:)
+c Ordinary sreal_deg_buffered consumes copies of these Born arrays. An extra
+c counterterm hook may modify model/cache state, so retain its refresh.
+                      if (iextra_cnt.gt.0) then
+                      call refresh_born_cache()
+                      call sborn_amp_frame(p_born,born_amp2,
+     $                     born_jamp2,born_amp_split,
+     $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
+     $                     born_saveamp)
+                      call refresh_born_cache()
+                      call sborn_amp_frame(p_born_coll,coll_amp2,
+     $                     coll_jamp2,coll_amp_split,
+     $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
+     $                     coll_saveamp)
+                      endif
+                      call sreal_store_buffered(p1_cnt(0,1,2),zero,one,
+     $                     fx_sc,ret_amp_split,real_amp_split,
+     $                     born_amp_split,born_ans_cnt,born_amp_split_cnt,
+     $                     born_saveamp,coll_amp_split,coll_ans_cnt,
+     $                     coll_amp_split_cnt,coll_saveamp)
+                      call compute_soft_collinear_counter_term_buffered(0d0,
+     $                     ret_amp_split,fx_sc,
+     $                     amp_split_wgtdegrem_xi,
+     $                     amp_split_wgtdegrem_lxi,
+     $                     amp_split_wgtdegrem_muF,
+     $                     amp_split_wgtpsch_p,
+     $                     amp_split_wgtpsch_l,
+     $                     amp_split_wgtpsch_d)
+                  endif
+                  if (passcuts_coll .and. abrv.ne.'real') then
+                     call set_alphaS(p1_cnt(0,1,1))
+                     call set_cms_stuff(ione)
+                      storeCalculatedBorn=calculatedBorn
+                      call refresh_born_cache()
+                      call sborn_amp_frame(p_born,born_amp2,
+     $                     born_jamp2,born_amp_split,
+     $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
+     $                     born_saveamp)
+                      call refresh_born_cache()
+                      call sborn_amp_frame(p_born_coll,coll_amp2,
+     $                     coll_jamp2,coll_amp_split,
+     $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
+     $                     coll_saveamp)
+                      call sreal_deg_buffered(p1_cnt(0,1,1),xi_i_fks_cnt(1),
+     $                     one,deg_xi_c,deg_lxi_c,
+     $                     amp_split_wgtdegrem_xi,
+     $                     amp_split_wgtdegrem_lxi,
+     $                     amp_split_wgtdegrem_muF,
+     $                     amp_split_wgtpsch_p,
+     $                     amp_split_wgtpsch_l,
+     $                     amp_split_wgtpsch_d,born_ans_cnt,
+     $                     born_amp_split_cnt,coll_ans_cnt,
+     $                     coll_amp_split_cnt)
+                      p_born_used(:,:)=p_born(:,:)
+c Ordinary sreal_deg_buffered consumes copies of these Born arrays. An extra
+c counterterm hook may modify model/cache state, so retain its refresh.
+                      if (iextra_cnt.gt.0) then
+                      call refresh_born_cache()
+                      call sborn_amp_frame(p_born,born_amp2,
+     $                     born_jamp2,born_amp_split,
+     $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
+     $                     born_saveamp)
+                      call refresh_born_cache()
+                      call sborn_amp_frame(p_born_coll,coll_amp2,
+     $                     coll_jamp2,coll_amp_split,
+     $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
+     $                     coll_saveamp)
+                      endif
+                      call sreal_store_buffered(p1_cnt(0,1,1),
+     $                     xi_i_fks_cnt(1),one,fx_c,ret_amp_split,
+     $                     real_amp_split,born_amp_split,born_ans_cnt,
+     $                     born_amp_split_cnt,born_saveamp,
+     $                     coll_amp_split,coll_ans_cnt,
+     $                     coll_amp_split_cnt,coll_saveamp)
+                      call compute_collinear_counter_term_buffered(0d0,
+     $                     ret_amp_split,fx_c,
+     $                     amp_split_wgtdegrem_xi,
+     $                     amp_split_wgtdegrem_lxi,
+     $                     amp_split_wgtdegrem_muF,
+     $                     amp_split_wgtpsch_p,
+     $                     amp_split_wgtpsch_l,
+     $                     amp_split_wgtpsch_d)
+                  endif
+                  if (passcuts_n1body) then
+                     pass_cuts_check=.true.
+                      call set_cms_stuff(mohdr)
+                      call set_alphaS(p)
+                      call refresh_born_cache()
+                      call sborn_amp_frame(p_born,born_amp2,
+     $                     born_jamp2,born_amp_split,
+     $                     born_amp_split_cnt,wgt_born,born_ans_cnt,
+     $                     born_saveamp)
+                      ev_amp2(:)=0d0
+                      norad_amp2(:)=0d0
+                      if (p_born_ev(0,1).gt.0d0) then
+                         call refresh_born_cache()
+                      projection_scale=0d0
+                      projection_scale(:,1:nexternal-1)=p_born_ev
+                      call set_alphaS(projection_scale)
+                         call sborn_amp_frame(p_born_ev,ev_amp2,
+     $                        coll_jamp2,coll_amp_split,
+     $                        coll_amp_split_cnt,wgt_coll,
+     $                        coll_ans_cnt,coll_saveamp)
+                      call set_alphaS(p)
+                      endif
+                      if (p_born_norad(0,1).gt.0d0) then
+                         call refresh_born_cache()
+                      projection_scale=0d0
+                      projection_scale(:,1:nexternal-1)=p_born_norad
+                      call set_alphaS(projection_scale)
+                         call sborn_amp_frame(p_born_norad,norad_amp2,
+     $                        coll_jamp2,coll_amp_split,
+     $                        coll_amp_split_cnt,wgt_coll,
+     $                        coll_ans_cnt,coll_saveamp)
+                      call set_alphaS(p)
+                      endif
+                      call include_multichannel_enhance_buffered(2,born_amp2,
+     $                     ev_amp2,norad_amp2)
+                      storeCalculatedBorn=calculatedBorn
+                      p_born_used(:,:)=p_born(:,:)
+                      call refresh_born_cache()
+                      call sborn_amp_frame(p_born_coll,coll_amp2,
+     $                     coll_jamp2,coll_amp_split,
+     $                     coll_amp_split_cnt,wgt_coll,coll_ans_cnt,
+     $                     coll_saveamp)
+c sreal_store_buffered takes the real matrix element as an input (event
+c generation evaluates it in amplitudes_vec): evaluate it here.
+                      call smatrix_real_amp_frame(p,real_amp_split,fx_ev)
+                      call sreal_store_buffered(p,xi_i_fks_ev,y_ij_fks_ev,
+     $                     fx_ev,ret_amp_split,real_amp_split,
+     $                     born_amp_split,born_ans_cnt,born_amp_split_cnt,
+     $                     born_saveamp,coll_amp_split,coll_ans_cnt,
+     $                     coll_amp_split_cnt,coll_saveamp)
+                      call compute_real_emission_buffered(p,1d0,
+     $                     ret_amp_split,fx_ev)
+                  endif
+                  endif
+               enddo
+            enddo
+
+            call finalize_fixed_order_born_class(vegas_wgt,f_class,sig)
+            sig_no_nbody=sig_no_nbody+sig
+            do i=2,nintegrals
+               if (i.ne.4.and.i.ne.5) f(i)=f(i)+f_class(i)
+            enddo
+         enddo
+
+         f(1)=abs(f(2))
+         f(5)=abs(f(3))
+         if (sum) then
+            call fill_MC_integer(max(nFKS_sector,1),iran_picked,
+     $           abs(sig_no_nbody))
+         else
+            call fill_MC_integer(max(nFKS_sector,1),iran_picked,
+     $           abs(sig_no_nbody)*vol)
+         endif
+         return
+      endif
+
+      call get_MC_integer(max(nFKS_sector,1)
+     $     ,ini_fin_fks_map(nFKS_sector,0),iran_picked,vol)
+      nFKS_picked=ini_fin_fks_map(nFKS_sector,iran_picked)
 c The nbody contributions
       if (abrv.eq.'real') goto 11
       nbody=.true.
       call get_born_nFKSprocess(nFKS_picked,nFKS_born)
-      call update_fks_dir(nFKS_born)
+      call update_fks_dir_FO(nFKS_born)
       if (ini_fin_fks(ichan).eq.0) then
          jac=1d0
       else
@@ -387,13 +833,28 @@ c The nbody contributions
       if (passcuts_nbody) then
          pass_cuts_check=.true.
          call set_alphaS(p1_cnt(0,1,0))
-         call include_multichannel_enhance(1)
+         call sborn_amp_frame(p_born,born_amp2,born_jamp2,
+     $        born_amp_split,born_amp_split_cnt,wgt_born,
+     $        born_ans_cnt,born_saveamp)
+         call include_multichannel_enhance_buffered(1,born_amp2,ev_amp2,
+     $        norad_amp2)
          if (abrv(1:2).ne.'vi') then
-            call compute_born
-            if(abrv.ne.'born'.and.abrv.ne.'bovi') call compute_ewsudakov
+            call compute_born_buffered(born_amp_split,wgt_born)
+            if(abrv.ne.'born'.and.abrv.ne.'bovi')
+     $           call compute_ewsudakov_buffered(p_born,wgt_born,born_saveamp)
          endif
          if (abrv.ne.'born'.and.abrv.ne.'bosk') then
-            call compute_nbody_noborn
+                      born_bsv_output=born_amp_split
+            call bornsoftvirtual_buffered(p1_cnt(0,1,0),p_born,bsv_wgt,
+     $     virt_wgt,born_wgt
+     $     ,amp_split_virt,amp_split_born_for_virt,amp_split_avv
+     $     ,amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,
+     $     amp_split_wgtwnstmpmur,wgt_born,born_ans_cnt,
+     $     born_amp_split_cnt,born_saveamp,born_bsv_output,bsv_virt_cache)
+            call compute_nbody_noborn_buffered(p1_cnt(0,1,0),bsv_wgt,virt_wgt,born_wgt
+     $     ,amp_split_virt,amp_split_born_for_virt,amp_split_avv
+     $     ,amp_split_wgtnstmp,amp_split_wgtwnstmpmuf,amp_split_wgtwnstmpmur
+     $     ,born_amp_split,wgt_born)
          endif
       endif
 
@@ -419,10 +880,10 @@ c The n+1-body contributions (including counter terms)
          ! MZ this is a temporary fix for processes without
          ! soft singularities associated to the initial state
          ! DO NOT extend this fix to event generation
-         wgt_me_born=0d0
-         wgt_me_real=0d0
+c         wgt_me_born=0d0
+c         wgt_me_real=0d0
          jac=MC_int_wgt
-         call update_fks_dir(iFKS)
+         call update_fks_dir_FO(iFKS)
          call generate_real_phase_space(nndim,iconfig,jac,x,
      $        phase_space)
          p=phase_space%p
@@ -445,24 +906,137 @@ c Clustering the real event above overwrites the active FxFx scales.
 c Counterevents keep the scales of their underlying Born state.
             if (ickkw.eq.3) call set_FxFx_scale(-2,p1_cnt(0,1,0))
             call set_alphaS(p1_cnt(0,1,0))
-            call include_multichannel_enhance(3)
-            call compute_soft_counter_term(0d0)
+            call sborn_amp_frame(p_born,born_amp2,born_jamp2,real_amp_split
+     $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+            call include_multichannel_enhance_buffered(3,born_amp2,ev_amp2,
+     $           norad_amp2)
+            call sreal_store_buffered(p1_cnt(0,1,0),0d0,y_ij_fks_ev,fx_s,
+     $              ret_amp_split,real_amp_split,born_amp_split,
+     $              born_ans_cnt,born_amp_split_cnt,born_saveamp
+     $              ,coll_amp_split,coll_ans_cnt,coll_amp_split_cnt,coll_saveamp)
+            call compute_soft_counter_term_buffered(0d0,ret_amp_split,fx_s)
             call set_cms_stuff(itwo)
-            call compute_soft_collinear_counter_term(0d0)
+            call refresh_born_cache()
+            call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
+     $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+            call refresh_born_cache()
+            call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
+     $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
+            call sreal_deg_buffered(p1_cnt(0,1,2),zero,one, deg_xi_sc,deg_lxi_sc,
+     $    amp_split_wgtdegrem_xi,amp_split_wgtdegrem_lxi,amp_split_wgtdegrem_muF,
+     $    amp_split_wgtpsch_p, amp_split_wgtpsch_l, amp_split_wgtpsch_d,
+     $    born_ans_cnt,born_amp_split_cnt,coll_ans_cnt,coll_amp_split_cnt)
+               p_born_used(:,:) = p_born(:,:)
+c Ordinary sreal_deg_buffered consumes copies of these Born arrays. An extra
+c counterterm hook may modify model/cache state, so retain its refresh.
+               if (iextra_cnt.gt.0) then
+               call refresh_born_cache()
+               call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
+     $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+               call refresh_born_cache()
+               call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
+     $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
+               endif
+               call sreal_store_buffered(p1_cnt(0,1,2),zero,one,fx_sc,
+     $              ret_amp_split,real_amp_split,born_amp_split,
+     $              born_ans_cnt,born_amp_split_cnt,born_saveamp
+     $              ,coll_amp_split,coll_ans_cnt,coll_amp_split_cnt,coll_saveamp)
+            call compute_soft_collinear_counter_term_buffered(0d0,ret_amp_split,fx_sc,
+     &    amp_split_wgtdegrem_xi,amp_split_wgtdegrem_lxi,
+     &    amp_split_wgtdegrem_muF,
+     &    amp_split_wgtpsch_p, amp_split_wgtpsch_l,
+     &    amp_split_wgtpsch_d)
          endif
          if (passcuts_coll .and. abrv.ne.'real') then
            if (ickkw.eq.3) call set_FxFx_scale(-2,p1_cnt(0,1,0))
            call set_alphaS(p1_cnt(0,1,1))
            call set_cms_stuff(ione)
-           call compute_collinear_counter_term(0d0)
+               storeCalculatedBorn=calculatedBorn
+               call refresh_born_cache()
+               call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
+     $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+               call refresh_born_cache()
+               call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
+     $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
+               call sreal_deg_buffered(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,deg_xi_c,deg_lxi_c,
+     $    amp_split_wgtdegrem_xi,amp_split_wgtdegrem_lxi,amp_split_wgtdegrem_muF,
+     $    amp_split_wgtpsch_p, amp_split_wgtpsch_l, amp_split_wgtpsch_d,
+     $    born_ans_cnt,born_amp_split_cnt,coll_ans_cnt,coll_amp_split_cnt)
+               p_born_used(:,:) = p_born(:,:)
+c Ordinary sreal_deg_buffered consumes copies of these Born arrays. An extra
+c counterterm hook may modify model/cache state, so retain its refresh.
+               if (iextra_cnt.gt.0) then
+               call refresh_born_cache()
+               call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
+     $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+               call refresh_born_cache()
+               call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
+     $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
+               endif
+               call sreal_store_buffered(p1_cnt(0,1,1),xi_i_fks_cnt(1),one,fx_c,
+     $              ret_amp_split,real_amp_split,born_amp_split,
+     $              born_ans_cnt,born_amp_split_cnt,born_saveamp
+     $              ,coll_amp_split,coll_ans_cnt,coll_amp_split_cnt,coll_saveamp)
+            call compute_collinear_counter_term_buffered(0d0,ret_amp_split,fx_c,
+     &    amp_split_wgtdegrem_xi,amp_split_wgtdegrem_lxi,
+     &    amp_split_wgtdegrem_muF,
+     &    amp_split_wgtpsch_p, amp_split_wgtpsch_l,
+     &    amp_split_wgtpsch_d)
          endif
          if (passcuts_n1body) then
             pass_cuts_check=.true.
             call set_cms_stuff(mohdr)
             if (ickkw.eq.3) call set_FxFx_scale(-3,p)
             call set_alphaS(p)
-            call include_multichannel_enhance(2)
-            call compute_real_emission(p,1d0)
+            call refresh_born_cache()
+            call sborn_amp_frame(p_born,born_amp2,born_jamp2,
+     $           born_amp_split,born_amp_split_cnt,wgt_born,
+     $           born_ans_cnt,born_saveamp)
+   !          storeCalculatedBorn=calculatedBorn
+   !          p_born_used(:,:) = p_born(:,:)
+   !          calculatedBorn=.false.
+   !          call sborn_amp(p_born_used,born_amp2,born_jamp2,born_amp_split
+   !   $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+   !          calculatedBorn=storeCalculatedBorn
+            ev_amp2(:)=0d0
+            norad_amp2(:)=0d0
+            if (p_born_ev(0,1).gt.0d0) then
+               call refresh_born_cache()
+                      projection_scale=0d0
+                      projection_scale(:,1:nexternal-1)=p_born_ev
+                      call set_alphaS(projection_scale)
+               call sborn_amp_frame(p_born_ev,ev_amp2,coll_jamp2,
+     $              coll_amp_split,coll_amp_split_cnt,wgt_coll,
+     $              coll_ans_cnt,coll_saveamp)
+                      call set_alphaS(p)
+            endif
+            if (p_born_norad(0,1).gt.0d0) then
+               call refresh_born_cache()
+                      projection_scale=0d0
+                      projection_scale(:,1:nexternal-1)=p_born_norad
+                      call set_alphaS(projection_scale)
+               call sborn_amp_frame(p_born_norad,norad_amp2,
+     $              coll_jamp2,coll_amp_split,coll_amp_split_cnt,
+     $              wgt_coll,coll_ans_cnt,coll_saveamp)
+                      call set_alphaS(p)
+            endif
+            call include_multichannel_enhance_buffered(2,born_amp2,ev_amp2,
+     $           norad_amp2)
+               storeCalculatedBorn=calculatedBorn
+               p_born_used(:,:) = p_born(:,:)
+               call refresh_born_cache()
+               call sborn_amp_frame(p_born_coll,coll_amp2,coll_jamp2,coll_amp_split
+     $                    ,coll_amp_split_cnt,wgt_coll,coll_ans_cnt,coll_saveamp)
+               call refresh_born_cache()
+               call sborn_amp_frame(p_born,born_amp2,born_jamp2,born_amp_split
+     $                    ,born_amp_split_cnt,wgt_born,born_ans_cnt,born_saveamp)
+c sreal_store_buffered takes the real matrix element as an input: evaluate it.
+               call smatrix_real_amp_frame(p,real_amp_split,fx_ev)
+               call sreal_store_buffered(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev,
+     $              ret_amp_split,real_amp_split,born_amp_split,
+     $              born_ans_cnt,born_amp_split_cnt,born_saveamp
+     $              ,coll_amp_split,coll_ans_cnt,coll_amp_split_cnt,coll_saveamp)
+            call compute_real_emission_buffered(p,1d0,ret_amp_split,fx_ev)
          endif
       enddo
       
@@ -509,19 +1083,51 @@ c Finalize PS point
       return
       end
 
-c$$$      subroutine update_fks_dir(nFKS)
-c$$$      implicit none
-c$$$      include 'run.inc'
-c$$$      integer nFKS
-c$$$      integer              nFKSprocess
-c$$$      common/c_nFKSprocess/nFKSprocess
-c$$$      nFKSprocess=nFKS
-c$$$      call fks_inc_chooser()
-c$$$      call leshouche_inc_chooser()
-c$$$      call setcuts
-c$$$      call setfksfactor(.false.)
-c$$$      return
-c$$$      end
+      subroutine finalize_fixed_order_born_class(vegas_wgt,f,sig)
+c Apply PDFs, reweighting and analysis to one physical Born class. Keeping
+c this local is needed because virtual-trick weights have no flavour index
+c and must receive exactly one luminosity.
+      use weight_lines
+      use extra_weights
+      use mint_module
+      implicit none
+      include 'nexternal.inc'
+      include 'run.inc'
+      double precision vegas_wgt,f(nintegrals),sig
+      logical pineappl
+      common /for_pineappl/ pineappl
+
+      call include_PDF_and_alphas
+      call include_bias_wgt
+
+      if (doreweight) then
+         if (do_rwgt_scale) call reweight_scale
+         if (do_rwgt_pdf) call reweight_pdf
+      endif
+
+      if (pineappl) call fill_pineappl_weights(vegas_wgt)
+      call get_wgt_no_nbody(sig)
+      call fill_plots
+      call fill_mint_function(f)
+      return
+      end
+
+      subroutine update_fks_dir_FO(nFKS)
+c Fixed-order variant of update_fks_dir: unlike the version in
+c driver_vec.f (used by the multi-event interface), setfksfactor is
+c called with .false. here.
+      implicit none
+      include 'run.inc'
+      integer nFKS
+      integer              nFKSprocess
+      common/c_nFKSprocess/nFKSprocess
+      nFKSprocess=nFKS
+      call fks_inc_chooser()
+      call leshouche_inc_chooser()
+      call setcuts
+      call setfksfactor(.false.)
+      return
+      end
       
       subroutine setup_ini_fin_FKS_map(ini_fin_FKS_map)
       implicit none
@@ -552,82 +1158,100 @@ c$$$      end
       return
       end
 
-      subroutine get_born_nFKSprocess(nFKS_in,nFKS_out)
+      subroutine setup_physical_fks_map(group_count,group_size,
+     $     group_offset,members)
+c Collapse physical FKS rows onto the topology that generated them. Keep a
+c linear compressed list per initial/final sector: each group's offset and
+c size select its contiguous range in members. This avoids storage quadratic
+c in the number of physical FKS rows.
       implicit none
       include 'nexternal.inc'
       include 'nFKSconfigs.inc'
       include 'fks_info.inc'
-      integer nFKS_in,nFKS_out,iFKS,iiFKS,nFKSprocessBorn(fks_configs)
-      logical firsttime
-      data firsttime /.true./
-      save nFKSprocessBorn
-c
-      if (firsttime) then
-         firsttime=.false.
-         do iFKS=1,fks_integrated
-            nFKSprocessBorn(iFKS)=0
-            if ( need_color_links_D(iFKS) .or. 
-     &           need_charge_links_D(iFKS) )then
-               nFKSprocessBorn(iFKS)=iFKS
+      integer group_count(0:2),group_size(fks_configs,0:2)
+      integer group_offset(fks_configs,0:2),members(fks_configs,0:2)
+      integer sector,iFKS,igroup,imember,existing_fks,born_class,iborn
+      integer topology,topology_group(fks_configs)
+      integer group_fill(fks_configs)
+      logical belongs,born_class_exists(fks_configs)
+
+      group_count=0
+      group_size=0
+      group_offset=0
+      members=0
+      born_class_exists=.false.
+      do iborn=1,NBORN_FLAVOR_CONFIGS
+         existing_fks=BORN_FKS_CONFIG_D(iborn)
+         born_class=BORN_FLAVOR_INDEX_D(existing_fks)
+         if (born_class.lt.1.or.born_class.gt.fks_configs) then
+            write (*,*) 'Invalid Born flavor class',born_class,
+     $           existing_fks
+            stop 1
+         endif
+         born_class_exists(born_class)=.true.
+      enddo
+      do sector=0,2
+         topology_group=0
+         do iFKS=1,FKS_INTEGRATED
+            belongs=sector.eq.0 .or.
+     $           (sector.eq.1.and.FKS_J_D(iFKS).gt.nincoming) .or.
+     $           (sector.eq.2.and.FKS_J_D(iFKS).le.nincoming)
+            if (.not.belongs) cycle
+
+            topology=FKS_TOPOLOGY_D(iFKS)
+            if (topology.lt.1.or.topology.gt.fks_configs) then
+               write (*,*) 'Invalid FKS topology',topology,iFKS
+               stop 1
             endif
-            if (nFKSprocessBorn(iFKS).eq.0) then
-c     try to find the process that has the same j_fks but with i_fks a
-c     gluon
-               do iiFKS=1,fks_integrated
-                  if ( (need_color_links_D(iiFKS) .or.
-     &                  need_charge_links_D(iiFKS)) .and.
-     &                 fks_j_D(iFKS).eq.fks_j_D(iiFKS) ) then
-                     nFKSprocessBorn(iFKS)=iiFKS
-                     exit
-                  endif
-               enddo
+            igroup=topology_group(topology)
+            if (igroup.eq.0) then
+               group_count(sector)=group_count(sector)+1
+               igroup=group_count(sector)
+               topology_group(topology)=igroup
             endif
-c     try to find the process that has the j_fks initial state if
-c     current j_fks is initial state (and similar for final state j_fks)
-            if (nFKSprocessBorn(iFKS).eq.0) then
-               do iiFKS=1,fks_integrated
-                  if ( need_color_links_D(iiFKS) .or.
-     &                 need_charge_links_D(iiFKS) ) then
-                     if ( fks_j_D(iiFKS).le.nincoming .and.
-     &                    fks_j_D(iFKS).le.nincoming ) then
-                        nFKSprocessBorn(iFKS)=iiFKS
-                        exit
-                     elseif ( fks_j_D(iiFKS).gt.nincoming .and.
-     &                        fks_j_D(iFKS).gt.nincoming ) then
-                        nFKSprocessBorn(iFKS)=iiFKS
-                        exit
-                     endif
-                  endif
-               enddo
+
+            born_class=BORN_FLAVOR_INDEX_D(iFKS)
+            if (born_class.lt.1.or.born_class.gt.fks_configs) then
+               write (*,*) 'Invalid Born flavor class for FKS row',
+     $              iFKS,born_class
+               stop 1
             endif
-c     If still not found, just pick any one that has a soft singularity
-            if (nFKSprocessBorn(iFKS).eq.0) then
-               do iiFKS=1,fks_integrated
-                  if ( need_color_links_D(iiFKS) .or.
-     &                 need_charge_links_D(iiFKS) ) then
-                     nFKSprocessBorn(iFKS)=iiFKS
-                  endif
-               enddo
+            if (.not.born_class_exists(born_class)) then
+               write (*,*) 'No Born representative for FKS row',
+     $              iFKS,born_class
+               stop 1
             endif
-c     if there are no soft singularities at all, just do something trivial
-            if (nFKSprocessBorn(iFKS).eq.0) then
-               nFKSprocessBorn(iFKS)=iFKS
-            endif
+            group_size(igroup,sector)=group_size(igroup,sector)+1
          enddo
-         write (*,*) 'Total number of FKS directories is', fks_configs
-         write (*,*) 'For the Born we use nFKSprocesses:'
-         write (*,*)  nFKSprocessBorn
-      endif
-      if (nFKSprocessBorn(nFKS_in).eq.0) then
-         write(*,*) 'Could not find the correct map to Born '/
-     &        /'FKS configuration for the NLO FKS '/
-     &        /'configuration', nFKS_in
-         stop 1
-      else
-         nFKS_out=nFKSprocessBorn(nFKS_in)
-      endif
+
+         if (group_count(sector).eq.0) cycle
+         do igroup=2,group_count(sector)
+            group_offset(igroup,sector)=
+     $           group_offset(igroup-1,sector)+
+     $           group_size(igroup-1,sector)
+         enddo
+         group_fill=0
+         do iFKS=1,FKS_INTEGRATED
+            belongs=sector.eq.0 .or.
+     $           (sector.eq.1.and.FKS_J_D(iFKS).gt.nincoming) .or.
+     $           (sector.eq.2.and.FKS_J_D(iFKS).le.nincoming)
+            if (.not.belongs) cycle
+            igroup=topology_group(FKS_TOPOLOGY_D(iFKS))
+            group_fill(igroup)=group_fill(igroup)+1
+            imember=group_offset(igroup,sector)+group_fill(igroup)
+            members(imember,sector)=iFKS
+         enddo
+
+         write (*,*) 'Physical FKS topology map for sector',sector
+         do igroup=1,group_count(sector)
+            write (*,*) igroup,'-->',
+     $           (members(group_offset(igroup,sector)+imember,sector),
+     $            imember=1,group_size(igroup,sector))
+         enddo
+      enddo
       return
       end
+
 
       subroutine update_vegas_x(xx,x)
       use mint_module
@@ -775,7 +1399,10 @@ c-----
                write (*,*) 'Sum over helicities in the virtuals'/
      $              /' for decay process'
                mc_hel=0
-            elseif (i.eq.0) then
+c Several virtual rows without a helicity filter for each of them in
+c MadLoop (see HELFILTER_PER_VIRTUAL_FLAVOR): sum the helicities.
+            elseif (i.eq.0.or.(N_VIRTUAL_FLAVOR_CONFIGS.gt.1.and.
+     $          .not.HELFILTER_PER_VIRTUAL_FLAVOR)) then
                mc_hel=0
                write (*,*) 'Explicitly summing over helicities'/
      $              /' for the virtuals'
@@ -994,7 +1621,7 @@ c Born subprocess: the same real process can belong to several Borns.
       include 'fks_info.inc'
       include 'real_channels.inc'
       include 'real_matrix_weights.inc'
-      integer ndim,id,ime,sector,i,j,k,iamp,orders(nsplitorders)
+      integer ndim,id,ime,iflav,sector,i,j,k,iamp,orders(nsplitorders)
       integer ndiagrams,get_orders_tag
       double precision x(99),p(0:3,nexternal),vegas_wgt,jac
       double precision total,denom,fraction,softvar,hard,sij,wgt1
@@ -1016,7 +1643,8 @@ c Born subprocess: the same real process can belong to several Borns.
 
       call initialize_weight_analysis
       ime=real_channel_me(id)
-      call update_fks_dir(real_channel_fks(id))
+      iflav=REAL_FLAVOR_INDEX_D(real_channel_fks(id))
+      call update_fks_dir_FO(real_channel_fks(id))
       call generate_momenta_real_channels(ndim,real_channel_config(id),
      $     real_channel_fks(id),x,p,jac)
       if (jac.le.0d0.or.p(0,1).le.0d0) return
@@ -1047,6 +1675,7 @@ c for all its channels, so the partition is unchanged.
       ndiagrams=0
       do i=1,n_real_channels
          if (real_channel_me(i).ne.ime) cycle
+         if (REAL_FLAVOR_INDEX_D(real_channel_fks(i)).ne.iflav) cycle
          ndiagrams=ndiagrams+1
          denom=denom+max(0d0,real_amp2(real_channel_diagram(i)))
       enddo
@@ -1060,7 +1689,8 @@ c partition also covers nonzero interference with vanishing weights.
       if (fraction.eq.0d0) return
       do sector=1,FKS_INTEGRATED
          if (real_sector_me(sector).ne.ime) cycle
-         call update_fks_dir(sector)
+         if (REAL_FLAVOR_INDEX_D(sector).ne.iflav) cycle
+         call update_fks_dir_FO(sector)
          xi_i_fks_ev=2d0*p(0,i_fks)/sqrtshat
          vi=sqrt(sum(p(1:3,i_fks)**2))
          vj=sqrt(sum(p(1:3,j_fks)**2))
@@ -1094,7 +1724,7 @@ c Born channels. Without me_frame all the masks agree: no extra call.
             amp_pos=iamp
             wgt1=raw_split(iamp)/g**QCD_power*jac*vegas_wgt*
      $           fkssymmetryfactor*sij*hard*fraction
-            call add_wgt(1,orders,wgt1,0d0,0d0)
+            call add_wgt_buffered(1,orders,wgt1,0d0,0d0,0d0,total)
          enddo
       enddo
       return

@@ -39,7 +39,10 @@ C     LOCAL VARIABLES
 C     
       INTEGER I,J,K
       INTEGER FLAVOR(NEXTERNAL)
-      DATA FLAVOR /NEXTERNAL*1/
+      COMMON/ML5_0_ACTIVE_VIRTUAL_FLAVOR/FLAVOR
+
+      INTEGER LOOP_FLAVOR(-1:NLOOPWAVEFUNCS)
+      COMMON/ML5_0_LOOP_FLAVOR/LOOP_FLAVOR
       COMPLEX*16 COEFS(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
 
       LOGICAL DUMMYFALSE
@@ -98,7 +101,7 @@ C      if true.
         GOTO 1001
       ENDIF
 
-C     CutTools call for loop numbers 1,33,36
+C     CutTools call for loop numbers 1,33,42
       CALL ML5_0_LOOP_2(5,8,DCMPLX(ZERO),DCMPLX(ZERO),2,I_SO,1)
 C     CutTools call for loop numbers 2
       CALL ML5_0_LOOP_3(3,4,5,DCMPLX(MDL_MT),DCMPLX(ZERO),DCMPLX(ZERO)
@@ -134,7 +137,7 @@ C     CutTools call for loop numbers 12
 C     CutTools call for loop numbers 13
       CALL ML5_0_LOOP_4(1,2,3,4,DCMPLX(ZERO),DCMPLX(ZERO)
      $ ,DCMPLX(MDL_MT),DCMPLX(ZERO),3,I_SO,13)
-C     CutTools call for loop numbers 14,34,35,37,38
+C     CutTools call for loop numbers 14,34,35,43,44
       CALL ML5_0_LOOP_3(1,2,8,DCMPLX(ZERO),DCMPLX(ZERO),DCMPLX(ZERO),3
      $ ,I_SO,14)
 C     CutTools call for loop numbers 15,16,17
@@ -167,14 +170,14 @@ C     CutTools call for loop numbers 27,28,29
 C     CutTools call for loop numbers 30,31,32
       CALL ML5_0_LOOP_3_4(1,1,2,3,4,2,1,DCMPLX(MDL_MT),DCMPLX(ZERO)
      $ ,DCMPLX(ZERO),1,I_SO,24)
-C     CutTools call for loop numbers 39
+C     CutTools call for loop numbers 36
       CALL ML5_0_LOOP_2(5,8,DCMPLX(MDL_MB),DCMPLX(MDL_MB),2,I_SO,25)
-C     CutTools call for loop numbers 40,41
+C     CutTools call for loop numbers 37,38
       CALL ML5_0_LOOP_3(1,2,8,DCMPLX(MDL_MB),DCMPLX(MDL_MB)
      $ ,DCMPLX(MDL_MB),3,I_SO,26)
-C     CutTools call for loop numbers 42
+C     CutTools call for loop numbers 39
       CALL ML5_0_LOOP_2(5,8,DCMPLX(MDL_MT),DCMPLX(MDL_MT),2,I_SO,27)
-C     CutTools call for loop numbers 43,44
+C     CutTools call for loop numbers 40,41
       CALL ML5_0_LOOP_3(1,2,8,DCMPLX(MDL_MT),DCMPLX(MDL_MT)
      $ ,DCMPLX(MDL_MT),3,I_SO,28)
 

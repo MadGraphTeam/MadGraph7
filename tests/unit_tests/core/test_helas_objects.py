@@ -5791,6 +5791,39 @@ class TestFlavorStore(unittest.TestCase):
                             "diagram store %r is not a subset of allowed %r"
                             % (diag.valid_flavors, allowed_set))
 
+    def test_restricted_flavor_trimming_rebuilds_lazy_color_basis(self):
+        """A copied virtual Born may have a color basis but no base amplitude.
+
+        Keep a flavor supported only by the last diagram, so trimming must
+        compact an index used by the original color basis. Both lazy and
+        already materialized base amplitudes must follow that compaction.
+        """
+        for lazy in (False, True):
+            with self.subTest(lazy_base_amplitude=lazy):
+                matrix_element = copy.deepcopy(self.me)
+                diagrams = matrix_element.get('diagrams')
+                self.assertEqual(len(diagrams), 2)
+                flavor = next(iter(diagrams[-1].valid_flavors -
+                                   diagrams[0].valid_flavors))
+                for diagram in diagrams:
+                    diagram.valid_flavors.intersection_update({flavor})
+                if lazy:
+                    matrix_element.set('base_amplitude', None, force=True)
+                else:
+                    matrix_element.get('base_amplitude')
+
+                matrix_element.remove_diagrams_without_flavor()
+
+                self.assertEqual(len(matrix_element.get('diagrams')), 1)
+                self.assertEqual(len(matrix_element.get('base_amplitude').get(
+                    'diagrams')), 1)
+                positions = [entry[0] for entries in
+                             matrix_element.get('color_basis').values()
+                             for entry in entries]
+                self.assertTrue(positions)
+                self.assertEqual(set(positions), {0})
+                self.assertTrue(matrix_element.get_color_amplitudes())
+
     def test_has_flavor_matches_check_flavor(self):
         """has_flavor() must agree with a fresh check_flavor() for every allowed
         flavor and for clearly-invalid ones."""
@@ -5825,6 +5858,39 @@ class TestFlavorStore(unittest.TestCase):
         self.assertFalse(self.me.flavor_mask_is_trivial(),
                          "q q~ > q q~ should have a non-trivial flavor mask "
                          "(s- and t-channel differ), otherwise this test is moot")
+
+    def test_external_flavor_index_round_trip(self):
+        """Physical PDGs and per-leg group positions resolve to the same
+        one-based local matrix-element row.
+
+        NLO Born and real matrix elements own independent flavor tables, so the
+        Python generation layer needs this exact lookup rather than relying on
+        coincidental row ordering between two matrix elements.
+        """
+        flavors, pdgs = self.me.get_external_flavors(return_pdgs=True)
+        self.assertGreater(len(flavors), 1)
+        self.assertEqual(len(flavors), len(pdgs))
+
+        for index, (flavor, physical_pdgs) in enumerate(
+                zip(flavors, pdgs), start=1):
+            self.assertEqual(
+                self.me.get_external_flavor_index(flavor), index)
+            self.assertEqual(
+                self.me.get_external_flavor_index(physical_pdgs,
+                                                  from_pdgs=True), index)
+            self.assertEqual(
+                self.me.get_external_flavor(index), flavor)
+            self.assertEqual(
+                self.me.get_external_flavor(index, return_pdgs=True),
+                physical_pdgs)
+
+        self.assertEqual(
+            self.me.get_external_flavor_index((1, 1, 2, 3)), 0)
+        self.assertEqual(
+            self.me.get_external_flavor_index([1, -1, 2, -3],
+                                              from_pdgs=True), 0)
+        self.assertIsNone(self.me.get_external_flavor(0))
+        self.assertIsNone(self.me.get_external_flavor(len(flavors) + 1))
 
     def test_amplitude_and_wavefunction_has_flavor(self):
         """After compute_flavor_masks(), amplitudes share their diagram's

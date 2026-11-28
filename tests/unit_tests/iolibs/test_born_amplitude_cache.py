@@ -231,6 +231,88 @@ end program
             result=subprocess.run([str(work/'check')],cwd=work,capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
+    def test_cache_keeps_four_born_points_per_cohort_lane(self):
+        # A native MC cohort parks each lane at its real-emission request and
+        # resumes it after the other lanes ran. Its Born must still be cached.
+        record = dict(provider=1, nexternal=2, ngraphs=1, ncolor=1,
+                      nhelicity=2, namps=2, nsqamps=3, orders=['QCD', 'QED'],
+                      sectors=[dict(fks=dict(splitting_type=['QCD']))], links=[],
+                      helicity_matrices=[dict(amplitude_degrees=[1])])
+        with mock.patch.object(support, 'expand', return_value=[]):
+            adapter = support.provider_adapter(record, Path('/unused/SubProcesses/P0'), MEMBERS)
+        declarations = '\n'.join(adapter[1:adapter.index('status=0')]).replace(
+            'implicit none', 'implicit none\ninteger,parameter::amp_split_size=3,nsplitorders=2')
+        block = '\n'.join(adapter[adapter.index(
+            'model_changed=.not.born_model_state_equal(state,cached_state)'):
+            adapter.index('split_type_used(1)=.true.')])
+        update = '\n'.join(adapter[adapter.index('if(.not.reuse_amplitudes.or.scaled)then'):
+                                   adapter.index('points(slot)%valid=.true.')+1])
+        probe = ('subroutine probe(context,p,state,request,hit)\n'+declarations+
+                 '\nlogical hit\nreal(8) g,mass,width,loop_scale\n'
+                 'complex(8) tree_a,tree_b,loop_coupling\n'
+                 'common/installed_real/g,mass,width,loop_scale\n'
+                 'common/installed_complex/tree_a,tree_b,loop_coupling\n'+block+
+                 '\nhit=.not.rebuild\nsaveamp=(0d0,0d0)\nif(rebuild)then\n'+update+
+                 '\nendif\nactive_slot=slot\nend subroutine\n')
+        with tempfile.TemporaryDirectory(prefix='mg5_lane_cache_') as tmp:
+            work = Path(tmp)
+            module = work/'mc_born_types.f90'
+            shutil.copyfile(ROOT/'Template/NLO/Source/BornSupport/mc_born_types.f90', module)
+            support.write_helicity_state_comparator(module, MEMBERS, SIGNATURE)
+            support.write_amplitude_state_comparator(module, MEMBERS, SIGNATURE)
+            (work/'check.f90').write_text('''program check
+use mc_born_types
+implicit none
+type(BornModelState) a
+type(BornRequest) request
+real(8) p(0:3,1)
+logical hit
+integer i
+a%real_values=[2d0,173d0,1.5d0,100d0]
+a%complex_values=[(2d0,1d0),(-4d0,2d0),(7d0,-1d0)]
+p=1d0
+request%sector=1
+! One lane keeps four points: a fifth evicts the oldest.
+do i=1,5
+   p(0,1)=i
+   call probe(1,p,a,request,hit)
+   if(hit)stop 1
+enddo
+p(0,1)=1
+call probe(1,p,a,request,hit)
+if(hit)stop 2
+! Sixteen interleaved lanes keep four points each.
+call born_set_cache_lanes(16)
+do i=1,64
+   p(0,1)=100+i
+   call probe(1,p,a,request,hit)
+   if(hit)stop 3
+enddo
+do i=1,64
+   p(0,1)=100+i
+   call probe(1,p,a,request,hit)
+   if(.not.hit)stop 4
+enddo
+p(0,1)=1000
+call probe(1,p,a,request,hit)
+p(0,1)=101
+call probe(1,p,a,request,hit)
+if(hit)stop 5
+! Large entries are capped by bytes, never below one lane's slots.
+if(born_cache_slots(4,born_cache_bytes).ne.4)stop 6
+if(born_cache_slots(4,born_cache_bytes/10).ne.10)stop 7
+if(born_cache_slots(4,1_8).ne.64)stop 8
+call born_set_cache_lanes(1)
+if(born_cache_slots(4,1_8).ne.4)stop 9
+end program
+'''+probe)
+            result = subprocess.run(['gfortran', '-O2', '-fno-automatic', '-fcheck=all',
+                                     str(module), str(work/'check.f90'), '-o', 'check'],
+                                    cwd=work, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+            result = subprocess.run([str(work/'check')], cwd=work, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout+result.stderr)
+
     def check(self, body, signature):
         with tempfile.TemporaryDirectory(prefix='mg5_amplitude_cache_') as tmp:
             work = Path(tmp)

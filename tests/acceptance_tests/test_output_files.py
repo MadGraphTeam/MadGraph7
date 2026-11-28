@@ -85,7 +85,8 @@ class IOExportMadLoopAcceptanceTest(test_loop_exporters.IOExportMadLoopUnitTest)
            not hasattr(self, 'loop_exporters'):\
            
             self.models = { \
-                'loop_sm' : import_ufo.import_model('loop_sm') 
+                'loop_sm' : import_ufo.import_model(
+                    'loop_sm', options={'apply_flavor_grouping': False})
                           }
             self.fortran_models = {
                 'fortran_model' : helas_call_writers.FortranUFOHelasCallWriter(\

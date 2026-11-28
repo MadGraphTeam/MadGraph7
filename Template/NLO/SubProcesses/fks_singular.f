@@ -9,6 +9,10 @@ c to the list of weights using the add_wgt subroutine
       include 'orders.inc'
       include 'run.inc'
       include 'genps.inc'
+      include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
+      integer nfksprocess,born_id1,born_id2
+      common/c_nfksprocess/nfksprocess
       integer idup(nexternal,maxproc)
       integer mothup(2,nexternal,maxproc)
       integer icolup(2,nexternal,maxflow)
@@ -23,6 +27,12 @@ c to the list of weights using the add_wgt subroutine
       double precision     xiScut_used,xiBSVcut_used
       common /cxiScut_used/xiScut_used,xiBSVcut_used
       integer get_orders_tag
+      born_id1=idup(1,1)
+      born_id2=idup(2,1)
+      if (HAS_PHYSICAL_FKS_CLASSES) then
+         born_id1=BORN_PDG_TYPE_D(nFKSprocess,1)
+         born_id2=BORN_PDG_TYPE_D(nFKSprocess,2)
+      endif
       if (f_b.eq.0d0) return
       if (xi_i_hat_ev*xiimax_cnt(0) .gt. xiBSVcut_used) return
       call sborn_frame(p_born,wgt_c)
@@ -38,7 +48,7 @@ c to the list of weights using the add_wgt subroutine
 c     For UPC processes, we only need to fill the Born contribution for
 c     photon-photon initial state
         if ((abs(lpp(1)).eq.2 .and. abs(lpp(2)).eq.2) 
-     &   .and. .not. (idup(1,1).eq.22 .and. idup(2,1).eq.22)) then
+     &   .and. .not. (born_id1.eq.22 .and. born_id2.eq.22)) then
           cycle
         endif
         call add_wgt(2,orders,wgt1,0d0,0d0)
@@ -62,6 +72,10 @@ C in the LO cross section
       include 'run.inc'
       include 'genps.inc'
       include 'orders.inc'
+      include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
+      integer nfksprocess
+      common/c_nfksprocess/nfksprocess
       integer orders(nsplitorders)
       integer iamp
       double precision amp_split_6to5f(amp_split_size),
@@ -107,14 +121,14 @@ C      where n is the power of alphas for the Born xsec sigma(0)
 C      Add a term −alphas TF/3pi log (mt^2/muF^2) sigma(0) for each
 C      gluon in the initial state
 
-      if (firsttime) then
-          ! count the number of gluons
-          do i = 1, nincoming
-              if (idup(i, 1).eq.21) niglu = niglu + 1
-          enddo
-          write(*,*) 'compute_6to5flav_cnt found n initial gluons:', niglu
-          firsttime=.false.
-      endif
+      niglu=0
+      do i=1,nincoming
+         if (HAS_PHYSICAL_FKS_CLASSES) then
+            if (BORN_PDG_TYPE_D(nFKSprocess,i).eq.21) niglu=niglu+1
+         elseif (idup(i,1).eq.21) then
+            niglu=niglu+1
+         endif
+      enddo
 
       ! compute the born
       call sborn_frame(p_born,wgtborn)
@@ -576,35 +590,81 @@ C wrt the hard matrix element. Relevant for lepton collisions.
       end
 
       subroutine compute_real_emission(p,sudakov_damp)
-      use fks_phase_space_data, only: xi_i_fks_ev,y_ij_fks_ev
-c This subroutine computes the real-emission matrix elements and adds
-c its value to the list of weights using the add_wgt subroutine
-      use extra_weights
-      use weight_lines, only: mc_H_only,mc_S_only
-      use mint_module, only: fixed_order
+      use mc_point_state, only: native_real_emission,real_waiting
       implicit none
       include 'nexternal.inc'
-      include 'coupl.inc'
-      include 'orders.inc'
-      include 'run.inc'
-      integer orders(nsplitorders)
-      integer iamp
-      double precision s_ev,fks_Sij,p(0:3,nexternal),wgt1,fx_ev
-     $     ,sudakov_damp,real_channel_soft_fraction
-      external real_channel_soft_fraction
+      double precision p(0:3,nexternal),sudakov_damp
+      type(native_real_emission) emission
+      call compute_real_emission_prepare(p,sudakov_damp,emission)
+      if(emission%request%status.eq.real_waiting)then
+         call resolve_native_real_scalar(emission%request)
+         call compute_real_emission_finish(emission)
+      endif
+      end
+
+      subroutine compute_real_emission_prepare(p,sudakov_damp,emission)
+c Process zeroes and analytic limits immediately. Only full matrix
+c elements leave a pending request, after both cuts and the FKS gates.
+      use mc_point_state, only: native_real_emission,real_idle
+      use fks_phase_space_data, only: xi_i_fks_ev,y_ij_fks_ev
+      use weight_lines, only: mc_H_only,mc_S_only
+      implicit none
+      include 'nexternal.inc'
+      type(native_real_emission),intent(inout) :: emission
+      double precision p(0:3,nexternal),sudakov_damp,s_ev,fx_ev,fks_Sij
       external fks_Sij
-      integer            i_fks,j_fks
+      integer i_fks,j_fks
       common/fks_indices/i_fks,j_fks
-      double precision     f_r,f_s,f_c,f_dc,f_sc,f_dsc(4)
+      double precision f_r,f_s,f_c,f_dc,f_sc,f_dsc(4)
       common/factor_n1body/f_r,f_s,f_c,f_dc,f_sc,f_dsc
-      integer get_orders_tag
+      if(emission%request%status.ne.real_idle)
+     $     error stop 'Outstanding native real emission at prepare'
       if (f_r.eq.0d0) return
 ! Do not evaluate a real matrix element whose only records are discarded.
       if (mc_H_only.and.sudakov_damp.le.0d0) return
       if (mc_S_only.and.sudakov_damp.ge.1d0) return
       s_ev = fks_Sij(p,i_fks,j_fks,xi_i_fks_ev,y_ij_fks_ev)
       if (s_ev.le.0.d0) return
-      call sreal(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev)
+      call sreal_prepare(p,xi_i_fks_ev,y_ij_fks_ev,fx_ev,
+     $     emission%request)
+      if(emission%request%status.eq.real_idle)then
+         call assemble_real_emission(p,sudakov_damp,s_ev)
+      else
+         emission%sector_fraction=s_ev
+         emission%sudakov=sudakov_damp
+      endif
+      end
+
+      subroutine compute_real_emission_finish(emission)
+c The caller reactivates the point and native record context first.
+      use mc_point_state, only: native_real_emission,consume_native_real
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      type(native_real_emission),intent(inout) :: emission
+      double precision fx_ev,wgt_me_born,wgt_me_real
+      common/c_wgt_ME_tree/wgt_me_born,wgt_me_real
+      call consume_native_real(emission%request,fx_ev,amp_split)
+c add_wgt retains the unregulated total for ME reweighting.
+      wgt_me_real=emission%request%total
+      call assemble_real_emission(emission%request%p,emission%sudakov,
+     $     emission%sector_fraction)
+      end
+
+      subroutine assemble_real_emission(p,sudakov_damp,s_ev)
+      use extra_weights
+      use mint_module, only: fixed_order
+      implicit none
+      include 'nexternal.inc'
+      include 'coupl.inc'
+      include 'orders.inc'
+      include 'run.inc'
+      integer orders(nsplitorders),iamp,get_orders_tag
+      double precision p(0:3,nexternal),sudakov_damp,s_ev,wgt1,
+     $     real_channel_soft_fraction
+      double precision f_r,f_s,f_c,f_dc,f_sc,f_dsc(4)
+      common/factor_n1body/f_r,f_s,f_c,f_dc,f_sc,f_dsc
+      external real_channel_soft_fraction
       do iamp=1, amp_split_size
         if (amp_split(iamp).eq.0d0) cycle
         call amp_split_pos_to_orders(iamp, orders)
@@ -956,6 +1016,24 @@ c value to the list of weights using the add_wgt subroutine
       end
 
       subroutine compute_native_NLOPS_weights(p,p_cms,passcuts_nbody,passcuts_n1body,probne)
+c Other consumers, including flow sums, drain this same staged calculation.
+      use mc_point_state, only: native_real_emission,real_waiting
+      implicit none
+      include 'nexternal.inc'
+      type(native_real_emission) emission
+      double precision p(0:3,nexternal),p_cms(0:3,nexternal),probne
+      logical passcuts_nbody,passcuts_n1body
+      call prepare_native_NLOPS_weights(p,p_cms,passcuts_nbody,
+     $     passcuts_n1body,probne,emission)
+      if(emission%request%status.eq.real_waiting)then
+         call resolve_native_real_scalar(emission%request)
+         call compute_real_emission_finish(emission)
+      endif
+      end
+
+      subroutine prepare_native_NLOPS_weights(p,p_cms,passcuts_nbody,
+     $     passcuts_n1body,probne,emission)
+      use mc_point_state, only: native_real_emission
       use fks_phase_space_data, only: p1_cnt
 ! Evaluate one ordinary FKS history, including its real term and its
 ! G replacement. During H repartitioning add_wgt discards S records.
@@ -966,6 +1044,7 @@ c value to the list of weights using the add_wgt subroutine
       include 'nexternal.inc'
       include 'run.inc'
       double precision p(0:3,nexternal),p_cms(0:3,nexternal),probne,replace_MC_subt
+      type(native_real_emission),intent(inout) :: emission
       logical passcuts_nbody,passcuts_n1body,h_only_save,s_only_save
       integer counter_pass,ncounter_passes
       character*4 abrv
@@ -1027,7 +1106,7 @@ c value to the list of weights using the add_wgt subroutine
          if (ickkw.eq.3) call set_FxFx_scale(-3,p)
          call set_alphaS(p)
          call include_multichannel_enhance(2)
-         call compute_real_emission(p,probne)
+         call compute_real_emission_prepare(p,probne,emission)
       endif
       end
 
@@ -1342,19 +1421,27 @@ c     iterm= -3 : only restore scales for n+1-body w/o recomputing
       common/fks_indices/i_fks,j_fks
       INTEGER              NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
-      save rewgt_mohdr_calculated,rewgt_izero_calculated,p_last_izero
-     &     ,p_last_mohdr,iterm_last_izero,iterm_last_mohdr
-     &     ,fxfx_ren_scales_izero ,fxfx_ren_scales_mohdr
-     &     ,fxfx_fac_scale_izero ,fxfx_fac_scale_mohdr
-     &     ,nfxfx_ren_scales_izero ,nfxfx_ren_scales_mohdr
-      save rewgt_izero,rewgt_mohdr
-      data rewgt_izero_calculated,rewgt_mohdr_calculated /2*.false./
       integer need_matching(nexternal),need_matching_izero(nexternal)
       integer need_matching_S(nexternal),need_matching_H(nexternal)
      $     ,need_matching_cuts(nexternal)
       common /c_need_matching/ need_matching_S,need_matching_H
      $     ,need_matching_cuts
-      save need_matching_izero
+c Each suspended MINT point owns its two Sudakov cache entries.
+      common /native_fxfx_real_cache/ p_last_izero
+     $     ,p_last_mohdr
+     $     ,fxfx_ren_scales_izero
+     $     ,fxfx_ren_scales_mohdr
+     $     ,fxfx_fac_scale_izero
+     $     ,fxfx_fac_scale_mohdr
+     $     ,rewgt_izero
+     $     ,rewgt_mohdr
+      common /native_fxfx_integer_cache/ iterm_last_izero
+     $     ,iterm_last_mohdr
+     $     ,nfxfx_ren_scales_izero
+     $     ,nfxfx_ren_scales_mohdr
+     $     ,need_matching_izero
+      common /native_fxfx_valid_cache/ rewgt_mohdr_calculated
+     $     ,rewgt_izero_calculated
       if(timing_sampled)call timing_enter(timing_clustering)
       ktscheme=1
       if (iterm.eq.0) then
@@ -2280,6 +2367,9 @@ C for UPC processes set scale to Ellis-Sexton scale
       endif
       g_strong(icontr)=g
       nFKS(icontr)=nFKSprocess
+      fks_flavor_class(icontr)=FKS_FLAVOR_CLASS_D(nFKSprocess)
+      born_flavor_class(icontr)=BORN_FLAVOR_INDEX_D(nFKSprocess)
+      vector_index(icontr)=1
       event_nFKS(icontr)=nFKSprocess
       native_ids(1,icontr)=native_provider_ids(nFKSprocess)
       native_ids(2,icontr)=native_context_ids(nFKSprocess)
@@ -2837,6 +2927,9 @@ c update the event weight to be written in the file
          g_strong(ict_new)=g_strong(ict)
          nFKS(ict_new)=nFKS(ict)
          event_nFKS(ict_new)=event_nFKS(ict)
+         fks_flavor_class(ict_new)=fks_flavor_class(ict)
+         born_flavor_class(ict_new)=born_flavor_class(ict)
+         vector_index(ict_new)=vector_index(ict)
          native_ids(:,ict_new)=native_ids(:,ict)
          y_bst(ict_new)=y_bst(ict)
          QCDpower(ict_new)=QCDpower(ict)
@@ -2882,6 +2975,8 @@ c save also the separate contributions to the PDFs and the corresponding
 c PDG codes
       hist=native_ids(3,ict)
       niproc(ict)=iproc
+      if (HAS_PHYSICAL_FKS_CLASSES.and.iproc.ne.1)
+     $     stop 'Physical FKS class requires one PDF row'
       do j=1,iproc
          if (nincoming.eq.2) then
             parton_iproc(j,ict)=pd(j)*conv
@@ -2895,6 +2990,18 @@ c           Keep GeV's for decay processes (no conv. factor needed)
      $              idup_d(iFKS,k,j)
             else
                parton_pdg(k,j,ict)=idup_d(iFKS,k,j)
+            endif
+            if (HAS_PHYSICAL_FKS_CLASSES) then
+               if (k.lt.nexternal) then
+                  parton_pdg_uborn(k,j,ict)=BORN_PDG_TYPE_D(iFKS,k)
+               elseif (split_type_d(iFKS,qcd_pos)) then
+                  parton_pdg_uborn(k,j,ict)=21
+               elseif (split_type_d(iFKS,qed_pos)) then
+                  parton_pdg_uborn(k,j,ict)=22
+               else
+                  stop 'Physical FKS class has no splitting type'
+               endif
+               cycle
             endif
             if (k.lt.fks_j_d(iFKS)) then
                parton_pdg_uborn(k,j,ict)=idup_d(iFKS,k,j)
@@ -3525,6 +3632,12 @@ c     Identical contributions found: sum the contribution "i" to "ii"
 c S-event: we can sum everything to 'i_soft': all the contributions to
 c the S-events can be summed together. Ignore the shower_scale: this
 c will be updated later
+            if (HAS_PHYSICAL_FKS_CLASSES.and.
+     $          born_flavor_class(i).ne.born_flavor_class(i_soft)) then
+               write(*,*) 'Cannot sum different physical Born classes',
+     $              born_flavor_class(i_soft),born_flavor_class(i)
+               stop 1
+            endif
             call add_group_member(i_soft,i)
             do j=1,niproc(i_soft)
                do jj=1,iproc_save(nFKS(i))
@@ -4451,18 +4564,54 @@ c
       end
 
       subroutine sreal(pp,xi_i_fks,y_ij_fks,wgt)
+c Ordinary fixed-order, native, and subtraction checks share the same
+c analytic-limit and full-real branches as the resumable MC evaluator.
+      use mc_point_state, only: native_real_request,real_waiting,
+     $     consume_native_real
+      implicit none
+      include 'nexternal.inc'
+      include 'orders.inc'
+      type(native_real_request) request
+      double precision pp(0:3,nexternal),xi_i_fks,y_ij_fks,wgt
+      call sreal_prepare(pp,xi_i_fks,y_ij_fks,wgt,request)
+      if(request%status.eq.real_waiting)then
+         call resolve_native_real_scalar(request)
+         call consume_native_real(request,wgt,amp_split)
+      endif
+      end
+
+      subroutine resolve_native_real_scalar(request)
+c The synchronous reference path retains frame conversion, exact-key
+c native history sharing, and diagram weights when requested.
+      use mc_point_state, only: native_real_request,real_waiting,
+     $     complete_native_real
+      implicit none
+      include 'orders.inc'
+      include 'timing_variables.inc'
+      type(native_real_request),intent(inout) :: request
+      double precision raw
+      if(request%status.ne.real_waiting) error stop
+     $     'Scalar native provider requires a pending real request'
+      if(timing_sampled)call timing_enter(timing_real)
+      call smatrix_real_frame(request%p,raw)
+      if(timing_sampled)call timing_leave(timing_real)
+      call complete_native_real(request,raw,amp_split)
+      end
+
+      subroutine sreal_prepare(pp,xi_i_fks,y_ij_fks,wgt,request)
+      use mc_point_state, only: native_real_request,request_native_real
       use fks_phase_space_data, only: shat
 c Wrapper for the n+1 contribution. Returns the n+1 matrix element
 c squared reduced by the FKS damping factor xi**2*(1-y).
 c Close to the soft or collinear limits it calls the corresponding
 c Born and multiplies with the AP splitting function or eikonal factors.
       implicit none
-      include 'timing_variables.inc'
       include "nexternal.inc"
       include "coupl.inc"
       include "fks_info.inc"
       double precision pp(0:3,nexternal),xi_i_fks,y_ij_fks
       double precision wgt
+      type(native_real_request),intent(inout) :: request
       
       INTEGER              NFKSPROCESS
       COMMON/C_NFKSPROCESS/NFKSPROCESS
@@ -4529,17 +4678,9 @@ c has soft singularities
             amp_split(1:amp_split_size) = 0d0
          endif
       else
-         if(timing_sampled)call timing_enter(timing_real)
-         call smatrix_real_frame(pp,wgt)
-         if(timing_sampled)call timing_leave(timing_real)
-         wgt=wgt*xi_i_fks**2*(1d0-y_ij_fks)
-         amp_split(1:amp_split_size) = amp_split(1:amp_split_size)*xi_i_fks**2*(1d0-y_ij_fks)
+         call request_native_real(request,pp,xi_i_fks,y_ij_fks)
       endif
-      
-      return
       end
-
-
 
       subroutine sborncol_fsr(p,xi_i_fks,y_ij_fks,wgt)
       use fks_phase_space_data,only: resonance_momentum,resonance_mass2,resonance_recoil,p_born,shat,p_i_fks_ev,xij_aor
@@ -6435,7 +6576,8 @@ c
       endif
 c
       i=1
-      do while(ckc(i).gt.0.1d0 .and. xseclvc(i).ne.0d0)
+      do while(ckc(i).gt.0.1d0 .and. xseclvc(i).ne.0d0 .and.
+     $         i.lt.imax)
         i=i+1
       enddo
       imin=i
@@ -6623,7 +6765,6 @@ c timing statistics
       logical virtual_fold_ready,first_virtual_evaluation
       common /c_folded_virtual/ virtual_fold_ready
       double precision virt_wgt_save
-      save virt_wgt_save
 
       double precision pmass(nexternal),zero
       parameter (zero=0d0)
@@ -6644,6 +6785,7 @@ c timing statistics
       double precision oneo8pi2
       parameter(oneo8pi2 = 1d0/(8d0*pi**2))
       include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
       INTEGER nFKSprocess, nFKSprocess_save, nFKSprocess_col, nFKSprocess_chg
       COMMON/c_nFKSprocess/nFKSprocess
       data nFKSprocess_col / 0 /
@@ -6660,7 +6802,7 @@ C to keep track of the various split orders
       double precision amp_split_finite_ML(amp_split_size)
       common /to_amp_split_finite/amp_split_finite_ML
       double precision amp_split_virt_save(amp_split_size)
-      save amp_split_virt_save
+      common/c_folded_virtual_value/virt_wgt_save,amp_split_virt_save
       double precision amp_split_virt(amp_split_size),
      &      amp_split_born_for_virt(amp_split_size),
      &      amp_split_avv(amp_split_size)
@@ -6685,10 +6827,17 @@ c the virtual on the first fold that actually reaches this routine,
 c after the driver has reset the complete point, not by its fold index.
       first_virtual_evaluation=.not.virtual_fold_ready
       
-      if (firsttime) then
+      if (firsttime.or.HAS_PHYSICAL_FKS_CLASSES) then
+         need_color_links_used=.false.
+         need_charge_links_used=.false.
+         nFKSprocess_col=0
+         nFKSprocess_chg=0
 C check if any real emission need cahrge/color links
          nFKSprocess_save = nFKSprocess
          do nFKSprocess = 1, FKS_INTEGRATED
+            if (HAS_PHYSICAL_FKS_CLASSES.and.
+     $           BORN_FLAVOR_INDEX_D(nFKSprocess).ne.
+     $           BORN_FLAVOR_INDEX_D(nFKSprocess_save)) cycle
             call fks_inc_chooser()
             need_color_links_used = need_color_links_used .or. need_color_links
             need_charge_links_used = need_charge_links_used .or. need_charge_links
@@ -6699,6 +6848,7 @@ C links
             if (need_charge_links.and.nFKSprocess_chg.eq.0)
      1          nFKSprocess_chg = nFKSprocess
          enddo
+         if (firsttime) then
          if (need_charge_links_used) then
              write(*,*) 'Charge-linked born are used'
          else
@@ -6708,6 +6858,7 @@ C links
              write(*,*) 'Color-linked born are used'
          else
              write(*,*) 'Color-linked born are not used'
+         endif
          endif
          firsttime = .false.
          nFKSprocess = nFKSprocess_save
@@ -7469,6 +7620,7 @@ c      include "fks.inc"
       double precision oneo8pi2
       parameter(oneo8pi2 = 1d0/(8d0*pi**2))
       include "nFKSconfigs.inc"
+      include 'fks_info.inc'
       INTEGER nFKSprocess, nFKSprocess_save, nFKSprocess_col, nFKSprocess_chg
       COMMON/c_nFKSprocess/nFKSprocess
       logical need_color_links_used, need_charge_links_used
@@ -7485,6 +7637,9 @@ c      include "fks.inc"
 C check if any real emission need cahrge/color links
       nFKSprocess_save = nFKSprocess
       do nFKSprocess = 1, FKS_INTEGRATED
+            if (HAS_PHYSICAL_FKS_CLASSES.and.
+     $           BORN_FLAVOR_INDEX_D(nFKSprocess).ne.
+     $           BORN_FLAVOR_INDEX_D(nFKSprocess_save)) cycle
         call fks_inc_chooser()
         need_color_links_used = need_color_links_used .or. need_color_links
         need_charge_links_used = need_charge_links_used .or. need_charge_links
@@ -8174,6 +8329,7 @@ c     reset the default dynamical_scale_choice
       function ran2()
 !     Wrapper for the random numbers; needed for the NLO stuff
       use mint_module
+      use mc_decision_ledger, only: decision_mode,decision_uniform
       implicit none
       double precision ran2,x,a,b
       integer ii,jconfig
@@ -8182,6 +8338,7 @@ c     reset the default dynamical_scale_choice
       ii=0                      ! dummy argument of ntuple
       jconfig=iconfig           ! integration channel (for off-set)
       call ntuple(x,a,b,ii,jconfig)
+      if (decision_mode.ne.0) call decision_uniform(jconfig,x)
       ran2=x
       return
       end
@@ -8411,4 +8568,100 @@ c Shared code is also linked by MC@NLO, where there are no hard jobs.
       integer real_channel_type
       common /c_real_channel_type/ real_channel_type
       data real_channel_type /0/
+      end
+
+      subroutine get_born_nFKSprocess(nFKS_in,nFKS_out)
+      implicit none
+      include 'nexternal.inc'
+      include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
+      integer nFKS_in,nFKS_out,iFKS,iiFKS,nFKSprocessBorn(fks_configs)
+      logical firsttime
+      data firsttime /.true./
+      save nFKSprocessBorn
+c
+      if (HAS_PHYSICAL_FKS_CLASSES) then
+         nFKS_out=BORN_FKS_MAP_D(nFKS_in)
+         return
+      endif
+      if (nFKS_in.gt.FKS_INTEGRATED) then
+         nFKS_out=BORN_FKS_MAP_D(nFKS_in)
+         return
+      endif
+      if (firsttime) then
+         firsttime=.false.
+         do iFKS=1,fks_integrated
+            nFKSprocessBorn(iFKS)=0
+            if ( need_color_links_D(iFKS) .or. 
+     &           need_charge_links_D(iFKS) )then
+               nFKSprocessBorn(iFKS)=iFKS
+            endif
+            if (nFKSprocessBorn(iFKS).eq.0) then
+c     try to find the process that has the same j_fks but with i_fks a
+c     gluon
+               do iiFKS=1,fks_integrated
+                  if ( (need_color_links_D(iiFKS) .or.
+     &                  need_charge_links_D(iiFKS)) .and.
+     &                 fks_j_D(iFKS).eq.fks_j_D(iiFKS) ) then
+                     nFKSprocessBorn(iFKS)=iiFKS
+                     exit
+                  endif
+               enddo
+            endif
+c     try to find the process that has the j_fks initial state if
+c     current j_fks is initial state (and similar for final state j_fks)
+            if (nFKSprocessBorn(iFKS).eq.0) then
+               do iiFKS=1,fks_integrated
+                  if ( need_color_links_D(iiFKS) .or.
+     &                 need_charge_links_D(iiFKS) ) then
+                     if ( fks_j_D(iiFKS).le.nincoming .and.
+     &                    fks_j_D(iFKS).le.nincoming ) then
+                        nFKSprocessBorn(iFKS)=iiFKS
+                        exit
+                     elseif ( fks_j_D(iiFKS).gt.nincoming .and.
+     &                        fks_j_D(iFKS).gt.nincoming ) then
+                        nFKSprocessBorn(iFKS)=iiFKS
+                        exit
+                     endif
+                  endif
+               enddo
+            endif
+c     If still not found, just pick any one that has a soft singularity
+            if (nFKSprocessBorn(iFKS).eq.0) then
+               do iiFKS=1,fks_integrated
+                  if ( need_color_links_D(iiFKS) .or.
+     &                 need_charge_links_D(iiFKS) ) then
+                     nFKSprocessBorn(iFKS)=iiFKS
+                  endif
+               enddo
+            endif
+c     if there are no soft singularities at all, just do something trivial
+            if (nFKSprocessBorn(iFKS).eq.0) then
+               nFKSprocessBorn(iFKS)=iFKS
+            endif
+         enddo
+         write (*,*) 'Total number of FKS directories is', fks_configs
+         write (*,*) 'For the Born we use nFKSprocesses:'
+         write (*,*)  nFKSprocessBorn
+      endif
+      if (nFKSprocessBorn(nFKS_in).eq.0) then
+         write(*,*) 'Could not find the correct map to Born '/
+     &        /'FKS configuration for the NLO FKS '/
+     &        /'configuration', nFKS_in
+         stop 1
+      else
+         nFKS_out=nFKSprocessBorn(nFKS_in)
+      endif
+      return
+      end
+
+
+
+
+      block data native_fxfx_valid_defaults
+      implicit none
+      logical rewgt_mohdr_calculated,rewgt_izero_calculated
+      common /native_fxfx_valid_cache/ rewgt_mohdr_calculated,
+     $     rewgt_izero_calculated
+      data rewgt_mohdr_calculated,rewgt_izero_calculated /2*.false./
       end

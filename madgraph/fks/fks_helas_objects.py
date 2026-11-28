@@ -44,6 +44,30 @@ if madgraph.ordering:
     set = misc.OrderedSet
 
 
+def make_unique_couplings(couplings):
+    """Deduplicate coupling references without hashing mutable flavor tables.
+
+    ``misc.make_unique`` uses ``dict.fromkeys``.  That is appropriate for
+    coupling-name strings but not for ``FLV_Coupling`` (a mutable
+    ``PhysicsObject``).  Equality here intentionally includes the generated
+    coupling name as well as its table, because every distinct name referenced
+    by HELAS calls must remain available to model export.
+    """
+    unique = []
+    seen = set()
+    for coupling in couplings:
+        if isinstance(coupling, MG.FLV_Coupling):
+            key = ('flavor', coupling.get('name'),
+                   coupling.get_canonical_key())
+        else:
+            key = ('ordinary', coupling)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(coupling)
+    return unique
+
+
 def find_real_amplitude(real_amp_list, amplitude):
     """The position in real_amp_list of the amplitude itself, which
     FKSProcess.generate_real_amplitudes gave to an FKSRealProcess, rather than
@@ -138,7 +162,8 @@ def async_generate_real(args):
     # its matrix element, as the serial mode makes it
     helasreal = FKSHelasMultiProcess.generate_matrix_elements(
                     diagram_generation.AmplitudeList([amplitude]),
-                    combine_matrix_elements = False)[0]
+                    combine_matrix_elements=False,
+                    matrix_element_opts={'enumerate_all_flavors': True})[0]
 
     return {'file': dump_to_tmpfile([amplitude, helasreal], tmpdir),
             'ndiagrams': len(amplitude['diagrams'])}
@@ -297,7 +322,8 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             if fksmulti['real_amplitudes']:
                 logger.info('Generating real emission matrix-elements...')
                 self['real_matrix_elements'] = self.generate_matrix_elements(
-                        copy.copy(fksmulti['real_amplitudes']), combine_matrix_elements = False)
+                        copy.copy(fksmulti['real_amplitudes']), combine_matrix_elements=False,
+                        matrix_element_opts={'enumerate_all_flavors': True})
             else:
                 self['real_matrix_elements'] = helas_objects.HelasMatrixElementList()
 
@@ -423,7 +449,7 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             helas_list.extend(meout['used_lorentz'])
             coupling_list.extend([c for l in meout['used_couplings'] for c in l])
         self['used_lorentz'] = misc.make_unique(helas_list)
-        self['used_couplings'] = misc.make_unique(coupling_list)
+        self['used_couplings'] = make_unique_couplings(coupling_list)
 
         # Only the real amplitudes with diagrams survived the workers.
         # Do not report radiation from an empty/restricted amplitude.
@@ -518,7 +544,7 @@ class FKSHelasMultiProcess(helas_objects.HelasMultiProcess):
             coupling_list = []
             for me in self.get('matrix_elements'):
                 coupling_list.extend([c for l in me.get_used_couplings() for c in l])
-            self['used_couplings'] = misc.make_unique(coupling_list)
+            self['used_couplings'] = make_unique_couplings(coupling_list)
 
         return self['used_couplings']
 
@@ -673,6 +699,7 @@ class FKSHelasProcess(object):
         sets reals and color links. Real_me_list and real_amp_list are the lists of pre-genrated
         matrix elements in 1-1 correspondence with the amplitudes"""
         
+        self._fks_flavor_map_cache = {}
         if fksproc != None:
             self.born_me = helas_objects.HelasMatrixElement(fksproc.born_amp, **opts)
 
@@ -752,30 +779,235 @@ class FKSHelasProcess(object):
 
 
 
-    def set_color_links(self):
+    def set_color_links(self, force=False):
         """this function computes and returns the color links, it should be called
         after the initialization and the setting of the color basis"""
-        if not self.color_links:
+        color_basis = self.born_me.get('color_basis')
+        if force or not self.color_links:
             legs = self.born_me.get('base_amplitude').get('process').get('legs')
             model = self.born_me.get('base_amplitude').get('process').get('model')
             color_links_info = fks_common.find_color_links(fks_common.to_fks_legs(legs, model),
                         symm = True, pert = self.perturbation)
-            col_basis = self.born_me.get('color_basis')
-            self.color_links = fks_common.insert_color_links(col_basis,
-                                col_basis.create_color_dict_list(
+            self.color_links = fks_common.insert_color_links(color_basis,
+                                color_basis.create_color_dict_list(
                                     self.born_me.get('base_amplitude')),
-                                color_links_info)    
+                                color_links_info)
 
-    def get_fks_info_list(self):
+    def get_fks_info_list(self, resolve_virtual=True):
         """Returns the list of the fks infos for all processes in the format
         {n_me, pdgs, fks_info}, where n_me is the number of real_matrix_element the configuration
-        belongs to"""
+        belongs to.
+
+        For a grouped model, one exported FKS configuration is one physical
+        flavor class.  Repeating a grouped topology here is intentional: all
+        existing runtime metadata is already indexed by ``NFKSPROCESS``, so
+        this keeps physical channels separate until matrix elements, FKS
+        factors, normalization, and PDFs have been applied.
+        """
+        model = self.born_me.get('processes')[0].get('model')
+        if model.get('merged_particles'):
+            return [
+                {'n_me': entry['n_me'],
+                 'pdgs': entry['real_pdgs'],
+                 'fks_info': entry['fks_info'],
+                 'flavor_class': entry}
+                for entry in self.get_fks_flavor_map(
+                    resolve_virtual=resolve_virtual)]
+
         info_list = []
         for n, real in enumerate(self.real_processes):
             pdgs = [l['id'] for l in real.matrix_element.get_base_amplitude()['process']['legs']]
             for info in real.fks_infos:
                 info_list.append({'n_me' : n + 1,'pdgs' : pdgs, 'fks_info' : info})
         return info_list
+
+    def get_fks_flavor_map(self, resolve_virtual=True):
+        """Return physical flavor classes for every FKS configuration.
+
+        Each entry translates one signed physical real-emission PDG row to the
+        independently resolved local rows of its real and underlying-Born
+        matrix elements.  The FKS configuration index follows
+        :meth:`get_fks_info_list` order and is one-based, as are all local
+        Fortran flavor indices.
+
+        A topology-level merged process can cover real rows that do not belong
+        to every one of its FKS configurations.  Such rows are omitted when
+        they cannot map to a valid underlying Born row.  A configuration with
+        no physical rows is an error.
+        """
+        cache_key = bool(resolve_virtual)
+        if cache_key in self._fks_flavor_map_cache:
+            return self._fks_flavor_map_cache[cache_key]
+
+        flavor_map = []
+        config_index = 0
+        initial_born_color_basis = self.born_me.get('color_basis')
+        merged = self.born_me.get('processes')[0].get('model').get(
+            'merged_particles')
+
+        def physical_properties(pdgs, model):
+            charges = []
+            colors = []
+            for pdg in pdgs:
+                if abs(pdg) in merged:
+                    raise fks_common.FKSProcessError(
+                        'Merged pseudo-PDG %s leaked into a physical FKS row'
+                        % pdg)
+                particle = model.get_particle(pdg)
+                if particle is None:
+                    raise fks_common.FKSProcessError(
+                        'Physical PDG %s is not present in the model' % pdg)
+                charge = particle.get_charge()
+                if isinstance(charge, tuple):
+                    raise fks_common.FKSProcessError(
+                        'Physical PDG %s has unresolved merged charge %s'
+                        % (pdg, charge))
+                charges.append(charge)
+                colors.append(particle.get_color())
+            return charges, colors
+
+        for n_me, real in enumerate(self.real_processes, start=1):
+            real_me = real.matrix_element
+            model = real_me.get('processes')[0].get('model')
+            real_flavors, real_pdg_rows = \
+                real_me.get_external_flavors(return_pdgs=True)
+            for info in real.fks_infos:
+                config_entries = []
+                for real_flavor, real_pdgs in zip(real_flavors,
+                                                  real_pdg_rows):
+                    try:
+                        born_pdgs = fks_common.map_real_to_born_pdgs(
+                            real_pdgs, info, model)
+                    except fks_common.FKSFlavorNotInTopology:
+                        # This physical real row is outside the union member
+                        # represented by this grouped FKS topology.
+                        continue
+
+                    real_index = real_me.get_external_flavor_index(
+                        real_pdgs, from_pdgs=True)
+                    born_index = self.born_me.get_external_flavor_index(
+                        born_pdgs, from_pdgs=True)
+                    if real_index == 0 or born_index == 0:
+                        continue
+
+                    real_charges, real_colors = physical_properties(
+                        real_pdgs, model)
+                    born_charges, born_colors = physical_properties(
+                        born_pdgs, model)
+
+                    virtual_index = 0
+                    if resolve_virtual and self.virt_matrix_element is not None:
+                        virtual_index = self.virt_matrix_element.\
+                            get_external_flavor_index(
+                                born_pdgs, from_pdgs=True)
+                        if virtual_index == 0:
+                            raise fks_common.FKSProcessError(
+                                'No virtual flavor row for physical Born %s'
+                                % born_pdgs)
+
+                    extra_cnt_index = 0
+                    extra_cnt_pdgs = None
+                    extra_cnt_charges = None
+                    extra_cnt_colors = None
+                    if info['extra_cnt_index'] != -1:
+                        try:
+                            extra_cnt_pdgs = \
+                                fks_common.map_real_to_born_pdgs(
+                                    real_pdgs, info, model,
+                                    underlying_index=1)
+                        except fks_common.FKSProcessError as error:
+                            raise fks_common.FKSProcessError(
+                                'Cannot map extra counterterm for physical '
+                                'real row %s: %s' % (real_pdgs, error))
+                        extra_me = self.extra_cnt_me_list[
+                            info['extra_cnt_index']]
+                        extra_cnt_index = \
+                            extra_me.get_external_flavor_index(
+                                extra_cnt_pdgs, from_pdgs=True)
+                        if extra_cnt_index == 0:
+                            raise fks_common.FKSProcessError(
+                                'No extra-counterterm flavor row for physical '
+                                'PDGs %s' % extra_cnt_pdgs)
+                        extra_cnt_charges, extra_cnt_colors = \
+                            physical_properties(extra_cnt_pdgs, model)
+
+                    entry = {
+                        'n_me': n_me,
+                        'fks_info': info,
+                        'real_pdgs': list(real_pdgs),
+                        'born_pdgs': born_pdgs,
+                        'real_flavor': real_flavor,
+                        'born_flavor': self.born_me.get_external_flavor(
+                            born_index),
+                        'real_flavor_index': real_index,
+                        'born_flavor_index': born_index,
+                        'extra_cnt_pdgs': extra_cnt_pdgs,
+                        'extra_cnt_charges': extra_cnt_charges,
+                        'extra_cnt_colors': extra_cnt_colors,
+                        'extra_cnt_flavor_index': extra_cnt_index,
+                        'virtual_flavor_index': virtual_index,
+                        'real_charges': real_charges,
+                        'born_charges': born_charges,
+                        'real_colors': real_colors,
+                        'born_colors': born_colors,
+                    }
+                    config_entries.append(entry)
+
+                if not config_entries:
+                    # A grouped topology can expose a structural splitting for
+                    # which none of the matrix element's physical rows has the
+                    # required i/j flavor relation. It is not an executable FKS
+                    # class and therefore must not enter generated tables.
+                    continue
+                config_index += 1
+                for entry in config_entries:
+                    entry['fks_config_index'] = config_index
+                flavor_map.extend(config_entries)
+
+        # Resolving a restricted physical Born row can trim diagrams and rebuild
+        # its color basis. Refresh linked Born bases before exporters consume
+        # them; stale link bases still refer to the pre-trim diagram positions.
+        if self.born_me.get('color_basis') is not initial_born_color_basis:
+            self.set_color_links(force=True)
+        self._fks_flavor_map_cache[cache_key] = flavor_map
+        return flavor_map
+
+    def clear_fks_flavor_map_cache(self):
+        """Invalidate cached physical-row mappings after metadata mutation.
+
+        Normal generation finishes constructing Born, real, virtual, and
+        extra-counterterm metadata before requesting this map.  The explicit
+        hook is for low-level callers and tests that intentionally alter those
+        public objects afterwards.
+        """
+        self._fks_flavor_map_cache.clear()
+
+    def get_fks_flavor_signature(self):
+        """Return an immutable identity for grouped physical FKS mappings.
+
+        Local row numbers are included deliberately: two objects cannot share
+        generated wrappers when the same physical channel selects different
+        local Born, real, counterterm, or virtual rows.
+        """
+        signature = []
+        for entry in self.get_fks_flavor_map():
+            info = entry['fks_info']
+            signature.append((
+                tuple(entry['real_pdgs']),
+                tuple(entry['born_pdgs']),
+                tuple(entry['extra_cnt_pdgs'] or ()),
+                entry['real_flavor_index'],
+                entry['born_flavor_index'],
+                entry['extra_cnt_flavor_index'],
+                entry['virtual_flavor_index'],
+                info['i'], info['j'], info['ij'], info['ij_id'],
+                tuple(info['splitting_type']),
+                info['need_color_links'], info['need_charge_links'],
+                tuple(entry['real_charges']),
+                tuple(entry['born_charges']),
+                tuple(entry['real_colors']),
+                tuple(entry['born_colors'])))
+        return tuple(sorted(signature))
         
 
     def get_lh_pdg_string(self):
@@ -873,8 +1105,21 @@ class FKSHelasProcess(object):
         for real in  self.real_processes:
             try:
                 reals2.remove(real)
-            except ValueError:
+            except (ValueError, fks_common.FKSProcessError):
+                # A malformed physical mapping cannot be equivalent. Keep
+                # explicit mapping/merge operations responsible for reporting
+                # that error; equality must also work for copied candidates.
                 return False  
+
+        self_grouped = bool(self.born_me.get('processes')[0].get(
+            'model').get('merged_particles'))
+        other_grouped = bool(other.born_me.get('processes')[0].get(
+            'model').get('merged_particles'))
+        if self_grouped != other_grouped:
+            return False
+        if self_grouped and self.get_fks_flavor_signature() != \
+                other.get_fks_flavor_signature():
+            return False
                 
         if not reals2:
             return True
@@ -893,6 +1138,13 @@ class FKSHelasProcess(object):
         corresponding real processes may not be in the same order. This is 
         taken care of by constructing the list of self_reals.
         """
+        grouped = bool(self.born_me.get('processes')[0].get(
+            'model').get('merged_particles'))
+        if grouped and self.get_fks_flavor_signature() != \
+                other.get_fks_flavor_signature():
+            raise fks_common.FKSProcessError(
+                'add_process: incompatible physical FKS flavor mappings')
+
         # first add the born process
         #need to store pdg lists rather than processes in order to keep mirror processes different
         this_pdgs = [[leg['id'] for leg in proc['legs']] \
@@ -926,6 +1178,7 @@ class FKSHelasProcess(object):
                 if oth_pdgs not in this_pdgs:
                     this_real.matrix_element['processes'].append(oth_proc)
                     this_pdgs.append(oth_pdgs)
+        self.clear_fks_flavor_map_cache()
 
             
     
@@ -984,7 +1237,8 @@ class FKSHelasRealProcess(object): #test written
                 else:
                     logger.info('generating matrix element...')
                     self.matrix_element = helas_objects.HelasMatrixElement(
-                                                      fksrealproc.amplitude, **opts)
+                                                      fksrealproc.amplitude,
+                                                      **dict(opts, enumerate_all_flavors=True))
                     #generate the color for the real
                     self.matrix_element.get('color_basis').build(
                                         self.matrix_element.get('base_amplitude'))
@@ -997,6 +1251,44 @@ class FKSHelasRealProcess(object): #test written
     def get_nexternal_ninitial(self):
         """Refers to the matrix_element function"""
         return self.matrix_element.get_nexternal_ninitial()
+
+    def get_fks_flavor_signature(self):
+        """Return grouped real-to-underlying-Born validity metadata.
+
+        Ungrouped equality intentionally keeps its historical behavior so that
+        ordinary subprocesses with equivalent matrix elements can still be
+        combined.  A merged matrix element must additionally agree on every
+        physical real row represented by each FKS configuration.
+        """
+        model = self.matrix_element.get('processes')[0].get('model')
+        if not model.get('merged_particles'):
+            return None
+
+        signature = []
+        _, real_pdg_rows = self.matrix_element.get_external_flavors(
+            return_pdgs=True)
+        for info in self.fks_infos:
+            config_entries = []
+            for real_pdgs in real_pdg_rows:
+                try:
+                    born_pdgs = fks_common.map_real_to_born_pdgs(
+                        real_pdgs, info, model)
+                except fks_common.FKSFlavorNotInTopology:
+                    continue
+                extra_pdgs = ()
+                if info['extra_cnt_index'] != -1:
+                    extra_pdgs = tuple(fks_common.map_real_to_born_pdgs(
+                        real_pdgs, info, model, underlying_index=1))
+                config_entries.append((
+                    tuple(real_pdgs), tuple(born_pdgs), extra_pdgs,
+                    self.matrix_element.get_external_flavor_index(
+                        real_pdgs, from_pdgs=True)))
+            signature.append((
+                info['i'], info['j'], info['ij'], info['ij_id'],
+                tuple(info['splitting_type']),
+                info['need_color_links'], info['need_charge_links'],
+                tuple(sorted(config_entries))))
+        return tuple(sorted(signature))
     
     def __eq__(self, other):
         """Equality operator:
@@ -1017,6 +1309,10 @@ class FKSHelasRealProcess(object): #test written
             for key in tocheck_info:
                 if selfinfo[key] != otherinfo [key]:
                     return False
+
+        if self.get_fks_flavor_signature() != \
+                other.get_fks_flavor_signature():
+            return False
 
         return True
     

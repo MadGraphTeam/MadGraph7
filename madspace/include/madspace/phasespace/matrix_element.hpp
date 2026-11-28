@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "madspace/driver/context.hpp"
 #include "madspace/phasespace/base.hpp"
 
@@ -61,7 +63,9 @@ public:
         beam_index_in,        ///< Index of the beam (0 or 1).
         random_flavor_in,     ///< Random number for the flavour draw.
         /// x f(x, mu_F) of both incoming legs for the PDG ids -6..6 (6: gluon).
-        parton_densities_in
+        parton_densities_in,
+        g_strong_in,          ///< Direct strong coupling.
+        g_ew_in               ///< Electroweak coupling.
     };
 
     /// A quantity the matrix element can be asked to produce.
@@ -80,7 +84,8 @@ public:
         /// Ratio of the matrix element to a reference matrix element, for a
         /// @ref WeightingStep.
         matrix_element_ratio_out,
-        flavor_index_out ///< Selected flavour, -1 if unchanged.
+        flavor_index_out, ///< Selected flavour, -1 if unchanged.
+        squared_orders_out  ///< Real components per local squared coupling order.
     };
 
     /**
@@ -114,7 +119,8 @@ public:
         bool sample_random_inputs = false,
         const std::vector<me_int_t>& me_frame = {},
         std::size_t incoming_count = 2,
-        me_int_t channel = -1
+        me_int_t channel = -1,
+        std::size_t squared_order_count = 0
     );
     /**
      * Take @p matrix_element_index, @p particle_count and @p diagram_count from
@@ -145,12 +151,17 @@ public:
             sample_random_inputs,
             me_frame,
             incoming_count,
-            channel
+            channel,
+            std::find(outputs.begin(), outputs.end(), squared_orders_out) != outputs.end()
+                ? matrix_element_api.squared_order_count()
+                : 0
         ) {};
     /// Index of the matrix element in the plugin.
     std::size_t matrix_element_index() const { return _matrix_element_index; }
     /// Number of Feynman diagrams.
     std::size_t diagram_count() const { return _diagram_count; }
+    /// Configured squared-order output extent.
+    std::size_t squared_order_count() const { return _squared_order_count; }
     /// Number of external particles.
     std::size_t particle_count() const { return _particle_count; }
     /// The configured input quantities.
@@ -192,6 +203,7 @@ private:
     std::size_t _matrix_element_index;
     std::size_t _particle_count;
     std::size_t _diagram_count;
+    std::size_t _squared_order_count;
     std::vector<MatrixElementInput> _inputs;
     std::vector<MatrixElementOutput> _outputs;
     bool _sample_random_inputs;

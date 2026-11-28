@@ -145,7 +145,20 @@ def _inventory(directory, source_manifest, include_roots):
                 continue
             # all_matrix is generated C++ glue for Python, outside the private
             # Fortran call path; initially do not optimize those exports.
-            _need(path.suffix == '.f', 'Unsupported compilation language')
+            # The model writer uses a .f90 suffix for this fixed-form module;
+            # the checked MODEL recipe compiles it with -ffixed-form.  Other
+            # .f90 units still require a free-form parser and stay outside
+            # this proof.
+            fixed_module = (path == export / 'Source/MODEL/coupl.f90' and
+                            (path.parent / 'makefile').is_file())
+            # Standalone exports also link it as SubProcesses/coupl.f90.  The
+            # link adds no text of its own: the MODEL unit it resolves to is
+            # in scope and is checked in full.
+            if (path.name == 'coupl.f90' and path.is_symlink() and
+                    export / 'Source/MODEL' in scopes and
+                    path.resolve() == (export / 'Source/MODEL/coupl.f90').resolve()):
+                continue
+            _need(path.suffix == '.f' or fixed_module, 'Unsupported compilation language')
             _need(_inside(path, export), 'External compilation unit')
             if scope.name == 'SubProcesses' or scope == directory:
                 _need(path.name in _STANDARD or _BATCH.fullmatch(path.name),
@@ -365,7 +378,10 @@ def _object_lists(export):
             _need(match is not None, 'Unknown object-list build input')
             objects = match[1].split()
             _need(len(objects) == len(set(objects)), 'Repeated compiled object')
-            _need(all((root / (obj[:-2] + '.f')).is_file() for obj in objects), 'Missing compiled source')
+            _need(all((root / (obj[:-2] + '.f')).is_file() or
+                      (name == 'MODEL' and obj == 'coupl.o' and
+                       (root / 'coupl.f90').is_file()) for obj in objects),
+                  'Missing compiled source')
             # Source enumeration is deliberately a superset (e.g. testprog).
             _need(all((root / (stem + '.f')).is_file() for stem in basic), 'Missing core source')
 
@@ -963,6 +979,66 @@ def _private_references(expanded, directory, prefix, certified_calls):
                       'Uncertified private helper reference')
 
 
+def _module_bodies(expanded, name):
+    bodies = []
+    for rows in expanded.values():
+        for start, row in enumerate(rows):
+            if _compact(row.text) != 'MODULE' + name:
+                continue
+            end = next((index for index in range(start + 1, len(rows))
+                        if _compact(rows[index].text) in ('ENDMODULE', 'ENDMODULE' + name)), None)
+            _need(end is not None, 'Unterminated ' + name + ' module')
+            bodies.append([_compact(item.text) for item in rows[start + 1:end]])
+    return bodies
+
+
+@functools.lru_cache(maxsize=None)
+def _canonical_aloha_module():
+    repository = Path(__file__).resolve().parents[2]
+    path = repository / 'aloha/template_files/aloha_functions_loop.f'
+    return _module_bodies({path: _expanded(path, repository, ())}, 'ALOHA_OBJECT')[0]
+
+
+def _aloha_modules(expanded, prefix):
+    """Bind ALOHA records and the generated scalar flavour lookup helpers.
+
+    The helpers import MODEL_OBJECT.  Its only exports may be the passive
+    coupling records and their instances: an interface or procedure there
+    could otherwise redirect an unchanged call through ALOHA_OBJECT.
+    """
+    modules = _module_bodies(expanded, 'ALOHA_OBJECT')
+    _need(len(modules) <= 1, 'Repeated ALOHA module')
+    allowed = {'SEQUENCE', 'DOUBLECOMPLEX::W(4)', 'DOUBLECOMPLEX::W(16)',
+               'DOUBLECOMPLEX::P(0:3)', 'INTEGER::FLV_INDEX',
+               'COMPLEX*32::W(4)', 'COMPLEX*32::W(16)', 'COMPLEX*32::P(0:3)'}
+    allowed |= {marker + name for marker in ('TYPE', 'ENDTYPE')
+                for name in ('ALOHA', 'ALOHA2D', 'MP_ALOHA', 'MP_ALOHA2D')}
+    for body in modules:
+        if all(text in allowed for text in body):
+            continue
+        _need(body == _canonical_aloha_module(), 'Active/aliased ALOHA module')
+        models = _module_bodies(expanded, 'MODEL_OBJECT')
+        _need(len(models) == 1, 'Missing/repeated model object module')
+        model = models[0]
+        _need(len(model) >= 10 and model[:6] == [
+            'TYPECOUPPTR', 'SEQUENCE', 'DOUBLECOMPLEX,POINTER::P', 'ENDTYPECOUPPTR',
+            'TYPEFLV_COUPLING', 'SEQUENCE'] and model[9] == 'ENDTYPEFLV_COUPLING',
+            'Active/aliased model object module')
+        extents = [re.fullmatch(pattern, text) for pattern, text in zip((
+            r'INTEGER::PARTNER\(([0-9]+)\)', r'INTEGER::PARTNER2\(([0-9]+)\)',
+            r'TYPE\(COUPPTR\)::VAL\(([0-9]+)\)'), model[6:9])]
+        _need(all(extents) and len({match[1] for match in extents}) == 1,
+              'Unknown model flavour record')
+        protected = ('MAXLWFSIZE', 'LOOPMAXCOEFS', 'VERTEXMAXCOEFS') + tuple(
+            prefix + name for name in ('CREATE_LOOP_COEFS', 'MERGE_WL',
+                                      'UPDATE_WL_', 'DP_TERMINAL_WL_'))
+        for text in model[10:]:
+            match = re.fullmatch(r'TYPE\(FLV_COUPLING\)::([A-Z][A-Z0-9_]*(?:,[A-Z][A-Z0-9_]*)*)', text)
+            _need(match and not any(name in match[1].split(',') or
+                  (name.endswith('_') and any(item.startswith(name) for item in match[1].split(',')))
+                  for name in protected), 'Active/aliased model object export')
+
+
 def _proof(directory, prefix, expected, source_manifest, include_roots):
     directory = Path(directory).resolve()
     _need(directory.is_dir() and re.fullmatch(r'(?:[A-Za-z][A-Za-z0-9_]*)?', prefix), 'Invalid proof scope')
@@ -999,26 +1075,9 @@ def _proof(directory, prefix, expected, source_manifest, include_roots):
             _need('BIND(C' not in text, 'External binding can alias DP storage')
             if any(text.startswith('SUBROUTINE' + name + '(') for name in protected) or text == 'MODULE' + prefix + 'POLYNOMIAL_CONSTANTS':
                 _need(unit.resolve() == (directory / 'polynomial.f').resolve(), 'Shadowed protected routine/module')
-    # ALOHA_OBJECT is the only other generated module imported by the
-    # COMMON holders.  It must remain a passive collection of the four
-    # wavefunction records, without re-exported generic procedures.
-    aloha_modules = {}
-    for unit, rows in expanded.items():
-        starts = [index for index, row in enumerate(rows)
-                  if _compact(row.text) == 'MODULEALOHA_OBJECT']
-        for start in starts:
-            end = next((index for index in range(start + 1, len(rows))
-                        if _compact(rows[index].text) in ('ENDMODULE', 'ENDMODULEALOHA_OBJECT')), None)
-            _need(end is not None, 'Unterminated ALOHA module')
-            body = [_compact(row.text) for row in rows[start + 1:end]]
-            allowed = {'SEQUENCE', 'DOUBLECOMPLEX::W(4)', 'DOUBLECOMPLEX::W(16)',
-                       'DOUBLECOMPLEX::P(0:3)', 'INTEGER::FLV_INDEX',
-                       'COMPLEX*32::W(4)', 'COMPLEX*32::W(16)', 'COMPLEX*32::P(0:3)'}
-            allowed |= {marker + name for marker in ('TYPE', 'ENDTYPE')
-                        for name in ('ALOHA', 'ALOHA2D', 'MP_ALOHA', 'MP_ALOHA2D')}
-            _need(all(text in allowed for text in body), 'Active/aliased ALOHA module')
-            aloha_modules[(unit.resolve(), start)] = body
-    _need(len(aloha_modules) <= 1, 'Repeated ALOHA module')
+    # ALOHA_OBJECT is the only other generated module imported by the COMMON
+    # holders; bind its flavour helpers as well as the wavefunction records.
+    _aloha_modules(expanded, prefix)
     blocks, batch_rows, wavefunction_bounds = {}, [], set()
     common_token = '/' + prefix + 'WL/'
     for unit, rows in expanded.items():

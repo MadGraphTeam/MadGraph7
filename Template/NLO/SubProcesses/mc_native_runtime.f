@@ -1,6 +1,6 @@
       subroutine mc_sync_native_tables()
 ! Activate immutable native metadata. Numerical Born COMMONs remain local.
-      use mc_native_context, only: native_metadata
+      use mc_native_context, only: native_metadata,active_sector
       implicit none
       include 'nexternal.inc'
       include 'genps.inc'
@@ -23,6 +23,16 @@
       nb=size(native_metadata%tree,2)
       nc=native_metadata%configurations(0)
       np=native_metadata%nprocesses
+      if(allocated(native_metadata%sector_born_ids))then
+         if(active_sector.lt.1.or.active_sector.gt.
+     $      size(native_metadata%sector_born_ids,2))
+     $      stop 'Invalid physical native Born sector'
+         np=1
+         native_metadata%born_ids(:,1)=
+     $      native_metadata%sector_born_ids(:,active_sector)
+         native_metadata%identical_factor=
+     $      native_metadata%sector_born_identities(active_sector)
+      endif
       nf=native_metadata%ncolor
       idup=0
       mothup=0

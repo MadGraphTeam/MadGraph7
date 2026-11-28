@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 from tests.unit_tests.fks.test_mint_channels import SUPPORT
+from tests.unit_tests.fks.mint_fixture import mint_runtime_modules
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -65,6 +66,7 @@ class TestMintUncertainty(unittest.TestCase):
              '-ffree-line-length-none',
              '-o', 'check', 'support.f90',
              str(ROOT / 'Template/NLO/SubProcesses/virtual_surrogate.f90'),
+             *mint_runtime_modules(cls.path),
              'mint_module.f90', 'check.f90'],
             cwd=cls.path, capture_output=True, text=True)
         if result.returncode:

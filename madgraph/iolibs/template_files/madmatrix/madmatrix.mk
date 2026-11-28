@@ -164,7 +164,12 @@ endif
 
 CXXFLAGS = $(OPTFLAGS) -std=c++20 -Wall -Wshadow -Wextra
 ifeq ($(shell $(CXX) --version | grep ^nvc++),)
-  CXXFLAGS += -ffast-math # see issue #117
+  ifeq ($(NLO_REAL_STRICT),1)
+    # Native FKS components need the strict arithmetic checked by their oracle.
+    CXXFLAGS += -fno-fast-math
+  else
+    CXXFLAGS += -ffast-math # see issue #117
+  endif
 endif
 ###CXXFLAGS+= -Ofast # performance is not different from --fast-math
 ###CXXFLAGS+= -g # FOR DEBUGGING ONLY
@@ -757,7 +762,7 @@ endif
 
 # Build lockfile "full" tag (defines full specification of object-file builds that cannot be intermixed)
 # NB: the backend name is used as-is ('simd_128', 'scalar', 'cuda', 'hip'...)
-override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)
+override TAG = $(BACKEND)_$(FPTYPE)_inl$(HELINL)_cpp$(CPPBLAS)$(if $(filter 1,$(NLO_REAL_STRICT)),_strict1,)
 
 # Export TAG (so that there is no need to check/define it again in src/Makefile)
 export TAG
@@ -913,11 +918,11 @@ endif
 # incompatible backends (different BACKEND, FPTYPE, etc.) in the same directory.
 # Use USEBUILDDIR=1 to build for multiple backends simultaneously without cleaning.
 ifeq ($(GPUCC),)
-$(BUILDDIR)/%%.o : %%.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG) $(PCHFILE)
+$(BUILDDIR)/%%.o : %%.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(wildcard $(SRC)/Arithmetics/*.h) $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG) $(PCHFILE)
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
 	$(CXX) $(CPPFLAGS) $(INCFLAGS) $(CXXFLAGS) $(PCHFLAGS) -c $< -o $@
 else
-$(BUILDDIR)/%%.o : %%.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG)
+$(BUILDDIR)/%%.o : %%.cc *.h ../../backend/$(BACKENDDIR)/*.h ../../backend/common/*.h $(SRC)/*.h $(wildcard $(SRC)/Arithmetics/*.h) $(SRC)/rambo/*.h $(BUILDDIR)/.build.$(TAG)
 	@if [ ! -d $(BUILDDIR) ]; then echo "mkdir -p $(BUILDDIR)"; mkdir -p $(BUILDDIR); fi
 	$(GPUCC) $(CPPFLAGS) $(INCFLAGS) $(GPUFLAGS) -c -x $(GPULANGUAGE) $< -o $@
 endif
@@ -947,7 +952,7 @@ endif
 ifeq ($(MADMATRIX_COMMONLIB_EXTERNAL),1)
 $(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so: ;
 else
-$(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so: $(SRC)/*.h $(SRC)/*.cc $(BUILDDIR)/.build.$(TAG)
+$(LIBDIR)/lib$(MADMATRIX_COMMONLIB).so: $(SRC)/*.h $(wildcard $(SRC)/Arithmetics/*.h) $(SRC)/*.cc $(BUILDDIR)/.build.$(TAG)
 	$(MAKE) -C $(SRC) BACKEND=$(BACKEND) FPTYPE=$(FPTYPE) LIBDIR=$(LIBDIR)
 endif
 

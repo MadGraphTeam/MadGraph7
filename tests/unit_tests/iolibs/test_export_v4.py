@@ -246,16 +246,19 @@ class IOExportV4IOTest(IOTests.IOTestManager,
                 'SUBROUTINE %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P,HEL, FLAV_IDX, ANS)',
                 content)
 
-        # The caller side. Both drivers pass an all-ones INTEGER array where
-        # FLAV_IDX is expected, which resolves to its first element: the
-        # canonical flavor. That is deliberate -- neither driver knows about
-        # merged flavors -- but the argument count has to line up.
+        # The standalone driver selects its canonical flavour. MadLoop maps
+        # its physical virtual row to the matching Born row before evaluation.
+        # Both must pass the flavour index in the third argument slot.
         self.assertIn(
             'CALL %(proc_prefix)sSMATRIX_SPLITORDERS(P,FLAVOR,MATELEMS)',
             read('check_sa_splitOrders.f'))
+        loop = read('loop_optimized', 'loop_matrix_standalone.inc')
         self.assertIn(
-            'CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS(P_USER,USERHEL,IC,BORNBUFF(0))',
-            read('loop_optimized', 'loop_matrix_standalone.inc'))
+            'BORN_FLAV_IDX=%(proc_prefix)sGET_FLAVOR_INDEX(FLAVOR)', loop)
+        self.assertIn('IF (BORN_FLAV_IDX.EQ.0) THEN', loop)
+        self.assertIn(
+            'CALL %(proc_prefix)sSMATRIXHEL_SPLITORDERS('
+            'P_USER,USERHEL,BORN_FLAV_IDX,\n     $ BORNBUFF(0))', loop)
 
     def test_crossed_get_all_inter_takes_nhel_in_caller_order(self):
         """GET_ALL_INTER_IDX (and its split-order twin
@@ -10334,7 +10337,7 @@ class AlohaFortranWriterTest(unittest.TestCase):
 C     The process calculated in this file is: 
 C     Gamma(3,2,1)
 C     
-      SUBROUTINE FFV1_1(F2, V3, COUP, M1, W1,F1)
+      RECURSIVE SUBROUTINE FFV1_1(F2, V3, COUP, M1, W1,F1)
       USE ALOHA_OBJECT
       IMPLICIT NONE
       COMPLEX*16 CI
@@ -10367,6 +10370,8 @@ C
         
         self.assertTrue(os.path.exists('/tmp/FFV1_1.f'))
         textfile = open('/tmp/FFV1_1.f','r').read()
+        self.assertRegex(textfile, r'(?im)^\s*recursive subroutine FFV1_1\b')
+        self.assertNotRegex(textfile, r'(?im)^\s*recursive\s+entry\b')
         # rstrip each line: the ALOHA line wrapper can leave a trailing space
         # (e.g. after "(M1 " when the width term spills to a continuation), and
         # that cosmetic whitespace is not what this test is checking.
@@ -10487,6 +10492,56 @@ class UFO_model_to_mg4_Test(unittest.TestCase):
             self.assertIn('STOP 1', get_color_f)
         finally:
             shutil.rmtree(tmpdir)
+
+    def test_create_mod_coupl_without_running_coupling(self):
+        """coupl.f90 compiles when the process has no running coupling.
+
+        e+ e- > e+ e- or the MadSpin decay t > w+ b only use couplings that do
+        not depend on alpha_s, so there is no coupling vector to declare. A
+        'DOUBLE COMPLEX, ALLOCATABLE ::' with nothing after it is not valid
+        Fortran and stopped Source/MODEL from compiling.
+        """
+        import subprocess
+
+        opt = {'export_format': 'madevent', 'mp': False,
+               'complex_mass': False, 'loop_induced': False,
+               'output_options': {}}
+        # GC_3 is the photon-electron coupling; GC_10 and GC_11 run with
+        # alpha_s.
+        for wanted, declared in [(['GC_3'], []),
+                                 (['GC_3', 'GC_10', 'GC_11'],
+                                  ['GC_10_VEC(:)', 'GC_11_VEC(:)'])]:
+            tmpdir = tempfile.mkdtemp()
+            try:
+                mg4_model = export_v4.UFO_model_to_mg4(self.mymodel, tmpdir,
+                                                       opt)
+                mg4_model.refactorize(wanted)
+                self.assertEqual(
+                    sorted(c.name for c in mg4_model.coups_dep),
+                    sorted(d[:-7] for d in declared))
+                mg4_model.create_mod_coupl()
+                text = open(os.path.join(tmpdir, 'coupl.f90')).read()
+
+                self.assertIsNone(
+                    re.search(r'ALLOCATABLE\s*::\s*$', text, re.M), text)
+                complex_decl = [l for l in text.split('\n')
+                                if l.strip().startswith('DOUBLE COMPLEX')]
+                self.assertEqual(
+                    complex_decl,
+                    ['      DOUBLE COMPLEX, ALLOCATABLE :: %s'
+                     % ', '.join(declared)] if declared else [])
+
+                # Compile it the way makefile_madevent/makefile_standalone do.
+                if not misc.which('gfortran'):
+                    continue
+                result = subprocess.run(
+                    ['gfortran', '-ffixed-line-length-132', '-ffixed-form',
+                     '-c', '-o', 'coupl.o', 'coupl.f90'],
+                    cwd=tmpdir, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0,
+                                 result.stdout + result.stderr)
+            finally:
+                shutil.rmtree(tmpdir)
 
 
 class BrokenSymmetryDecayChainTest(unittest.TestCase):

@@ -46,9 +46,9 @@ ifneq ("$(wildcard born_support.f)","")
     BORN_SUPPORT_EWSUD_OBJECTS = born_support.o
     BORN_SUPPORT_REWEIGHT_OBJECTS = boost_to_frame.o
     ifeq ($(shell uname -s),Darwin)
-        BORN_SUPPORT_REWEIGHT_GC = -Wl,-dead_strip
+        BORN_SUPPORT_GC = -Wl,-dead_strip
     else
-        BORN_SUPPORT_REWEIGHT_GC = -Wl,--gc-sections
+        BORN_SUPPORT_GC = -Wl,--gc-sections
     endif
 endif
 
@@ -67,7 +67,8 @@ GENPS_OBJECTS = fks_phase_space_data.o genps_fks_helpers.o genps_fks_sampling.o 
 FILES= $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
 	 qed_shower_support.o process_module.o scale_module.o		\
 	 $(patsubst %.f,%.o,$(wildcard matrix_*.f)) 			\
-	 FKSParams.o real_me_chooser.o chooser_functions.o recmom.o	\
+	 FKSParams.o real_me_chooser.o native_real_me_chooser.o $(patsubst %.f,%.o,$(wildcard mc_provider_worker.f)) \
+	 chooser_functions.o recmom.o	\
 	 $(GENPS_OBJECTS) resonance_recoil.o initial_recoil.o		\
 	 recoil_selection.o resonance_histories.o setcuts.o setscales.o	\
 	 $(patsubst %.f,%.o,$(wildcard b_sf_???.f)) 			\
@@ -77,15 +78,15 @@ FILES= $(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) 			\
          $(patsubst %.f,%.o,$(wildcard  numder*.f)) 			\
 	 momentum_reshuffling.o						\
 	 rescale_alpha_tagged.o						\
-	 fks_Sij.o $(fastjetfortran_madfks) fks_singular.o		\
-	 montecarlocounter.o mcatnlo_delta_scales.o herwig7_scales.o		\
+	 fks_Sij.o $(fastjetfortran_madfks) fks_singular.o fks_buffered.o driver.o		\
+	 montecarlocounter.o mc_shower_state.o mcatnlo_delta_scales.o herwig7_scales.o		\
 	 boostwdir2.o boost_to_frame.o cluster.o splitorders_stuff.o reweight_xsec.o	\
 	 iproc_map.o sudakov.o  				\
 	 MC_integer.o $(reweight_xsec_events_pdf_dummy)			\
 	 $(pineappl_interface) weight_lines.o mint_module.o virtual_approximation.o \
-	 virtual_surrogate.o polfit.o
+	 virtual_surrogate.o mc_decision_ledger.o mc_batch_trace.o mc_point_state.o polfit.o
 
-FILESSUD= fks_phase_space_data.o \
+FILESSUD= driver.o fks_phase_space_data.o \
          $(patsubst %.f,%.o,$(wildcard  ewsudakov*.f)) 			\
          $(patsubst %.f,%.o,$(wildcard  numder*.f)) 			\
 	 born.o born_hel.o momentum_reshuffling.o			\
@@ -95,14 +96,15 @@ FILESSUD= fks_phase_space_data.o \
 
 # Files needed for mintFO & mintMC
 RUN= $(FO_ANALYSE) $(FILES) cuts.o dummy_fct.o 		\
-	fill_MC_mshell.o born_hel.o open_output_files.o			\
+	fill_MC_mshell.o born_hel.o open_output_files.o mc_context_memory.o mc_event_records.o	\
 	add_write_info.o madfks_plot.o
 
 # Files for mintFO
 MINTFO= $(RUN) driver_mintFO.o handling_lhe_events.o write_event.o BinothLHA.o
 
 # Files for mintMC
-MINTMC= $(RUN) driver_mintMC.o handling_lhe_events.o write_event.o BinothLHA.o
+MINTMC= $(RUN) native_mc_point.o mc_native_cohort.o mc_event_queues.o mc_native_generation.o \
+	driver_mintMC.o handling_lhe_events.o write_event.o BinothLHA.o
 
 # Files for check_poles
 POLES= $(RUN) check_poles.o BinothLHA.o write_event.o handling_lhe_events.o
@@ -116,7 +118,7 @@ EWSUDLIB = $(FILESSUD)
 # Files for the FKS Born building-block standalone (output standalone_fortran --fks).
 # The driver embeds its own get_lo2_orders, so the EW-Sudakov object
 # chain is deliberately left out to keep the link minimal.
-FKSSA = check_sa_fks.o born.o sborn_sf.o				\
+FKSSA = driver.o check_sa_fks.o born.o sborn_sf.o				\
 	$(patsubst %.f,%.o,$(wildcard b_sf_???.f))			\
 	splitorders_stuff.o orderstags_glob.o $(BORN_SUPPORT_EWSUD_OBJECTS)
 
@@ -130,7 +132,7 @@ TEST= $(RUN) test_soft_col_limits.o BinothLHADummy.o write_event.o handling_lhe_
 SYM= $(RUN) BinothLHADummy.o symmetry_fks_v3.o write_ajob.o write_event.o handling_lhe_events.o
 
 # Files for event reweighting to get e.g. scale and PDF uncertainties
-RWGFILES=fks_phase_space_data.o FKSParams.o reweight_xsec_events.o handling_lhe_events.o recmom.o \
+RWGFILES=driver.o fks_phase_space_data.o FKSParams.o reweight_xsec_events.o mc_context_memory.o mc_event_records.o handling_lhe_events.o recmom.o \
 	$(patsubst %.f,%.o,$(wildcard parton_lum_*.f)) setscales.o	\
 	cuts.o dummy_fct.o $(fastjetfortran_madfks) boostwdir2.o	\
 	$(reweight_xsec_events_pdf_dummy) fill_MC_mshell.o cluster.o	\
@@ -146,6 +148,12 @@ RWGFILES=fks_phase_space_data.o FKSParams.o reweight_xsec_events.o handling_lhe_
 	$(FC) $(FFLAGS) -c -I. -I$(ANADIR) $(FO_INCLUDEPATHS) $<
 %.o: %.for
 	$(FC) $(FFLAGS) -c -I. -I$(ANADIR) $<
+ifeq ($(openmp),true)
+OPENMP_RECURSIVE_OBJS = driver_vec.o real_me_chooser.o born.o \
+	$(patsubst %.f,%.o,$(wildcard matrix_*.f))
+$(OPENMP_RECURSIVE_OBJS): %.o: %.f
+	$(FC) $(OMP_RECURSIVE_FFLAGS) -c -I. -I$(LIBDIR) $<
+endif
 %.o: $(ANADIR)/%.for
 	$(FC) $(FFLAGS) -c -I. -I$(ANADIR) $(FO_INCLUDEPATHS) $<
 %.o: %.c
@@ -176,7 +184,7 @@ ewsudakov_sa: $(EWSUDSA)
 	strip ewsudakov_sa
 
 check_fks: $(FKSSA) $(BORN_SUPPORT_LIB)
-	$(FC) $(FFLAGS) -o check_fks $(FKSSA) $(LINKLIBSSUD) $(BORN_SUPPORT_LINK) $(LDFLAGS)
+	$(FC) $(FFLAGS) -o check_fks $(FKSSA) $(LINKLIBSSUD) $(BORN_SUPPORT_LINK) $(LDFLAGS) $(BORN_SUPPORT_GC)
 
 $(LIBDIR)/libdhelas.$(dylibext):
 	$(MAKE) -C "$(LIBDIR)/../Source/DHELAS" shared
@@ -210,7 +218,7 @@ madevent_mintFO: $(MINTFO) $(libmadloop) makefile $(LIBS)
 	strip madevent_mintFO
 
 reweight_xsec_events: $(RWGFILES) makefile $(LIBS)
-	$(FC) -o reweight_xsec_events $(RWGFILES) $(LINKLIBS) $(FJLIBS) $(LDFLAGS) $(BORN_SUPPORT_REWEIGHT_GC)
+	$(FC) -o reweight_xsec_events $(RWGFILES) $(LINKLIBS) $(FJLIBS) $(LDFLAGS) $(BORN_SUPPORT_GC)
 	rm handling_lhe_events.o
 	strip reweight_xsec_events
 
@@ -246,7 +254,20 @@ genps_fks_radiation.o: FKSParams.o
 driver_mintFO.o driver_mintMC.o write_event.o add_write_info.o \
     test_soft_col_limits.o symmetry_fks_v3.o: genps_fks.o
 driver_mintFO.o: process_module.o
-mint_module.o : FKSParams.o virtual_surrogate.o
+mint_module.o : FKSParams.o virtual_surrogate.o driver.o mc_decision_ledger.o mc_batch_trace.o
+mc_point_state.o: orders.inc nexternal.inc
+mc_shower_state.o: montecarlocounter.o scale_module.o process_module.o nexternal.inc born_nhel.inc nFKSconfigs.inc
+mc_event_records.o weight_lines.o mc_native_cohort.o: mc_context_memory.o
+handling_lhe_events.o write_event.o: mc_event_records.o
+native_mc_point.o: mc_point_state.o genps_fks.o weight_lines.o mc_native_context.o mc_shower_state.o mint_module.o
+mc_native_cohort.o: mint_module.o native_mc_point.o mc_native_context.o
+mc_event_queues.o: mc_event_records.o mc_decision_ledger.o mint_module.o
+mc_native_generation.o: mc_event_queues.o mc_native_cohort.o
+driver_mintMC.o: mc_native_generation.o
+driver_mintMC.o fks_singular.o: mc_point_state.o
+mc_provider_worker.o: mc_native_context.o mc_batch_trace.o
+native_real_me_chooser.o: mc_decision_ledger.o mc_batch_trace.o
+real_me_chooser.o: mc_batch_trace.o
 virtual_approximation.o : weight_lines.o mint_module.o
 fks_singular.o genps_fks.o setscales.o cuts.o fastjet_wrapper.o \
     cluster.o mc_native_runtime.o born_support.o: timing_variables.inc
@@ -277,15 +298,23 @@ genps_fks_sampling.o: mint_module.o
 ALOHA_MODULE_USERS = $(patsubst %.f,%.o,$(shell grep -il '^[[:space:]]*use[[:space:]]*aloha_object' *.f))
 $(ALOHA_MODULE_USERS): $(LIBDIR)aloha_object.mod
 
+ifneq ("$(wildcard ../../Source/MODEL/flavor_couplings.f)","")
+$(LIBDIR)aloha_object.mod: ../../Source/MODEL/model_object.mod
+../../Source/MODEL/model_object.mod: ../../Source/MODEL/flavor_couplings.f
+	$(MAKE) -C ../../Source/MODEL flavor_couplings.o
+	@test -f $@ || $(MAKE) -B -C ../../Source/MODEL flavor_couplings.o
+endif
+
 $(LIBDIR)aloha_object.mod: ../../Source/DHELAS/aloha_functions.f
 	$(MAKE) -C ../../Source/DHELAS aloha_functions.o
 	@test -f ../../Source/DHELAS/aloha_object.mod || $(MAKE) -B -C ../../Source/DHELAS aloha_functions.o
 	cp -f ../../Source/DHELAS/aloha_object.mod $@
 
-# Offline reweighting uses the framed Born helper, but not the bridge's
-# virtual and real-ME wrappers. Keep their unresolved dependencies out of
-# that executable while retaining every helper reachable from sborn_frame.
-boost_to_frame.o: FFLAGS += -ffunction-sections
+# Lightweight Born checks and offline reweighting need only some entry points
+# from these objects. Separate the other frame, helicity and colour-linked
+# routines so those links can drop references to the native runtime, virtual,
+# Sudakov and subtraction matrix elements.
+boost_to_frame.o born.o sborn_sf.o: FFLAGS += -ffunction-sections
 
 clean:
 	@rm -f *.o write_ajob_basic reweight_xsec_events madevent_* check_poles\
@@ -300,11 +329,38 @@ endif
 
 ifneq ("$(wildcard mc_native_context.f90)","")
 mc_native_context.o: $(LIBDIR)mc_born_types.mod $(LIBDIR)mc_born_support.mod
-mc_native_context.o: FFLAGS += -ffree-line-length-none
+mc_native_context.o: mc_batch_trace.o
+mc_native_context.o: FFLAGS += -ffree-line-length-none -ffunction-sections
 mc_native_runtime.o mc_native_props.o real_me_chooser.o chooser_functions.o genps_fks.o setcuts.o fks_singular.o driver_mintMC.o weight_lines.o iproc_map.o cluster.o boost_to_frame.o: mc_native_context.o
 mc_native_runtime.o: FFLAGS += -ffixed-line-length-none
 
 # Native metadata dimensions are shared by all runtime COMMON declarations.
 # Regenerating a table must rebuild every Fortran consumer of that layout.
 $(filter %.o,$(FILES) $(RUN) $(MINTFO) $(MINTMC) $(POLES) $(TEST) $(SYM) $(RWGFILES)): genps.inc nFKSconfigs.inc maxconfigs.inc maxparticles.inc born_nhel.inc born_conf.inc born_coloramps.inc born_leshouche.inc fks_info.inc fks_symmetry.inc mc_histories.inc leshouche_decl.inc configs_and_props_decl.inc real_from_born_configs.inc
+endif
+
+# Explicit-buffer fixed-order entrypoints and the preserved Fortran vector API.
+# Native MC matching retains upstream's typed state and history ownership.
+.PHONY: couplmod
+ifneq ("$(wildcard ../../Source/MODEL/coupl.f90)","")
+couplmod: ../../Source/MODEL/couplings.mod
+../../Source/MODEL/couplings.mod: ../../Source/MODEL/coupl.f90
+	$(MAKE) -C ../../Source/MODEL coupl.o
+	@test -f $@ || $(MAKE) -B -C ../../Source/MODEL coupl.o
+endif
+couplmod:
+	ln -sf ../../Source/MODEL/couplings.mod .
+driver.o: | couplmod
+born.o born_hel.o extra_cnt_wrapper.o: driver.o
+$(patsubst %.f,%.o,$(wildcard matrix_*.f)): driver.o
+fks_buffered.o: weight_lines.o mint_module.o fks_phase_space_data.o driver.o
+native_real_me_chooser.o: mc_native_context.o nFKSconfigs.inc fks_info.inc orders.inc
+setscales.o: | couplmod
+
+-include nlo_real_offload.mk
+# The fragment extends FILES/FKSSA after make has expanded the prerequisites
+# above. The wrapper depends on the bridge and the selected MadMatrix libraries.
+ifneq ($(NLO_REAL_LINKLIBS),)
+gensym test_soft_col_limits check_poles check_fks check_sudakov check_sudakov_angle2 \
+    madevent_mintFO madevent_mintMC reweight_xsec_events ewsudakov_sa libsudpy: nlo_real_offload.o
 endif

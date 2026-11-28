@@ -3,7 +3,7 @@ C     The process calculated in this file is:
 C     P(3,1)*Metric(1,2) - P(3,2)*Metric(1,2) - P(2,1)*Metric(1,3) +
 C      P(2,3)*Metric(1,3) + P(1,2)*Metric(2,3) - P(1,3)*Metric(2,3)
 C     
-      SUBROUTINE VVV1_0(V1, V2, V3, COUP,VERTEX)
+      RECURSIVE SUBROUTINE VVV1_0(V1, V2, V3, COUP,VERTEX)
       USE ALOHA_OBJECT
       IMPLICIT NONE
       COMPLEX*16 CI
@@ -63,8 +63,8 @@ C     Coup(2) * (Metric(1,2))
 C     Coup(3) * (Metric(1,3))
 C     Coup(4) * (P(1,2) - P(1,3))
 C     
-      SUBROUTINE VVV1_VVS1_VSV2_VSS1_0(V1, V2, V3, COUP1, COUP2, COUP3
-     $ , COUP4,VERTEX)
+      RECURSIVE SUBROUTINE VVV1_VVS1_VSV2_VSS1_0(V1, V2, V3, COUP1,
+     $  COUP2, COUP3, COUP4,VERTEX)
       USE ALOHA_OBJECT
       IMPLICIT NONE
       COMPLEX*16 CI
@@ -134,8 +134,8 @@ C     Coup(4) * (Metric(2,3))
 C     Coup(5) * (P(2,3) - P(2,1))
 C     Coup(6) * (P(3,1) - P(3,2))
 C     
-      SUBROUTINE VVV1_VSV2_VSS2_SVV2_SVS2_SSV3_0(V1, V2, V3, COUP1,
-     $  COUP2, COUP3, COUP4, COUP5, COUP6,VERTEX)
+      RECURSIVE SUBROUTINE VVV1_VSV2_VSS2_SVV2_SVS2_SSV3_0(V1, V2, V3,
+     $  COUP1, COUP2, COUP3, COUP4, COUP5, COUP6,VERTEX)
       USE ALOHA_OBJECT
       IMPLICIT NONE
       COMPLEX*16 CI

@@ -1,0 +1,77 @@
+{
+  "process": "u u~ > t t~ [QCD]",
+  "export": "--me_exporter=mg7 --vector_size=1",
+  "native_backend": "fortran",
+  "seed": 42,
+  "events": 12,
+  "lhaid": 303400,
+  "beams_GeV": [
+    6500.0,
+    6500.0
+  ],
+  "folding": [
+    1,
+    1,
+    1
+  ],
+  "card_sha256": {
+    "FO_analyse_card.dat": "c2b44c129b72c58be3472896b8ef4d73d0058471fe5ff764b9fd3000d8004840",
+    "run_card.dat": "37d54baecc840cc4b5af3b217a7e047c61178fee6e094fd8242391e317410681",
+    "MadLoopParams.dat": "9c8ac5d406f3511c98f4aeb2bd57b1f8c04a082e14cda7a1633081a9dbb6c16b",
+    "param_card.dat": "62d6173f6c4cfd284e0c7b0bb578901fa2e099b090f63008845c81263e3f36c7"
+  },
+  "sample_event_body_sha256": "849eb99bf1f6d8f29aa7d52ce79659f9c78784b4ad7f88ae776612417ca79289",
+  "event_weight_signs": [
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1
+  ],
+  "event_initialization": [
+    "2212   2212 0.65000000E+04 0.65000000E+04 -1 -1   303400   303400 -4   1",
+    " 0.18446410E+03 0.49597000E+01 0.19430547E+03      0"
+  ],
+  "native_results": {
+    "0": {
+      "P0_uux_ttx/GF1.0/res_0.dat": [
+        158.82103953257086,
+        4.493589134963267,
+        148.92579019530965,
+        4.493084675303672,
+        2.0,
+        1119744.0
+      ]
+    },
+    "1": {
+      "P0_uux_ttx/GF1.0/res_1.dat": [
+        194.30546816760815,
+        4.963175755507221,
+        184.46410454816055,
+        4.9597115053567284,
+        2.0,
+        1146880.0
+      ]
+    },
+    "2": {
+      "P0_uux_ttx/GF1.0/res_2.dat": [
+        194.30546816760815,
+        4.963175755507221,
+        184.46410454816055,
+        4.9597115053567284,
+        1.0,
+        12.0
+      ]
+    }
+  },
+  "native_history_table_sha256": "30c57e16eb6c755c9e7236792f4ce564463893eb442ef357319290a44a5fd706",
+  "subprocess": "P0_uux_ttx",
+  "applied_lhe_run_card_sha256": "37d54baecc840cc4b5af3b217a7e047c61178fee6e094fd8242391e317410681"
+}

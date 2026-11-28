@@ -66,7 +66,7 @@ class TestPDFLuminosityCache(unittest.TestCase):
             result = subprocess.run([
                 shutil.which('gfortran'), str(TEMPLATE.parent / 'Source/timing.f'), '-O2', '-std=legacy', '-fcheck=all',
                 '-ffixed-line-length-none', '-I', str(work),
-                str(work / 'modules.f90'), str(TEMPLATE / 'weight_lines.f'),
+                str(work / 'modules.f90'), str(TEMPLATE / 'mc_context_memory.f90'), str(TEMPLATE / 'weight_lines.f'),
                 str(ROOT / 'Template/NLO/Source/extra_weights.f'),
                 str(work / 'weights.f'),
                 str(ROOT / 'tests/input_files/check_pdf_luminosity_cache.f90'),

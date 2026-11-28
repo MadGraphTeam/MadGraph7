@@ -18,7 +18,7 @@ class TestMCEventColours(unittest.TestCase):
             executable = work / 'check_weight_lines'
             result = subprocess.run([
                 shutil.which('gfortran'), str(TEMPLATE.parent / 'Source/timing.f'), '-O2', '-std=legacy', '-fcheck=all',
-                '-ffixed-line-length-none', str(TEMPLATE / 'weight_lines.f'),
+                '-ffixed-line-length-none', str(TEMPLATE / 'mc_context_memory.f90'), str(TEMPLATE / 'weight_lines.f'),
                 str(ROOT / 'tests/input_files/check_weight_lines.f90'),
                 '-o', str(executable)], cwd=work, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -38,7 +38,8 @@ class TestMCEventColours(unittest.TestCase):
                 'orders.inc': 'integer nsplitorders,qcd_pos,qed_pos\n'
                               'parameter(nsplitorders=2,qcd_pos=1,qed_pos=2)',
                 'nFKSconfigs.inc': 'integer fks_configs\nparameter(fks_configs=2)',
-                'fks_info.inc': 'integer pdg_type_d(2,5),fks_i_d(2)\n'
+                'fks_info.inc': 'logical,parameter :: has_physical_fks_classes=.false.\n'
+                                'integer pdg_type_d(2,5),fks_i_d(2)\n'
                                 'logical need_color_links_d(2),need_charge_links_d(2)\n'
                                 'common/test_fks_info/pdg_type_d,fks_i_d,'
                                 'need_color_links_d,need_charge_links_d',
@@ -73,7 +74,7 @@ class TestMCEventColours(unittest.TestCase):
                 str(TEMPLATE / 'genps_fks_helpers.f'),
                 str(TEMPLATE / 'mcatnlo_delta_scales.f90'),
                 str(TEMPLATE / 'herwig7_scales.f90'),
-                str(TEMPLATE / 'scale_module.f90'), str(TEMPLATE / 'weight_lines.f'),
+                str(TEMPLATE / 'scale_module.f90'), str(TEMPLATE / 'mc_context_memory.f90'), str(TEMPLATE / 'weight_lines.f'),
                 str(work / 'colours.f'),
                 str(ROOT / 'tests/input_files/check_mc_event_colours.f90'),
                 '-o', str(executable)], cwd=work, capture_output=True, text=True)

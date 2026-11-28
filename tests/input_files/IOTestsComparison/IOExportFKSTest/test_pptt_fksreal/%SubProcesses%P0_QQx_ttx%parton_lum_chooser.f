@@ -1,0 +1,87 @@
+      DOUBLE PRECISION FUNCTION DLUM()
+      IMPLICIT NONE
+      INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      SELECT CASE(NFKSPROCESS)
+      CASE(1)
+        CALL DLUM_1(DLUM)
+      CASE(2)
+        CALL DLUM_1(DLUM)
+      CASE(3)
+        CALL DLUM_1(DLUM)
+      CASE(4)
+        CALL DLUM_1(DLUM)
+      CASE(5)
+        CALL DLUM_1(DLUM)
+      CASE(6)
+        CALL DLUM_1(DLUM)
+      CASE(7)
+        CALL DLUM_1(DLUM)
+      CASE(8)
+        CALL DLUM_1(DLUM)
+      CASE(9)
+        CALL DLUM_1(DLUM)
+      CASE(10)
+        CALL DLUM_1(DLUM)
+      CASE(11)
+        CALL DLUM_1(DLUM)
+      CASE(12)
+        CALL DLUM_1(DLUM)
+      CASE(13)
+        CALL DLUM_1(DLUM)
+      CASE(14)
+        CALL DLUM_1(DLUM)
+      CASE(15)
+        CALL DLUM_1(DLUM)
+      CASE(16)
+        CALL DLUM_1(DLUM)
+      CASE(17)
+        CALL DLUM_2(DLUM)
+      CASE(18)
+        CALL DLUM_2(DLUM)
+      CASE(19)
+        CALL DLUM_2(DLUM)
+      CASE(20)
+        CALL DLUM_2(DLUM)
+      CASE(21)
+        CALL DLUM_3(DLUM)
+      CASE(22)
+        CALL DLUM_3(DLUM)
+      CASE(23)
+        CALL DLUM_3(DLUM)
+      CASE(24)
+        CALL DLUM_3(DLUM)
+      CASE(25)
+        CALL DLUM_NATIVE_3_3(DLUM)
+      CASE(26)
+        CALL DLUM_NATIVE_3_3(DLUM)
+      CASE(27)
+        CALL DLUM_NATIVE_3_3(DLUM)
+      CASE(28)
+        CALL DLUM_NATIVE_3_3(DLUM)
+      CASE(29)
+        CALL DLUM_NATIVE_3_4(DLUM)
+      CASE(30)
+        CALL DLUM_NATIVE_3_4(DLUM)
+      CASE(31)
+        CALL DLUM_NATIVE_3_4(DLUM)
+      CASE(32)
+        CALL DLUM_NATIVE_3_4(DLUM)
+      CASE(33)
+        CALL DLUM_NATIVE_3_1(DLUM)
+      CASE DEFAULT
+        STOP 'Invalid native PDF sector'
+      END SELECT
+      CALL MC_FILTER_NATIVE_LUM(DLUM)
+      END
+      DOUBLE PRECISION FUNCTION DLUM_VEC(SECTOR)
+      IMPLICIT NONE
+      INTEGER SECTOR,NFKSPROCESS,PREVIOUS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      DOUBLE PRECISION DLUM
+      EXTERNAL DLUM
+      PREVIOUS=NFKSPROCESS
+      NFKSPROCESS=SECTOR
+      DLUM_VEC=DLUM()
+      NFKSPROCESS=PREVIOUS
+      END

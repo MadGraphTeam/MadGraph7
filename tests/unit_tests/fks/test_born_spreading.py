@@ -14,6 +14,7 @@ TEMPLATE = ROOT / 'Template/NLO/SubProcesses'
 
 
 def mint_support(work, real_weight_lines=False, real_fks_params=False):
+    from tests.unit_tests.fks.mint_fixture import mint_runtime_modules
     (work / 'params.f90').write_text(
         ('' if real_fks_params else 'module FKSParams\n'
         'logical :: use_poly_virtual=.false.\n'
@@ -39,6 +40,7 @@ def mint_support(work, real_weight_lines=False, real_fks_params=False):
             '      integer nsplitorders\n      parameter(nsplitorders=1)\n')
         support.append(str(TEMPLATE / 'FKSParams.f90'))
     return support + [str(TEMPLATE.parent / 'Source/timing.f'), str(work / 'params.f90'),
+            *mint_runtime_modules(work),
             str(TEMPLATE / 'virtual_surrogate.f90'), str(TEMPLATE / 'mint_module.f90'),
             str(work / 'stubs.f90')]
 
@@ -60,7 +62,8 @@ class TestBornSpreading(unittest.TestCase):
                 'nexternal.inc': 'integer nexternal,nincoming\nparameter(nexternal=5,nincoming=2)',
                 'genps.inc': 'integer maxproc\nparameter(maxproc=2)',
                 'nFKSconfigs.inc': 'integer fks_configs\nparameter(fks_configs=3)',
-                'fks_info.inc': 'integer pdg_type_d(3,5),fks_i_d(3)\n'
+                'fks_info.inc': 'logical,parameter :: HAS_PHYSICAL_FKS_CLASSES=.false.\n'
+                                'integer pdg_type_d(3,5),fks_i_d(3)\n'
                                 'common/test_fks_info/pdg_type_d,fks_i_d',
             }
             for name, source in includes.items():
@@ -80,7 +83,7 @@ class TestBornSpreading(unittest.TestCase):
             result = subprocess.run([
                 shutil.which('gfortran'), '-O2', '-fcheck=all',
                 '-ffixed-line-length-132'] + support + [
-                str(work / 'group_context.f90'), str(TEMPLATE / 'weight_lines.f'),
+                str(work / 'group_context.f90'), str(TEMPLATE / 'mc_context_memory.f90'), str(TEMPLATE / 'weight_lines.f'),
                 str(work / 'grouping.f'),
                 str(ROOT / 'tests/input_files/check_born_spreading_sectors.f90'),
                 '-o', str(executable)], cwd=work, capture_output=True, text=True)

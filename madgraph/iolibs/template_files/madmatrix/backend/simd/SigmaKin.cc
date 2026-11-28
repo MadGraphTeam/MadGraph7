@@ -1689,9 +1689,33 @@ namespace madmatrix
             bool mulChannelWeight,             // if true, multiply channel weight to ME output
             const int nevt,                    // input: #events (for cuda: nevt == ndim == gpublocks*gputhreads)
             const bool sampleSignedHelicity,   // input: choose the helicity on |T_i| and return sign(T_i)*sum|T| (split orders only)
-            const int* allihel )               // input: helicity index [0,ncomb) of each event[nevt]; nullptr to sum over the good helicities
+            const int* allihel,
+            fptype* allSquaredOrderMEs,
+            const std::size_t squaredOrderStride )               // input: helicity index [0,ncomb) of each event[nevt]; nullptr to sum over the good helicities
   {
     mgDebugInitialise();
+
+    if( allSquaredOrderMEs != nullptr && allihel == nullptr && params.csymOk )
+    {
+      ProcessParameters fullParams = params;
+      bool learned[ncomb] = {};
+      for( int i = 0; i < params.nGoodHel; ++i )
+      {
+        const int h = params.goodHel[i];
+        learned[h] = true;
+        learned[cFlip[h]] = true;
+      }
+      fullParams.nGoodHel = 0;
+      for( int h = 0; h < ncomb; ++h )
+        if( learned[h] ) fullParams.goodHel[fullParams.nGoodHel++] = h;
+      fullParams.nGoodHelRows = fullParams.nGoodHel;
+      fullParams.csymOk = false;
+      sigmaKin( fullParams, allmomenta, allcouplings, iflavorVec, allrndhel, allrndcol,
+                allChannelIds, allrnddiagram, allMEs, allselhel, allselcol,
+                allNumerators, allDenominators, allDiagramIdsOut, mulChannelWeight,
+                nevt, sampleSignedHelicity, allihel, allSquaredOrderMEs, squaredOrderStride );
+      return;
+    }
 
     // SANITY CHECKS for madmatrix code generation
     {
@@ -1747,7 +1771,7 @@ namespace madmatrix
     const int nGoodLoop = cNGoodHel;
 #ifdef _OPENMP
     // OMP multithreading #575 (NB: tested only with gcc11 so far)
-#define _OMPLIST0 cHel, allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, allihel, params, cNGoodHel, cGoodHel, nhelEval, nGoodLoop, npagV2, sampleSignedHelicity
+#define _OMPLIST0 cHel, allcouplings, allMEs, allmomenta, allrndcol, allrndhel, allselcol, allselhel, allihel, params, cNGoodHel, cGoodHel, nhelEval, nGoodLoop, npagV2, sampleSignedHelicity, allSquaredOrderMEs, squaredOrderStride
 #define _OMPLIST1 , allDenominators, allNumerators, allChannelIds, allDiagramIdsOut, allrnddiagram, iflavorVec, madmatrix::icolamp, madmatrix::channel2iconfig
 #pragma omp parallel for default( none ) shared( _OMPLIST0 _OMPLIST1 )
 #undef _OMPLIST0
@@ -1789,7 +1813,7 @@ namespace madmatrix
       // unless its tables are too big for this SIMD width (hrUseRecycling), or
       // each event has a helicity of its own (allihel: the recycled rows are made
       // for the good helicities, not per SIMD lane)
-      if( hrUseRecycling && allihel == nullptr && !params.hrStale )
+      if( hrUseRecycling && allihel == nullptr && !params.hrStale && allSquaredOrderMEs == nullptr )
       {
         hr_page( params, allmomenta, allcouplings, iflavorVec, allMEs, allNumerators, allDenominators, jamp2_sv, MEs_ighel,
 #if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
@@ -1857,7 +1881,7 @@ namespace madmatrix
           // **NB! in "mixed" precision, using SIMD, calculate_jamps computes MEs for TWO neppV pages with a single channelId! #924
           bool storeChannelWeights = allChannelIds != nullptr || allrnddiagram != nullptr;
           calculate_jamps( params, ( allihel != nullptr ? nullptr : cHel[ihel] ), allihel, allmomenta, allcouplings, iflavorVec, jamp_sv, storeChannelWeights, allNumerators, allDenominators, jamp2_sv, ievt00 );
-          color_sum_cpu( allMEs, jamp_sv, ievt00 );
+          color_sum_cpu( allMEs, jamp_sv, ievt00, allSquaredOrderMEs, squaredOrderStride );
           MEs_ighel[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 ) );
 #if defined MADMATRIX_FPTYPE_DOUBLE and defined MADMATRIX_FPTYPE2_FLOAT
           MEs_ighel2[ighel] = E_ACCESS::kernelAccess( E_ACCESS::ieventAccessRecord( allMEs, ievt00 + neppV ) );
@@ -2078,8 +2102,12 @@ namespace madmatrix
       const int ievt0 = ipagV * neppV;
       fptype* MEs = E_ACCESS::ieventAccessRecord( allMEs, ievt0 );
       fptype_sv& MEs_sv = E_ACCESS::kernelAccess( MEs );
+      auto normalize = [&]( fptype* output )
+      {
+        fptype* values = E_ACCESS::ieventAccessRecord( output, ievt0 );
+        fptype_sv& output_sv = E_ACCESS::kernelAccess( values );
       if constexpr( !use_crossing ) // the flavor the page was evaluated with (JampsPreamble.h)
-        MEs_sv = MEs_sv * static_cast<fptype>( broken_symmetry_factor( iflavorVec[ievt0] % nmaxflavor ) ) / static_cast<fptype>( helcolDenominators[0] );
+        output_sv = output_sv * static_cast<fptype>( broken_symmetry_factor( iflavorVec[ievt0] % nmaxflavor ) ) / static_cast<fptype>( helcolDenominators[0] );
       else
       {
         // Per-event crossing-aware denominator: the crossing may differ per
@@ -2093,13 +2121,22 @@ namespace madmatrix
           const unsigned int fid = iflavorVec[ievt0 + ieppV];
           const int dcr = (int)( fid / nmaxflavor );
           const int dfl = (int)( fid % nmaxflavor );
-          fptype& me = reinterpret_cast<fptype*>( &MEs_sv )[ieppV];
+          fptype& me = reinterpret_cast<fptype*>( &output_sv )[ieppV];
           if( dcr == 0 )
             me *= (fptype)broken_symmetry_factor( dfl ) / helcolDenominators[0];
           else if( spincol_cross( dcr ) == 0 )
             me = (fptype)0.; // no such crossing-table row -> ME 0
           else
             me *= (fptype)1. / ( (fptype)spincol_cross( dcr ) * (fptype)ident_cross( dcr, dfl ) );
+        }
+      }
+      };
+      normalize( allMEs );
+      if( allSquaredOrderMEs )
+      {
+        for( int iso = 0; iso < ProcessData::nsqampso; ++iso )
+        {
+          normalize( allSquaredOrderMEs + iso * squaredOrderStride );
         }
       }
       if( storeChannelWeights ) // fix segfault #892 (not 'channelIds[0] != 0')

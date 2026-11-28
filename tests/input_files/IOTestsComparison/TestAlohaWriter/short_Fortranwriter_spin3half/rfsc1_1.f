@@ -1,4 +1,4 @@
-subroutine RFSC1_1(R1, S3, COUP, M2, W2,F2)
+recursive subroutine RFSC1_1(R1, S3, COUP, M2, W2,F2)
 use aloha_object
 implicit none
  complex*16 CI

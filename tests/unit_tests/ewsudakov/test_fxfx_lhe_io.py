@@ -50,12 +50,14 @@ class TestFxFxLheIO(unittest.TestCase):
                           source.index('      subroutine copy_header(')]
         selected += fortran_routine(source, 'read_rwgt_line')
         (cls.path / 'event_io.f').write_text(selected)
+        shutil.copyfile(template/'SubProcesses/mc_context_memory.f90', cls.path/'mc_context_memory.f90')
+        shutil.copyfile(template/'SubProcesses/mc_event_records.f90', cls.path/'mc_event_records.f90')
         for name, directory in (('run.inc', 'Source'), ('extra_weights.f', 'Source')):
             shutil.copyfile(template / directory / name, cls.path / name)
         (cls.path / 'driver.f').write_text(DRIVER)
         result = subprocess.run(
-            ['gfortran', '-O0', '-g', '-fcheck=all', '-ffixed-line-length-none',
-             '-o', 'check', 'extra_weights.f', 'event_io.f', 'driver.f'],
+            ['gfortran', '-O3', '-fno-fast-math', '-g', '-fcheck=all', '-ffixed-line-length-none',
+             '-o', 'check', 'mc_context_memory.f90', 'mc_event_records.f90', 'extra_weights.f', 'event_io.f', 'driver.f'],
             cwd=cls.path, capture_output=True, text=True, timeout=30)
         if result.returncode:
             raise AssertionError(result.stdout + result.stderr)
@@ -89,6 +91,19 @@ class TestFxFxLheIO(unittest.TestCase):
                 self.assert_success(again)
                 self.assertIn('PT:' + SCALES, again.stdout)
                 self.assertIn('step_1="1,3;80;mom=2"', again.stdout)
+
+    def test_queued_events_preserve_distinct_histories_and_weights(self):
+        second = event(scales=SCALES.replace('100.00000', '63.01234'),
+                       history=HISTORY.replace('80;', '41;')).replace('4 1 1.0', '4 9 -3.0')
+        inputs = event(history=HISTORY + '\n' + REAL_HISTORY) + second
+        native, expected = self.run_io('rewrite', text=inputs, count=2)
+        delayed, actual = self.run_io('queue', text=inputs, count=2)
+        self.assert_success(native)
+        self.assert_success(delayed)
+        self.assertEqual(actual, expected)
+        self.assertEqual(actual.count('</event>'), 2)
+        self.assertIn('63.01234', actual)
+        self.assertIn('41;', actual)
 
     def test_valid_info_comment_allows_multiple_clustering_records(self):
         history = HISTORY + '\n' + REAL_HISTORY
@@ -218,6 +233,7 @@ class TestFxFxLheIO(unittest.TestCase):
 
 DRIVER = '''\
       program check_lhe_io
+      use mc_event_records
       use extra_weights
       implicit none
       include 'run.inc'
@@ -237,6 +253,8 @@ DRIVER = '''\
       common /event_attributes/ nattr,npNLO,npLO
       common /c_nFKSprocess/ nFKSprocess
       integer count,i,j
+      type(native_event_record),allocatable :: records(:)
+      integer event_unit
       character*16 action,reader,argument
       call get_command_argument(1,action)
       call get_command_argument(2,reader)
@@ -309,12 +327,26 @@ c Seed a valid old value to detect stale metadata when reading an event.
                endif
             enddo
             write(*,'(a,es24.16)') 'SCALE:',scalup_a(1,2)
-            if(action.eq.'rewrite')then
-               call write_lhef_event(13,nup,idprup,xwgtup,
+            if(action.eq.'rewrite'.or.action.eq.'queue')then
+               event_unit=13
+               if(action.eq.'queue')then
+                  if(.not.allocated(records)) allocate(records(count))
+                  records(i)%draw_id=i
+                  call begin_event_capture(records(i))
+                  event_unit=event_capture_unit
+               endif
+               call write_lhef_event(event_unit,nup,idprup,xwgtup,
      &              scalup,aqedup,aqcdup,idup,istup,mothup,icolup,
      &              pup,vtimup,spinup,buff,scalup_a)
+               if(action.eq.'queue') call end_event_capture(records(i))
             endif
          enddo
+         if(action.eq.'queue')then
+            do i=1,count
+               if(records(i)%draw_id.ne.i) stop 11
+               call write_event_record(records(i),13)
+            enddo
+         endif
          if(reader.eq.'catch')then
             call read_lhef_event_catch(12,nup,idprup,xwgtup,
      &           scalup,aqedup,aqcdup,idup,istup,mothup,icolup,

@@ -11,6 +11,7 @@ C distribution.
 C
 C###############################################################################
       module ALOHA_OBJECT
+         USE MODEL_OBJECT
          TYPE ALOHA
             SEQUENCE
             double complex::W(4)
@@ -23,10 +24,44 @@ C###############################################################################
             double precision :: P(0:3)
             integer :: flv_index
          END TYPE ALOHA2D
+      CONTAINS
+         INTEGER FUNCTION GET_FLV_PARTNER(MCOUP,FLV_INDEX,REVERSE)
+         TYPE(FLV_COUPLING), INTENT(IN) :: MCOUP
+         INTEGER, INTENT(IN) :: FLV_INDEX
+         LOGICAL, INTENT(IN) :: REVERSE
+         GET_FLV_PARTNER=0
+         IF (FLV_INDEX.LT.1.OR.
+     $       FLV_INDEX.GT.SIZE(MCOUP%PARTNER)) RETURN
+         IF (REVERSE) THEN
+            GET_FLV_PARTNER=MCOUP%PARTNER2(FLV_INDEX)
+         ELSE
+            GET_FLV_PARTNER=MCOUP%PARTNER(FLV_INDEX)
+         ENDIF
+         END FUNCTION GET_FLV_PARTNER
+
+         DOUBLE COMPLEX FUNCTION GET_FLV_COUPLING_VALUE(MCOUP,K1,K2)
+         TYPE(FLV_COUPLING), INTENT(IN) :: MCOUP
+         INTEGER, INTENT(IN) :: K1,K2
+         GET_FLV_COUPLING_VALUE=(0D0,0D0)
+         IF (K1.LT.1.OR.K1.GT.SIZE(MCOUP%PARTNER)) RETURN
+         IF (K2.LT.1.OR.MCOUP%PARTNER(K1).NE.K2) RETURN
+         IF (.NOT.ASSOCIATED(MCOUP%VAL(K1)%P)) RETURN
+         GET_FLV_COUPLING_VALUE=MCOUP%VAL(K1)%P
+         END FUNCTION GET_FLV_COUPLING_VALUE
+
+         COMPLEX*32 FUNCTION MP_GET_FLV_COUPLING_VALUE(MCOUP,K1,K2)
+         TYPE(FLV_COUPLING), INTENT(IN) :: MCOUP
+         INTEGER, INTENT(IN) :: K1,K2
+         MP_GET_FLV_COUPLING_VALUE=(0.0E0_16,0.0E0_16)
+         IF (K1.LT.1.OR.K1.GT.SIZE(MCOUP%PARTNER)) RETURN
+         IF (K2.LT.1.OR.MCOUP%PARTNER(K1).NE.K2) RETURN
+         IF (.NOT.ASSOCIATED(MCOUP%VAL(K1)%P)) RETURN
+         MP_GET_FLV_COUPLING_VALUE=CMPLX(MCOUP%VAL(K1)%P,KIND=16)
+         END FUNCTION MP_GET_FLV_COUPLING_VALUE
       end module ALOHA_OBJECT
 
 
-      subroutine ixxxxx(p, fmass, nhel, nsf, flavor ,fi)
+      recursive subroutine ixxxxx(p, fmass, nhel, nsf, flavor ,fi)
 c
 c This subroutine computes a fermion wavefunction with the flowing-IN
 c fermion number.
@@ -197,7 +232,7 @@ c
 
 
 
-      subroutine oxxxxx(p,fmass,nhel,nsf , flavor, fo)
+      recursive subroutine oxxxxx(p,fmass,nhel,nsf , flavor, fo)
 c
 c This subroutine computes a fermion wavefunction with the flowing-OUT
 c fermion number.
@@ -362,7 +397,7 @@ c
       return
       end
 
-      subroutine pxxxxx(p,tmass,nhel,nst , tc)
+      recursive subroutine pxxxxx(p,tmass,nhel,nst , tc)
 
 c    CP3 2009.NOV
 
@@ -402,7 +437,7 @@ c
       return
       end
 
-      subroutine sxxxxx(p,nss , sc)
+      recursive subroutine sxxxxx(p,nss , sc)
 c
 c This subroutine computes a complex SCALAR wavefunction.
 c
@@ -464,7 +499,7 @@ c
       return
       end
 
-      subroutine txxxxx(p,tmass,nhel,nst , tc)
+      recursive subroutine txxxxx(p,tmass,nhel,nst , tc)
 c
 c This subroutine computes a TENSOR wavefunction.
 c
@@ -638,7 +673,7 @@ c construct eps0
       end
 
 
-      subroutine vxxxxx(p,vmass,nhel,nsv , vc)
+      recursive subroutine vxxxxx(p,vmass,nhel,nsv , vc)
 c
 c This subroutine computes a VECTOR wavefunction.
 c
@@ -1117,7 +1152,7 @@ c     spin triplet
       return
       end
 
-      subroutine boostx(p,q , pboost)
+      recursive subroutine boostx(p,q , pboost)
 c
 c This subroutine performs the Lorentz boost of a four-momentum.  The
 c momentum p is assumed to be given in the rest frame of q.  pboost is
@@ -1203,7 +1238,7 @@ c
       return
       end
 
-      subroutine boostm(p,q,m, pboost)
+      recursive subroutine boostm(p,q,m, pboost)
 c
 c This subroutine performs the Lorentz boost of a four-momentum.  The
 c momentum p is assumed to be given in the rest frame of q.  pboost is
@@ -1289,7 +1324,7 @@ c
       return
       end
 
-      subroutine momntx(energy,mass,costh,phi , p)
+      recursive subroutine momntx(energy,mass,costh,phi , p)
 c
 c This subroutine sets up a four-momentum from the four inputs.
 c
@@ -1363,7 +1398,7 @@ c#endif
 c
       return
       end
-      subroutine rotxxx(p,q , prot)
+      recursive subroutine rotxxx(p,q , prot)
 c
 c This subroutine performs the spacial rotation of a four-momentum.
 c the momentum p is assumed to be given in the frame where the spacial
@@ -1430,7 +1465,7 @@ c
       return
       end
 
-      subroutine mom2cx(esum,mass1,mass2,costh1,phi1 , p1,p2)
+      recursive subroutine mom2cx(esum,mass1,mass2,costh1,phi1 , p1,p2)
 c
 c This subroutine sets up two four-momenta in the two particle rest
 c frame.
@@ -1513,7 +1548,7 @@ c
 
 
 
-      subroutine irxxxx(p,rmass,nhel,nsr , ri)
+      recursive subroutine irxxxx(p,rmass,nhel,nsr , ri)
 c
 c This subroutine computes a Rarita-Schwinger wavefunction of spin-3/2
 c fermion with the flowing-IN fermion number.
@@ -1860,7 +1895,7 @@ c spin-3/2 fermion wavefunction
 
       return
       end
-      subroutine orxxxx(p,rmass,nhel,nsr , ro)
+      recursive subroutine orxxxx(p,rmass,nhel,nsr , ro)
 c
 c This subroutine computes a Rarita-Schwinger wavefunction of spin-3/2
 c fermion with the flowing-IN fermion number.
@@ -2269,7 +2304,7 @@ c spin-3/2 fermion wavefunction
       return
       end
 
-      subroutine CombineAmp(nb, ihels, iwfcts, W1, Wall, Amp)
+      recursive subroutine CombineAmp(nb, ihels, iwfcts, W1, Wall, Amp)
 
       use aloha_object
       integer nb ! size of the vectors
@@ -2289,7 +2324,7 @@ c     local variable
       return
       end
      
-      subroutine CombineAmpS(nb, ihels, iwfcts, W1, Wall, Amp)
+      recursive subroutine CombineAmpS(nb, ihels, iwfcts, W1, Wall, Amp)
       use aloha_object
       implicit none 
       integer nb ! size of the vectors

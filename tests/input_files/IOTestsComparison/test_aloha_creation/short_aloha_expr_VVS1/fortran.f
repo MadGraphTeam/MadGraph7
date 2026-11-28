@@ -1,4 +1,4 @@
-subroutine VVS1_0(V1, V2, S3, COUP,vertex)
+recursive subroutine VVS1_0(V1, V2, S3, COUP,vertex)
 use aloha_object
 implicit none
  complex*16 CI

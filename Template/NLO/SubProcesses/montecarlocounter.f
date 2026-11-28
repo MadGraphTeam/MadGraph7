@@ -27,6 +27,40 @@ c COMMON blocks retained in the procedures are shared with the surrounding
 c FKS/native-Born machinery or the external Sudakov tables.
       logical :: isspecial(max_bcol)=.false.
 
+      public :: native_kernel_state,park_mc_kernel,activate_mc_kernel
+      type native_kernel_state
+         integer :: ileg
+         integer :: fksfather
+         double precision :: xm12
+         double precision :: xm22
+         double precision :: xtk
+         double precision :: xuk
+         double precision :: xq1q
+         double precision :: xq2q
+         double precision :: w1
+         double precision :: w2
+         double precision :: yij
+         double precision :: x
+         double precision :: xij
+         double precision :: betad
+         double precision :: betas
+         double precision :: kn
+         double precision :: knbar
+         double precision :: kn0
+         double precision :: shat_n1
+         double precision :: gfactsf
+         double precision :: gfactcl
+         double precision :: gfactazi
+         double precision :: xp1(0:3)
+         double precision :: xp2(0:3)
+         double precision :: xk1(0:3)
+         double precision :: xk2(0:3)
+         double precision :: xk3(0:3)
+         double precision :: pp_rec(0:3)
+         double precision :: jmass
+         logical :: isspecial(max_bcol)
+      end type
+
       type mc_kernel_limits
          logical :: collinear=.false.
          logical :: nonsoft=.false.
@@ -39,6 +73,74 @@ c     Complete live colour-connection data for one Born leg in Delta.
       end type delta_connections
 
       contains
+
+      subroutine park_mc_kernel(state)
+      type(native_kernel_state),intent(out)::state
+      state%ileg=ileg
+      state%fksfather=fksfather
+      state%xm12=xm12
+      state%xm22=xm22
+      state%xtk=xtk
+      state%xuk=xuk
+      state%xq1q=xq1q
+      state%xq2q=xq2q
+      state%w1=w1
+      state%w2=w2
+      state%yij=yij
+      state%x=x
+      state%xij=xij
+      state%betad=betad
+      state%betas=betas
+      state%kn=kn
+      state%knbar=knbar
+      state%kn0=kn0
+      state%shat_n1=shat_n1
+      state%gfactsf=gfactsf
+      state%gfactcl=gfactcl
+      state%gfactazi=gfactazi
+      state%xp1=xp1
+      state%xp2=xp2
+      state%xk1=xk1
+      state%xk2=xk2
+      state%xk3=xk3
+      state%pp_rec=pp_rec
+      state%jmass=jmass
+      state%isspecial=isspecial
+      end subroutine
+
+      subroutine activate_mc_kernel(state)
+      type(native_kernel_state),intent(in)::state
+      ileg=state%ileg
+      fksfather=state%fksfather
+      xm12=state%xm12
+      xm22=state%xm22
+      xtk=state%xtk
+      xuk=state%xuk
+      xq1q=state%xq1q
+      xq2q=state%xq2q
+      w1=state%w1
+      w2=state%w2
+      yij=state%yij
+      x=state%x
+      xij=state%xij
+      betad=state%betad
+      betas=state%betas
+      kn=state%kn
+      knbar=state%knbar
+      kn0=state%kn0
+      shat_n1=state%shat_n1
+      gfactsf=state%gfactsf
+      gfactcl=state%gfactcl
+      gfactazi=state%gfactazi
+      xp1=state%xp1
+      xp2=state%xp2
+      xk1=state%xk1
+      xk2=state%xk2
+      xk3=state%xk3
+      pp_rec=state%pp_rec
+      jmass=state%jmass
+      isspecial=state%isspecial
+      end subroutine
 
 c MC counterterms and matching support.
 c   Flow setup: set_QCD_flows and find_color_connectors.

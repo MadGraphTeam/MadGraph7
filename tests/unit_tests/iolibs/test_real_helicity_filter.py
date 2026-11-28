@@ -98,6 +98,32 @@ class TestRealHelicityFilter(unittest.TestCase):
         self.assertEqual(signature['real'], [2])
         self.assertEqual(signature['couplings'], [('complex', 1, 1)])
 
+    def test_born_gscale_bookkeeping_is_not_an_exact_mask_key(self):
+        # SBORN reads G only to rescale its cached amplitudes by (G'/G)**n.
+        # Treating that as a direct input kept G in the exact key, so every
+        # helicity mask was relearned whenever G changed. Any other direct G
+        # read still is an exact input.
+        model = dict(parameters={('external',): [
+            ParamCardVariable('aS', .118, 'SMINPUTS', [3])]})
+        members = [('g', 'real', '1'), ('gc_10', 'complex', '1')]
+        records = [dict(directory='P0', helicity_matrices=[
+            dict(homogeneous=True, couplings={'gc_10': 1})])]
+        born = ("      subroutine born\n      include 'coupl.inc'\n"
+                "      double precision saved_g,rg\n"
+                "      rg=g/saved_g\n      saved_g=g\n"
+                "      call vertex(gc_10)\n%s      end\n")
+        for extra, real in (('', []), ('      x=g*2d0\n', [1])):
+            with self.subTest(extra=extra), \
+                    tempfile.TemporaryDirectory(prefix='mg5_helicity_gscale_') as tmp:
+                root = Path(tmp)
+                (root/'Source/DHELAS').mkdir(parents=True)
+                sub = root/'SubProcesses/P0'
+                sub.mkdir(parents=True)
+                (sub/'born.f').write_text(born % extra)
+                signature = support.helicity_state_signature(root, records, model, members)
+                self.assertIsNotNone(signature)
+                self.assertEqual(signature['real'], real)
+
     def test_sm_and_heft_coupling_degrees(self):
         # Legacy HEFT assigns QCD order zero to GH, despite GH being
         # proportional to G**2. Keep this fixture local: CI need not download
@@ -150,13 +176,23 @@ class TestRealHelicityFilter(unittest.TestCase):
         routine = template[start:end] % dict(
             proc_prefix='1', info_lines='', process_lines='', ncomb=ncomb,
             nSqAmpSplitOrders=nsqamps,
+            hel_configs=1, hel_index_setup='HEL_INDEX=1',
+            flavor_den_factor_setup='      IDEN=2',
             helicity_lines='      DATA NHEL /%s/' % ','.join(map(str, range(1, ncomb+1))),
-            den_factor_line='      PARAMETER (IDEN=2)')
-        lines = support.optimize_real_helicities(list(support.statements(routine)))
+            den_factor_line='')
+        lines = support.optimize_real_helicities(support.routine(routine, 'smatrix1_splitorders'))
+        driver = driver.replace('call matrix_1(p,[i],term)', 'call matrix_1(p,[i],1,term)')
+        driver = driver.replace('subroutine matrix_1(p,nhel,t)\n  implicit none',
+                                'subroutine matrix_1(p,nhel,flav_idx,t)\n  implicit none\n  integer flav_idx')
         with tempfile.TemporaryDirectory(prefix='mg5_real_helicities_') as tmp:
             work = Path(tmp)
             (work/'nexternal.inc').write_text(
                 '      INTEGER NEXTERNAL\n      PARAMETER(NEXTERNAL=1)\n')
+            (work/'nFKSconfigs.inc').write_text(
+                '      INTEGER FKS_CONFIGS\n      PARAMETER(FKS_CONFIGS=1)\n')
+            (work/'fks_info.inc').write_text(
+                '      INTEGER REAL_FLAVOR_INDEX_D(1)\n'
+                '      PARAMETER(REAL_FLAVOR_INDEX_D=[1])\n')
             (work/'real_matrix_weights.inc').write_text(
                 ('      logical get_real_diagram_weights\n'
                  '      common/c_get_real_diagram_weights/get_real_diagram_weights\n'
@@ -166,6 +202,11 @@ class TestRealHelicityFilter(unittest.TestCase):
                 ('      logical,parameter::get_real_diagram_weights=.false.\n'
                  '      real*8 real_amp2(1)\n'))
             support.write_fortran(work/'real.f', lines)
+            with (work/'real.f').open('a') as stream:
+                stream.write('\n      block data selected_sector\n'
+                             '      integer nfksprocess\n'
+                             '      common/c_nfksprocess/nfksprocess\n'
+                             '      data nfksprocess/1/\n      end\n')
             module = work/'mc_born_types.f90'
             shutil.copyfile(ROOT/'Template/NLO/Source/BornSupport/mc_born_types.f90',
                             module)

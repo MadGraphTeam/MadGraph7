@@ -123,12 +123,15 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     """Class to take care of exporting a set of matrix elements to
     Fortran (v4) format."""
 
-    # When True (default), born.f carries the colour-linked Borns itself:
-    # the Born JAMPs are contracted with one colour matrix per link, all
-    # expressed in the Born colour basis (see
-    # fks_common.born_basis_link_matrices). False restores the former layout:
-    # one b_sf_NNN.f per link, each with its own colour basis.
-    born_color_links_in_born = True
+    # Default MadLoop output normally exposes only its process-wide sum in
+    # slot zero.  The FKS BinothLHA ABI iterates positive split-order slots, so
+    # this exporter asks the shared loop writer for one explicit summed slot.
+    default_loop_fks_abi = True
+
+    # The current FKS callers exchange explicit saved-amplitude arrays, also
+    # for ungrouped processes. The combined-colour template's scalar COMMON
+    # interface cannot provide those arrays yet.
+    born_color_links_in_born = False
     # density_matrix_wrapper.f, the EW Sudakov spin-interference kernel, is
     # written only for the reweighting library (ProcessExporterEWSudakovSA).
     sudakov_density_kernel = False
@@ -314,16 +317,19 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         file = open(os.path.join(self.mgme_dir,'Template','NLO',
                                  'Source','make_opts.inc')).read()  
         replace_dict={}
-        replace_dict['link_tir_libs']=' '.join(link_tir_libs)
-        if 'collier' in replace_dict['link_tir_libs']:
-            collierpath = ''
-            for lib in link_tir_libs:
-                if '-lcollier' in lib:
-                    collierpath = lib.split()[0][2:]
-                    break
-            if collierpath:
-                replace_dict['link_tir_libs'] = ' -Wl,-rpath,%s %s ' % (collierpath, replace_dict['link_tir_libs'])
-        #raise Exception
+        # External TIR libraries are linked from their installation directory.
+        # Add those directories to the runtime search path as well: ``-L`` only
+        # helps the linker and does not let the generated executable find a
+        # shared library such as libninja.so when it is launched.
+        rpath_dirs = []
+        for lib in link_tir_libs:
+            for flag in lib.split():
+                if flag.startswith('-L') and len(flag) > 2:
+                    libdir = flag[2:]
+                    if libdir not in rpath_dirs:
+                        rpath_dirs.append(libdir)
+        rpath_flags = ['-Wl,-rpath,%s' % libdir for libdir in rpath_dirs]
+        replace_dict['link_tir_libs']=' '.join(rpath_flags + link_tir_libs)
 
         replace_dict['tir_libs']=' '.join(tir_libs)
         replace_dict['dotf']='%.f'
@@ -553,7 +559,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
     # generate_directories_fks
     #===============================================================================
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
-                                    me_ntot, path=os.getcwd(),OLP='MadLoop'):
+                                    me_ntot, path=os.getcwd(),OLP='MadLoop',
+                                    second_exporter=None, second_helas=None):
         """Generate the Pxxxxx_i directories for a subprocess in MadFKS,
         including the necessary matrix.f and various helper files.
         The caller lists the directories in subproc.mg and makes the info page
@@ -593,6 +600,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
             self.write_lh_order(filename, [matrix_element.born_me.get('processes')[0]], OLP)
         
         if matrix_element.virt_matrix_element:
+                    matrix_element.virt_matrix_element.evaluated_flavor_pdgs = \
+                        self.get_virtual_evaluated_flavor_pdgs(matrix_element)
                     calls += self.generate_virt_directory( \
                             matrix_element.virt_matrix_element, \
                             fortran_model, \
@@ -605,7 +614,7 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         filename = 'extra_cnt_wrapper.f'
         self.write_extra_cnt_wrapper(writers.FortranWriter(filename),
                                      matrix_element.extra_cnt_me_list, 
-                                     fortran_model)
+                                     fortran_model, matrix_element)
         for i, extra_cnt_me in enumerate(matrix_element.extra_cnt_me_list):
             if (hasattr(self, 'born_support_registry') and
                     self.born_support_registry[borndir]['source'] != borndir):
@@ -748,6 +757,10 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         self.write_amp_split_orders_file(
                             writers.FortranWriter(filename),
                             amp_split_orders)
+        if second_exporter is not None:
+            second_exporter.generate_real_processes(
+                matrix_element, second_helas, me_number, borndir,
+                amp_split_orders)
         self.proc_characteristic['ninitial'] = ninitial
         self.proc_characteristic['nexternal'] = max(self.proc_characteristic['nexternal'], nexternal)
         
@@ -787,6 +800,8 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'cuts.inc',
                      'driver_mintMC.f',
                      'driver_mintFO.f',
+                     'driver.f90',
+                     'driver_vec.f',
                      'pineappl_interface.cc',
                      'pineappl_interface_dummy.f',
                      'pineappl_common.inc',
@@ -799,11 +814,13 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'fks_Sij.f',
                      'fks_powers.inc',
                      'fks_singular.f',
+                     'fks_buffered.f',
                      'splitorders_stuff.f',
                      'orderstags_glob.f',
                      'chooser_functions.f',
                      'mc_native_runtime.f',
                      'weight_lines.f',
+                     'weight_lines_vec.f',
                      'fks_phase_space_data.f',
                      'genps_fks.f',
                      'genps_fks_sampling.f',
@@ -823,6 +840,15 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
                      'analysis_dummy.f',
                      'analysis_lhe.f',
                      'mint_module.f90',
+                     'mc_decision_ledger.f90',
+                     'mc_batch_trace.f90',
+                     'mc_point_state.f',
+                     'mc_shower_state.f',
+                     'mc_context_memory.f90', 'mc_event_records.f90',
+                     'native_mc_point.f',
+                     'mc_native_cohort.f90',
+                     'mc_event_queues.f90',
+                     'mc_native_generation.f90',
                      'virtual_surrogate.f90',
                      'virtual_approximation.f',
                      'MC_integer.f',
@@ -919,10 +945,18 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         """ """
  
         run_card = banner_mod.RunCardNLO()
-        
         run_card.create_default_for_process(self.proc_characteristic, 
                                             history,
                                             processes)
+        if 'nlo_real_vector_size' in self.opt:
+            requested_vector_size = banner_mod.ConfigFile.format_variable(
+                self.opt['nlo_real_vector_size'], int, 'vector_size')
+            run_card.set(
+                'vector_size', max(1, requested_vector_size), user=True)
+        if self.opt.get('nlo_real_offload'):
+            # Show the real-ME backend of the MadMatrix offload in the run
+            # card, with the safe Fortran default.
+            run_card.set('nlo_real_backend', 'fortran', user=True)
         
         run_card.write(pjoin(self.dir_path, 'Cards', 'run_card_default.dat'))
         run_card.write(pjoin(self.dir_path, 'Cards', 'run_card.dat'))
@@ -1924,8 +1958,13 @@ As a result, the default card will not be tailored to the process generated.""")
         maxproc = 0
         maxflow = 0
         for i, conf in enumerate(matrix_element.get_fks_info_list()):
+            physical_pdgs = None
+            if conf.get('flavor_class'):
+                physical_pdgs = conf['flavor_class']['real_pdgs']
             (newlines, nprocs, nflows) = self.get_leshouche_lines(
-                    matrix_element.real_processes[conf['n_me'] - 1].matrix_element, i + 1)
+                    matrix_element.real_processes[
+                        conf['n_me'] - 1].matrix_element,
+                    i + 1, physical_pdgs=physical_pdgs)
             lines.extend(newlines)
             maxproc = max(maxproc, nprocs)
             maxflow = max(maxflow, nflows)
@@ -1948,13 +1987,27 @@ As a result, the default card will not be tailored to the process generated.""")
 
         # the real me wrapper
         text = \
-            """subroutine smatrix_real(p, wgt)
+            """subroutine smatrix_real(p, ret_amp_split, wgt)
             implicit none
             include 'nexternal.inc'
+            include 'orders.inc'
+            double precision ret_amp_split(amp_split_size)
             double precision p(0:3, nexternal)
             double precision wgt
             integer nfksprocess
             common/c_nfksprocess/nfksprocess
+            """ 
+        # the real me wrapper
+        text_vec = \
+             """recursive subroutine smatrix_real_vec(p, ret_amp_split, wgt, ivec, nfksprocess, real_flav_idx)
+             implicit none
+             include 'nexternal.inc'
+             include 'orders.inc'
+             double precision ret_amp_split(amp_split_size)
+             double precision p(0:3, nexternal)
+             double precision wgt
+             integer ivec
+             integer nfksprocess, real_flav_idx
             """ 
         # the pdf wrapper
         text1 = \
@@ -1963,16 +2016,31 @@ As a result, the default card will not be tailored to the process generated.""")
             integer nfksprocess
             common/c_nfksprocess/nfksprocess
             """
+        # the pdf wrapper
+        text1_vec = \
+            """\n\ndouble precision function dlum_vec(nfksprocess)
+            implicit none
+            integer nfksprocess
+            """
 
         if matrix_element.real_processes:
             for n, info in enumerate(matrix_element.get_fks_info_list()):
                 text += \
                     """if (nfksprocess.eq.%(n)d) then
-                    call smatrix%(n_me)d(p, wgt)
+                    call smatrix%(n_me)d_amp(p, ret_amp_split, wgt)
+                    else""" % {'n': n + 1, 'n_me' : info['n_me']}
+                text_vec += \
+                    """if (nfksprocess.eq.%(n)d) then
+                    call smatrix%(n_me)d_amp_vec(p, ret_amp_split, wgt, ivec,
+     $                   real_flav_idx, nfksprocess)
                     else""" % {'n': n + 1, 'n_me' : info['n_me']}
                 text1 += \
                     """if (nfksprocess.eq.%(n)d) then
                     call dlum_%(n_me)d(dlum)
+                    else""" % {'n': n + 1, 'n_me' : info['n_me']}
+                text1_vec += \
+                    """if (nfksprocess.eq.%(n)d) then
+                    call dlum_%(n_me)d(dlum_vec)
                     else""" % {'n': n + 1, 'n_me' : info['n_me']}
 
             text += \
@@ -1981,13 +2049,30 @@ As a result, the default card will not be tailored to the process generated.""")
                 stop\n endif
                 return \n end
                 """
+            text_vec += \
+                """
+                write(*,*) 'ERROR: invalid n in real_matrix_vec :', nfksprocess
+                stop\n endif
+                return \n end
+                """
             text1 += \
                 """
                 write(*,*) 'ERROR: invalid n in dlum :', nfksprocess\n stop\n endif
                 return \nend
                 """
+            text1_vec += \
+                """
+                write(*,*) 'ERROR: invalid n in dlum_vec :', nfksprocess\n stop\n endif
+                return \nend
+                """
         else:
             text += \
+                """
+                wgt=0d0
+                return
+                end
+                """
+            text_vec += \
                 """
                 wgt=0d0
                 return
@@ -1999,10 +2084,72 @@ As a result, the default card will not be tailored to the process generated.""")
                 return
                 end
                 """
+            text1_vec += \
+                """
+                call dlum_0(dlum_vec)
+                return
+                end
+                """
+
+        text_vec_batch = """
+             recursive subroutine smatrix_real_vec_batch(p,g_strong,
+     $            ret_amp_split,wgt,active,coup_index,vector_size,
+     $            nfksprocess,real_flav_idx)
+              implicit none
+              include 'nexternal.inc'
+              include 'orders.inc'
+              integer vector_size,nfksprocess,real_flav_idx,ivec
+              integer coup_index(vector_size)
+              logical active(vector_size)
+              double precision p(0:3,nexternal,vector_size)
+              double precision g_strong(vector_size)
+              double precision ret_amp_split(amp_split_size,vector_size)
+              double precision wgt(vector_size)
+              ret_amp_split(:,:) = 0d0
+              wgt(:) = 0d0
+              do ivec = 1,vector_size
+                 if (active(ivec)) then
+                    call smatrix_real_vec(p(:,:,ivec),
+     $                   ret_amp_split(:,ivec),wgt(ivec),
+     $                   coup_index(ivec),nfksprocess,real_flav_idx)
+                 endif
+              enddo
+              return
+              end
+              """
 
         # Write the file
         writer_me.writelines(text)
+        writer_me.writelines(text_vec)
+        writer_me.writelines(text_vec_batch)
+        writer_me.writelines("""
+              logical function mc_provider_can_batch(row,flav)
+              implicit none
+              integer row,flav
+              mc_provider_can_batch=.false.
+              end
+
+              subroutine mc_evaluate_provider_batch(p,g,ew,row,flav,n,
+     $             wgt,amps,ok)
+              implicit none
+              include 'nexternal.inc'
+              include 'orders.inc'
+              integer row,flav,n
+              double precision p(0:3,nexternal,n),g(n),ew
+              double precision wgt(n),amps(amp_split_size,n)
+              logical ok
+              ok=.false.
+              wgt=0d0
+              amps=0d0
+              end
+
+              logical function mg7_nlo_real_is_fortran()
+              implicit none
+              mg7_nlo_real_is_fortran=.true.
+              end
+              """)
         writer_lum.writelines(text1)
+        writer_lum.writelines(text1_vec)
         return 0
 
 
@@ -2077,23 +2224,35 @@ As a result, the default card will not be tailored to the process generated.""")
         """
         sectors = matrix_element.get_fks_info_list()
         sector_me = [info['n_me'] for info in sectors]
-        representative = [sector_me.index(ime + 1) + 1
+        representative = [sector_me.index(ime + 1) + 1 if ime + 1 in sector_me else 0
                           for ime in range(len(matrix_element.real_processes))]
+        # A generated real ME can contain several physical flavours with
+        # different denominators, diagrams and PDFs. Each owns its partition.
+        representatives_by_flavour = {}
+        for isector, info in enumerate(sectors, 1):
+            iflav = info.get('flavor_class', {}).get('real_flavor_index', 1)
+            representatives_by_flavour.setdefault((info['n_me'], iflav), isector)
         channels = []
         for ime, real in enumerate(matrix_element.real_processes, 1):
+            if not representative[ime - 1]:
+                continue
             me = real.matrix_element
             diagrams = me.get('base_amplitude').get('diagrams')
             minvert = min(max(len(vertex.get('legs'))
                               for vertex in diag.get('vertices'))
                           for diag in diagrams)
             iconfig = 0
+            eligible = []
             for idiag, diag in enumerate(diagrams):
                 if any(len(vertex.get('legs')) > minvert
                        for vertex in diag.get('vertices')):
                     continue
                 iconfig += 1
-                channels.append((ime, representative[ime - 1], iconfig,
-                                 me.get('diagrams')[idiag].get('number')))
+                eligible.append((iconfig, me.get('diagrams')[idiag].get('number')))
+            for (real_id, iflav), isector in representatives_by_flavour.items():
+                if real_id == ime:
+                    channels.extend((ime, isector, config, diagram)
+                                    for config, diagram in eligible)
         return channels, sector_me, representative
 
     def write_real_channels_structure(self, filename, matrix_element):
@@ -2191,12 +2350,33 @@ As a result, the default card will not be tailored to the process generated.""")
 
         
     
-    def write_extra_cnt_wrapper(self, writer, cnt_me_list, fortran_model):
+    def write_extra_cnt_wrapper(self, writer, cnt_me_list, fortran_model,
+                                fksborn=None):
         """write a wrapper for the extra born counterterms that may be 
         present e.g. if the process has gluon at the born
         """
 
         replace_dict = {'ncnt': max(len(cnt_me_list),1)}
+        grouped = bool(fksborn and fksborn.born_me.get('processes')[0].
+                       get('model').get('merged_particles'))
+        if grouped:
+            replace_dict['cnt_metadata_common'] = """INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      INCLUDE 'fks_info.inc'"""
+            replace_dict['cnt_color_result'] = \
+                'GET_EXTRA_CNT_COLOR=EXTRA_CNT_COLOR_D(NFKSPROCESS,IPART)'
+            replace_dict['cnt_pdg_result'] = \
+                'GET_EXTRA_CNT_PDG=EXTRA_CNT_PDG_D(NFKSPROCESS,IPART)'
+            replace_dict['cnt_charge_result'] = \
+                'GET_EXTRA_CNT_CHARGE=EXTRA_CNT_CHARGE_D(NFKSPROCESS,IPART)'
+        else:
+            replace_dict['cnt_metadata_common'] = ''
+            replace_dict['cnt_color_result'] = \
+                'GET_EXTRA_CNT_COLOR=CNT_COLOR(ICNT,IPART)'
+            replace_dict['cnt_pdg_result'] = \
+                'GET_EXTRA_CNT_PDG=CNT_PDG(ICNT,IPART)'
+            replace_dict['cnt_charge_result'] = \
+                'GET_EXTRA_CNT_CHARGE=CNT_CHARGE(ICNT,IPART)'
 
         # this is the trivial case with no cnt.
         # fill everything with 0s (or 1 for color)
@@ -2225,12 +2405,26 @@ As a result, the default card will not be tailored to the process generated.""")
                     iflines += \
                        'else if (icnt.eq.%d) then\n call sborn_cnt%d(p,cnts)\n' % (icnt, icnt)
 
+                if grouped:
+                    nlegs = len(cnt['processes'][0]['legs'])
+                    cnt_charges = [0.] * nlegs
+                    cnt_colors = [1] * nlegs
+                    cnt_pdgs = [0] * nlegs
+                else:
+                    cnt_charges = [leg['charge']
+                                   for leg in cnt['processes'][0]['legs']]
+                    cnt_colors = [leg['color']
+                                  for leg in cnt['processes'][0]['legs']]
+                    cnt_pdgs = [leg['id']
+                                for leg in cnt['processes'][0]['legs']]
                 cnt_charge_lines += 'data (cnt_charge(%d,i), i=1,nexternalB) / %s /\n' % \
-                        (icnt, ', '.join(['%19.15fd0' % l['charge'] for l in cnt['processes'][0]['legs']]))
+                        (icnt, ', '.join('%19.15fd0' % charge
+                                         for charge in cnt_charges))
                 cnt_color_lines += 'data (cnt_color(%d,i), i=1,nexternalB) / %s /\n' % \
-                        (icnt, ', '.join(['%d' % l['color'] for l in cnt['processes'][0]['legs']]))
+                        (icnt, ', '.join('%d' % color
+                                         for color in cnt_colors))
                 cnt_pdg_lines += 'data (cnt_pdg(%d,i), i=1,nexternalB) / %s /\n' % \
-                        (icnt, ', '.join(['%d' % l['id'] for l in cnt['processes'][0]['legs']]))
+                        (icnt, ', '.join('%d' % pdg for pdg in cnt_pdgs))
 
             iflines += 'endif\n'
 
@@ -2289,7 +2483,9 @@ As a result, the default card will not be tailored to the process generated.""")
         # Set lowercase/uppercase Fortran code
         writers.FortranWriter.downcase = False
 
-        replace_dict = {'global_variable':'', 'amp2_lines':''}
+        replace_dict = {'global_variable':'', 'amp2_lines':'',
+                        'flavor_mask_decl':'', 'flavor_mask_setup':'',
+                        'flavor_den_factor_setup':''}
         if proc_prefix:
             replace_dict['proc_prefix'] = proc_prefix
 
@@ -2297,10 +2493,53 @@ As a result, the default card will not be tailored to the process generated.""")
         for k,v in start_dict.items():
             replace_dict[k] = v
 
-        # Extract helas calls
-        helas_calls = fortran_model.get_matrix_element_calls(\
-                    matrix_element)
+        # Grouped matrix elements need independent helicity-discovery state for
+        # each physical FKS class.  Ordinary output historically shared that
+        # state between configurations represented by the same matrix element;
+        # keep that cheaper behavior instead of unconditionally multiplying the
+        # tables and first-point scan by FKS_CONFIGS.
+        grouped = bool(matrix_element.get('processes')[0].get('model').get(
+            'merged_particles'))
+        replace_dict['hel_configs'] = 'FKS_CONFIGS' if grouped else '1'
+        replace_dict['hel_index_setup'] = (
+            'HEL_INDEX=NFKSPROCESS' if grouped else 'HEL_INDEX=1')
+
+        # Reuse the standalone flavor-table and per-call mask machinery.  The
+        # NLO templates keep their historical public entry points and obtain
+        # the local row from the physical NFKSPROCESS class instead.
+        mask_decl, mask_setup, n_mask, active_flavor_mask = \
+            self._get_flavor_mask_blocks(matrix_element)
+        if proc_type in ('born', 'cnt', 'bhel'):
+            # nexternal.inc describes the real process in an FKS directory;
+            # underlying-Born matrix elements have one fewer external leg.
+            mask_decl = mask_decl.replace('NEXTERNAL', 'NEXTERNAL-1')
+            mask_setup = mask_setup.replace('NEXTERNAL', 'NEXTERNAL-1')
+        replace_dict['flavor_mask_decl'] = mask_decl
+        replace_dict['flavor_mask_setup'] = mask_setup
+
+        fortran_model.use_flavor_mask = (n_mask > 0)
+        fortran_model.me_n_flavors = n_mask
+        fortran_model.me_active_flavor_mask = active_flavor_mask
+        try:
+            helas_calls = fortran_model.get_matrix_element_calls(
+                matrix_element)
+        finally:
+            fortran_model.use_flavor_mask = False
+            fortran_model.me_n_flavors = 0
+            fortran_model.me_active_flavor_mask = None
         replace_dict['helas_calls'] = "\n".join(helas_calls)
+        
+        coupling_dep = fortran_model.get('model').get('coupling_dep')
+        hel_vec = "\n".join(helas_calls)
+        # Only couplings recomputed for each scale point are arrays in the
+        # generated COUPLINGS module.  Electroweak-only dependencies such as
+        # aEWM1 remain scalar and must not acquire a spurious _VEC suffix.
+        for coup, dependencies in coupling_dep.items():
+            if not any(dep in ('aS', 'MU_R') for dep in dependencies):
+                continue
+            hel_vec = hel_vec.replace(coup+",", coup + "_vec(ivec),")
+        
+        replace_dict['helas_calls_vec'] = hel_vec
 
         # Extract version number and date from VERSION file
         info_lines = self.get_mg5_info_lines()
@@ -2330,7 +2569,23 @@ As a result, the default card will not be tailored to the process generated.""")
 
         # Extract overall denominator
         # Averaging initial state color, spin, and identical FS particles
-        replace_dict['den_factor_line'] = self.get_den_factor_line(matrix_element)
+        den_factor_line = self.get_den_factor_line(matrix_element)
+        if proc_type == 'real' and matrix_element.get('processes')[0].get(
+                'model').get('merged_particles'):
+            den_factors = self.get_flavor_denominator_factors(
+                matrix_element)
+            # IDEN is selected at run time for grouped physical rows.  Do not
+            # retain the ordinary DATA initialization: DATA implies SAVE and
+            # would turn this otherwise-local value into shared writable state
+            # in the OpenMP amplitude loop.
+            den_factor_line = (
+                'INTEGER IDEN_FLAVOR(%d)\nDATA IDEN_FLAVOR / %s /' %
+                (len(den_factors),
+                 ', '.join('%d' % factor for factor in den_factors)))
+            replace_dict['flavor_den_factor_setup'] = (
+                'IF (FLAV_IDX.GE.1.AND.FLAV_IDX.LE.%d) '
+                'IDEN=IDEN_FLAVOR(FLAV_IDX)' % len(den_factors))
+        replace_dict['den_factor_line'] = den_factor_line
 
         # Extract ngraphs
         ngraphs = matrix_element.get_number_of_amplitudes()
@@ -2388,9 +2643,13 @@ As a result, the default card will not be tailored to the process generated.""")
         replace_dict['nb_temp_jamp'] = nb_temp_jamp
         
         if proc_type=='born':
+            replace_dict.update(self.get_born_coupling_check_dict(matrix_element))
             file = open(pjoin(_file_path, \
             'iolibs/template_files/bornmatrix_splitorders_fks.inc')).read()
         elif proc_type=='born_links':
+            raise MadGraph5Error(
+                'The combined-colour Born template does not implement the '
+                'explicit saved-amplitude FKS interface')
             file = open(pjoin(_file_path, \
             'iolibs/template_files/bornmatrix_colorlinks_fks.inc')).read()
         elif proc_type=='bhel':
@@ -2479,12 +2738,18 @@ As a result, the default card will not be tailored to the process generated.""")
         filename = 'born.f'
 
         born_dict = {}
-        born_dict['nconfs'] = max(len(matrix_element.get_fks_info_list()),1)
+        # Resolving virtual rows trims and renumbers a grouped loop ME. MadLoop
+        # must be exported first because its split-order bookkeeping still owns
+        # the original amplitude numbering. Born generation only needs the
+        # physical class cardinality, not the virtual local row.
+        born_dict['nconfs'] = max(len(matrix_element.get_fks_info_list(
+            resolve_virtual=False)), 1)
 
-        den_factor_lines = self.get_den_factor_lines(matrix_element)
+        den_factor_lines = self.get_den_factor_lines(
+            matrix_element, resolve_virtual=False)
         born_dict['den_factor_lines'] = '\n'.join(den_factor_lines)
 
-        ij_lines = self.get_ij_lines(matrix_element)
+        ij_lines = self.get_ij_lines(matrix_element, resolve_virtual=False)
         born_dict['ij_lines'] = '\n'.join(ij_lines)
 
         #this is to skip computing amp_split_cnt if the process has no corrections
@@ -2755,6 +3020,23 @@ As a result, the default card will not be tailored to the process generated.""")
                       'The OLP could not process the following line: \n%s'%line)
         
         return proc_def_to_label
+            
+                                
+    @staticmethod
+    def get_virtual_evaluated_flavor_pdgs(matrix_element):
+        """Return the physical Born rows (signed PDGs) for which this P
+        directory evaluates its virtual.
+
+        MadLoop only keeps its filters, and so writes the HelFilter.dat that
+        BinothLHA reads for the MC over helicities, when these are a single
+        row of the virtual (see
+        LoopProcessExporterFortranSA.get_virtual_filter_flavor).  The rows
+        are read without resolving the virtual ones, since that can trim the
+        loop matrix element before it is exported.
+        """
+        return [info['flavor_class']['born_pdgs'] for info in
+                matrix_element.get_fks_info_list(resolve_virtual=False)
+                if 'flavor_class' in info]
 
 
     def write_bornmatrix(self, writer, matrix_element, fortran_model):
@@ -3058,11 +3340,12 @@ Parameters              %(params)s\n\
             replace_dict['wavefunctionsize'] = 8
 
         # Extract glu_ij_lines
-        ij_lines = self.get_ij_lines(fksborn)
+        ij_lines = self.get_ij_lines(fksborn, resolve_virtual=False)
         replace_dict['ij_lines'] = '\n'.join(ij_lines)
 
         # Extract den_factor_lines
-        den_factor_lines = self.get_den_factor_lines(fksborn)
+        den_factor_lines = self.get_den_factor_lines(
+            fksborn, resolve_virtual=False)
         replace_dict['den_factor_lines'] = '\n'.join(den_factor_lines)
 
         # Extract the number of FKS process
@@ -3147,13 +3430,15 @@ Parameters              %(params)s\n\
         replace_dict['nb_temp_jamp'] = nb_tmp_jamp
 
         # Extract den_factor_lines
-        den_factor_lines = self.get_den_factor_lines(fksborn)
+        den_factor_lines = self.get_den_factor_lines(
+            fksborn, resolve_virtual=False)
         replace_dict['den_factor_lines'] = '\n'.join(den_factor_lines)
         misc.sprint(replace_dict['den_factor_lines'])
         replace_dict['den_factor_lines'] = ''
 
         # Extract the number of FKS process
-        replace_dict['nconfs'] = len(fksborn.get_fks_info_list())
+        replace_dict['nconfs'] = len(fksborn.get_fks_info_list(
+            resolve_virtual=False))
 
         file = open(os.path.join(_file_path, \
                           'iolibs/template_files/born_fks_hel.inc')).read()
@@ -3179,10 +3464,7 @@ Parameters              %(params)s\n\
 
         replace_dict['nsqorders'] = nsqorders
         replace_dict['iflines_col'] = ''
-        if self.born_color_links_in_born:
-            call = 'call sb_sf_link(p_born,%(ilink)d,wgt_col)'
-        else:
-            call = 'call sb_sf_%(ilink)3.3d(p_born,wgt_col)'
+        replace_dict['iflines_col_nocheck'] = ''
          
         for i, c_link in enumerate(color_links):
             ilink = i+1
@@ -3192,21 +3474,33 @@ Parameters              %(params)s\n\
                 replace_dict['iflines_col'] += \
                 "c link partons %(m)d and %(n)d \n\
                     %(iff)s ((m.eq.%(m)d .and. n.eq.%(n)d).or.(m.eq.%(n)d .and. n.eq.%(m)d)) then \n\
-                    " % {'m':m, 'n': n, 'iff': iff} + \
-                    call % {'ilink': ilink} + "\n"
+                    call sb_sf_%(ilink)3.3d(p_born,wgt_col,ret_amp_split_cnt,loc_saveamp)\n" \
+                    % {'m':m, 'n': n, 'iff': iff, 'ilink': ilink}
+                replace_dict['iflines_col_nocheck'] += \
+                "c link partons %(m)d and %(n)d \n\
+                    %(iff)s ((m.eq.%(m)d .and. n.eq.%(n)d).or.(m.eq.%(n)d .and. n.eq.%(m)d)) then \n\
+                    call sb_sf_nocheck_%(ilink)3.3d(p_born,wgt_col,ret_amp_split_cnt,loc_saveamp)\n" \
+                    % {'m':m, 'n': n, 'iff': iff, 'ilink': ilink}
             else:
                 replace_dict['iflines_col'] += \
                 "c link partons %(m)d and %(n)d \n\
                     %(iff)s (m.eq.%(m)d .and. n.eq.%(n)d) then \n\
-                    " % {'m':m, 'n': n, 'iff': iff} + \
-                    call % {'ilink': ilink} + "\n"
+                    call sb_sf_%(ilink)3.3d(p_born,wgt_col,ret_amp_split_cnt,loc_saveamp)\n" \
+                    % {'m':m, 'n': n, 'iff': iff, 'ilink': ilink}
+                replace_dict['iflines_col_nocheck'] += \
+                "c link partons %(m)d and %(n)d \n\
+                    %(iff)s (m.eq.%(m)d .and. n.eq.%(n)d) then \n\
+                    call sb_sf_nocheck_%(ilink)3.3d(p_born,wgt_col,ret_amp_split_cnt,loc_saveamp)\n" \
+                    % {'m':m, 'n': n, 'iff': iff, 'ilink': ilink}
 
         
         if replace_dict['iflines_col']:
             replace_dict['iflines_col'] += 'endif\n'
+            replace_dict['iflines_col_nocheck'] += 'endif\n'
         else:
             # this is when no color links are there
             replace_dict['iflines_col'] += 'write(*,*) \'Error in sborn_sf, no color links\'\nstop\n'
+            replace_dict['iflines_col_nocheck'] += 'write(*,*) \'Error in sborn_sf, no color links\'\nstop\n'
 
         file = open(os.path.join(_file_path, \
                           'iolibs/template_files/sborn_sf_fks.inc')).read()
@@ -3284,7 +3578,6 @@ Parameters              %(params)s\n\
         names = []
         for c in born_me.get_used_couplings(output="set"):
             names.extend(c if isinstance(c, (list, tuple)) else [c])
-        names = sorted(set(names), key=lambda c: str(c))
         if not names or not all(isinstance(c, str) and
                 re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', c) for c in names):
             out.update({'ncoup_check': 1, 'coup_check_lines': '',
@@ -3292,6 +3585,7 @@ Parameters              %(params)s\n\
                         'born_checks_amps': '.FALSE.',
                         'born_gscale': '.FALSE.'})
             return out
+        names = sorted(set(names))
         check = ['         if (saved_coup(%d).ne.%s) coup_changed=.true.'
                  % (i + 1, c) for i, c in enumerate(names)]
         record = ['         saved_coup(%d)=%s' % (i + 1, c)
@@ -3460,7 +3754,8 @@ Parameters              %(params)s\n\
         else:
             replace_dict['sdk_ident_goldstone'] = "0"
 
-        den_factor_lines = self.get_den_factor_lines(matrix_element)
+        den_factor_lines = self.get_den_factor_lines(
+            matrix_element, resolve_virtual=False)
         replace_dict['den_factor_lines'] = '\n'.join(den_factor_lines)
         replace_dict['bornspincol'] = born_me.get_denominator_factor() / born_me['identical_particle_factor']
 
@@ -3487,7 +3782,7 @@ Parameters              %(params)s\n\
                 # the last one (or only one if no MEs with goldstones exists), will use the born
                 if goldstone_mes:
                     calls_to_me += "else\n"
-                calls_to_me += "call sborn_onehel(p,nhel(1,ihel),ihel,ans_summed)\n"
+                calls_to_me += "call sborn_onehel(p,nhel(1,ihel),ihel,ans_summed,ret_saveamp)\n"
                 calls_to_me += "comp_idfac = 1d0\n"
                 par_ren = "par_ren_sborn_onehel"
                 i = -1 # so that i+1 is 0
@@ -3628,9 +3923,16 @@ Parameters              %(params)s\n\
         if ime != None:
             replace_dict['mename'] = 'EWSDK_GOLD_ME_%d' % (ime + 1)
             replace_dict['hell'] = ''
+            replace_dict['saved_amplitude_declarations'] = ''
+            replace_dict['saved_amplitude_argument'] = ''
         else:
             replace_dict['mename'] = 'SBORN_ONEHEL'
             replace_dict['hell'] = 'hell,'
+            replace_dict['saved_amplitude_declarations'] = (
+                "      INCLUDE 'genps.inc'\n"
+                "      INCLUDE 'born_nhel.inc'\n"
+                '      DOUBLE COMPLEX SAVED_AMPLITUDES(NGRAPHS,MAX_BHEL)')
+            replace_dict['saved_amplitude_argument'] = ',SAVED_AMPLITUDES'
 
         if not 'Gmu' in  self.model.get('name'):
             logger.warning('Warning, the parameter renormalisation should be done in the alpha(MZ) scheme')
@@ -4056,7 +4358,8 @@ Parameters              %(params)s\n\
         replace_dict['ic_line'] = ic_line
 
         # Extract den_factor_lines
-        den_factor_lines = self.get_den_factor_lines(fksborn)
+        den_factor_lines = self.get_den_factor_lines(
+            fksborn, resolve_virtual=False)
         replace_dict['den_factor_lines'] = '\n'.join(den_factor_lines)
     
         # Extract ngraphs
@@ -4119,7 +4422,8 @@ Parameters              %(params)s\n\
         replace_dict['nb_temp_jamp'] = max(nb_tmp_jamp, replace_dict['nb_temp_jamp'])
         
         # Extract the number of FKS process
-        replace_dict['nconfs'] = len(fksborn.get_fks_info_list())
+        replace_dict['nconfs'] = len(fksborn.get_fks_info_list(
+            resolve_virtual=False))
 
         file = open(os.path.join(_file_path, \
                           'iolibs/template_files/b_sf_xxx_splitorders_fks.inc')).read()
@@ -4221,24 +4525,158 @@ Parameters              %(params)s\n\
             replace_dict['need_charge_links'] = ', '.join(\
                     [bool_dict[info['fks_info']['need_charge_links']] for \
                     info in fks_info_list ])
+            replace_dict['real_flavor_index_values'] = ', '.join(
+                '%d' % info.get('flavor_class', {}).get(
+                    'real_flavor_index', 1)
+                for info in fks_info_list)
+            replace_dict['born_flavor_index_values'] = ', '.join(
+                '%d' % info.get('flavor_class', {}).get(
+                    'born_flavor_index', 1)
+                for info in fks_info_list)
+            replace_dict['extra_cnt_flavor_index_values'] = ', '.join(
+                '%d' % info.get('flavor_class', {}).get(
+                    'extra_cnt_flavor_index', 0)
+                for info in fks_info_list)
+            virtual_flavor_indices = [
+                info.get('flavor_class', {}).get(
+                    'virtual_flavor_index', 0)
+                for info in fks_info_list]
+            replace_dict['virtual_flavor_index_values'] = ', '.join(
+                '%d' % index for index in virtual_flavor_indices)
+            replace_dict['max_virtual_flavor_index'] = max(
+                [1] + virtual_flavor_indices)
+            replace_dict['n_virtual_flavor_configs'] = len(set(
+                index for index in virtual_flavor_indices if index > 0))
+            # The virtual directory is already written: with several rows,
+            # MadLoop keeps one helicity filter per row (FILTER_FLAV_IDX=-1,
+            # see LoopProcessExporterFortranSA.get_virtual_filter_flavor),
+            # unless it could not resolve them. The drivers then sum the
+            # helicities explicitly, since BinothLHA has no filter to read.
+            replace_dict['helfilter_per_virtual_flavor'] = bool_dict[
+                replace_dict['n_virtual_flavor_configs'] > 1 and
+                getattr(fksborn.virt_matrix_element, 'virtual_filter_flavor',
+                        None) == -1]
+            has_physical_fks_classes = all(
+                info.get('flavor_class') for info in fks_info_list)
+            replace_dict['has_physical_fks_classes'] = (
+                '.true.' if has_physical_fks_classes else '.false.')
+            replace_dict['fks_flavor_class_values'] = ', '.join(
+                '%d' % (index if has_physical_fks_classes else 0)
+                for index, unused in enumerate(fks_info_list, 1))
+            replace_dict['fks_topology_values'] = ', '.join(
+                '%d' % info.get('flavor_class', {}).get(
+                    'fks_config_index', index)
+                for index, info in enumerate(fks_info_list, 1))
+
+            # Pick one soft-capable representative for each physical Born
+            # row whenever possible.  BORN_FKS_MAP_D is the direct map from
+            # every physical FKS class to that representative; unlike the
+            # compact BORN_FKS_CONFIG_D list it does not assume dense local
+            # Born row numbers.
+            born_representatives = {}
+            for config_index, info in enumerate(fks_info_list, 1):
+                born_flavor_index = info.get('flavor_class', {}).get(
+                    'born_flavor_index', 1)
+                current = born_representatives.get(born_flavor_index)
+                has_links = (info['fks_info']['need_color_links'] or
+                             info['fks_info']['need_charge_links'])
+                if current is None or (has_links and not current[1]):
+                    born_representatives[born_flavor_index] = (
+                        config_index, has_links)
+            born_flavor_configs = [
+                value[0] for unused, value in
+                sorted(born_representatives.items())]
+            replace_dict['n_born_flavor_configs'] = len(
+                born_flavor_configs)
+            replace_dict['born_fks_config_values'] = ', '.join(
+                '%d' % config_index
+                for config_index in born_flavor_configs)
+            replace_dict['born_fks_map_values'] = ', '.join(
+                '%d' % born_representatives[
+                    info.get('flavor_class', {}).get(
+                        'born_flavor_index', 1)][0]
+                if has_physical_fks_classes else '%d' % config_index
+                for config_index, info in enumerate(fks_info_list, 1))
 
             col_lines = []
             pdg_lines = []
             charge_lines = []
+            born_pdg_lines = []
+            born_charge_lines = []
+            extra_cnt_pdg_lines = []
+            extra_cnt_color_lines = []
+            extra_cnt_charge_lines = []
             tag_lines = []
             fks_j_from_i_lines = []
             split_type_lines = []
             for i, info in enumerate(fks_info_list):
+                flavor_class = info.get('flavor_class')
+                if flavor_class:
+                    colors = flavor_class['real_colors']
+                    charges = flavor_class['real_charges']
+                    born_pdgs = flavor_class['born_pdgs']
+                    born_charges = flavor_class['born_charges']
+                    extra_cnt_pdgs = flavor_class['extra_cnt_pdgs']
+                    extra_cnt_colors = flavor_class['extra_cnt_colors']
+                    extra_cnt_charges = flavor_class['extra_cnt_charges']
+                else:
+                    real_process = fksborn.real_processes[info['n_me']-1]
+                    colors = real_process.colors
+                    charges = real_process.charges
+                    born_pdgs = [0] * (len(charges) - 1)
+                    born_charges = fksborn.charges_born
+                    extra_cnt_index = info['fks_info']['extra_cnt_index']
+                    if extra_cnt_index != -1:
+                        extra_process = fksborn.extra_cnt_me_list[
+                            extra_cnt_index].get('processes')[0]
+                        extra_cnt_pdgs = [leg.get('id')
+                                          for leg in extra_process.get('legs')]
+                        extra_cnt_colors = [leg.get('color')
+                                            for leg in extra_process.get('legs')]
+                        extra_cnt_charges = [leg.get('charge')
+                                             for leg in extra_process.get('legs')]
+                    else:
+                        extra_cnt_pdgs = None
+                        extra_cnt_colors = None
+                        extra_cnt_charges = None
+                if extra_cnt_pdgs is None:
+                    extra_cnt_pdgs = [0] * len(born_charges)
+                    extra_cnt_colors = [1] * len(born_charges)
+                    extra_cnt_charges = [0.] * len(born_charges)
                 col_lines.append( \
                     'DATA (PARTICLE_TYPE_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /' \
-                    % (i + 1, ', '.join('%d' % col for col in fksborn.real_processes[info['n_me']-1].colors) ))
+                    % (i + 1, ', '.join('%d' % col for col in colors)))
                 pdg_lines.append( \
                     'DATA (PDG_TYPE_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /' \
                     % (i + 1, ', '.join('%d' % pdg for pdg in info['pdgs'])))
                 charge_lines.append(\
                     'DATA (PARTICLE_CHARGE_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /'\
                     % (i + 1, ', '.join('%19.15fd0' % charg\
-                                        for charg in fksborn.real_processes[info['n_me']-1].charges) ))
+                                         for charg in charges)))
+                born_pdg_lines.append(
+                    'DATA (BORN_PDG_TYPE_D(%d, IPOS), '
+                    'IPOS=1, NEXTERNAL-1) / %s /' %
+                    (i + 1, ', '.join('%d' % pdg for pdg in born_pdgs)))
+                born_charge_lines.append(
+                    'DATA (BORN_PARTICLE_CHARGE_D(%d, IPOS), '
+                    'IPOS=1, NEXTERNAL-1) / %s /' %
+                    (i + 1, ', '.join('%19.15fd0' % charge
+                                      for charge in born_charges)))
+                extra_cnt_pdg_lines.append(
+                    'DATA (EXTRA_CNT_PDG_D(%d, IPOS), '
+                    'IPOS=1, NEXTERNAL-1) / %s /' %
+                    (i + 1, ', '.join('%d' % pdg
+                                      for pdg in extra_cnt_pdgs)))
+                extra_cnt_color_lines.append(
+                    'DATA (EXTRA_CNT_COLOR_D(%d, IPOS), '
+                    'IPOS=1, NEXTERNAL-1) / %s /' %
+                    (i + 1, ', '.join('%d' % color
+                                      for color in extra_cnt_colors)))
+                extra_cnt_charge_lines.append(
+                    'DATA (EXTRA_CNT_CHARGE_D(%d, IPOS), '
+                    'IPOS=1, NEXTERNAL-1) / %s /' %
+                    (i + 1, ', '.join('%19.15fd0' % charge
+                                      for charge in extra_cnt_charges)))
                 tag_lines.append( \
                     'DATA (PARTICLE_TAG_D(%d, IPOS), IPOS=1, NEXTERNAL) / %s /' \
                     % (i + 1, ', '.join(bool_dict[tag] for tag in fksborn.real_processes[info['n_me']-1].particle_tags) ))
@@ -4253,9 +4691,24 @@ Parameters              %(params)s\n\
         # - i_fks = nexternal, pdg type = -21 and color =8
         # - j_fks = the last colored particle
             bornproc = fksborn.born_me.get('processes')[0]
-            pdgs = [l.get('id') for l in bornproc.get('legs')] + [-21]
-            colors = [l.get('color') for l in bornproc.get('legs')] + [8]
-            charges = [l.get('charge') for l in bornproc.get('legs')] + [0.]
+            model = bornproc.get('model')
+            if model.get('merged_particles'):
+                # The fake LOonly configuration has no real-emission mapping
+                # from which to recover scalar properties.  Use its first
+                # executable physical Born row; pseudo-PDGs and tuple-valued
+                # merged charges must never enter the generated FKS tables.
+                pdgs = fksborn.born_me.get_external_flavors(
+                    return_pdgs=True)[1][0]
+                particles = [model.get_particle(pdg) for pdg in pdgs]
+                colors = [particle.get('color') for particle in particles]
+                charges = [particle.get('charge') for particle in particles]
+            else:
+                pdgs = [leg.get('id') for leg in bornproc.get('legs')]
+                colors = [leg.get('color') for leg in bornproc.get('legs')]
+                charges = [leg.get('charge') for leg in bornproc.get('legs')]
+            pdgs = pdgs + [-21]
+            colors = colors + [8]
+            charges = charges + [0.]
             tags = [l.get('is_tagged') for l in bornproc.get('legs')] + [False]
 
             fks_i = len(colors)
@@ -4285,6 +4738,19 @@ Parameters              %(params)s\n\
             # set both color/charge links to true
             replace_dict['need_color_links'] = '.true.'
             replace_dict['need_charge_links'] = '.true.'
+            replace_dict['real_flavor_index_values'] = '1'
+            replace_dict['born_flavor_index_values'] = '1'
+            replace_dict['extra_cnt_flavor_index_values'] = '0'
+            replace_dict['virtual_flavor_index_values'] = '0'
+            replace_dict['max_virtual_flavor_index'] = 1
+            replace_dict['n_virtual_flavor_configs'] = 0
+            replace_dict['helfilter_per_virtual_flavor'] = '.false.'
+            replace_dict['has_physical_fks_classes'] = '.false.'
+            replace_dict['fks_flavor_class_values'] = '0'
+            replace_dict['fks_topology_values'] = '1'
+            replace_dict['born_fks_map_values'] = '1'
+            replace_dict['n_born_flavor_configs'] = 1
+            replace_dict['born_fks_config_values'] = '1'
 
             col_lines = ['DATA (PARTICLE_TYPE_D(1, IPOS), IPOS=1, NEXTERNAL) / %s /' \
                             % ', '.join([str(col) for col in colors])]
@@ -4292,6 +4758,26 @@ Parameters              %(params)s\n\
                             % ', '.join([str(pdg) for pdg in pdgs])]
             charge_lines = ['DATA (PARTICLE_CHARGE_D(1, IPOS), IPOS=1, NEXTERNAL) / %s /' \
                             % ', '.join('%19.15fd0' % charg for charg in charges)]
+            born_pdg_lines = [
+                'DATA (BORN_PDG_TYPE_D(1, IPOS), '
+                'IPOS=1, NEXTERNAL-1) / %s /' %
+                ', '.join('0' for unused in charges[:-1])]
+            born_charge_lines = [
+                'DATA (BORN_PARTICLE_CHARGE_D(1, IPOS), '
+                'IPOS=1, NEXTERNAL-1) / %s /' %
+                ', '.join('%19.15fd0' % charge for charge in charges[:-1])]
+            extra_cnt_pdg_lines = [
+                'DATA (EXTRA_CNT_PDG_D(1, IPOS), '
+                'IPOS=1, NEXTERNAL-1) / %s /' %
+                ', '.join('0' for unused in charges[:-1])]
+            extra_cnt_color_lines = [
+                'DATA (EXTRA_CNT_COLOR_D(1, IPOS), '
+                'IPOS=1, NEXTERNAL-1) / %s /' %
+                ', '.join('1' for unused in charges[:-1])]
+            extra_cnt_charge_lines = [
+                'DATA (EXTRA_CNT_CHARGE_D(1, IPOS), '
+                'IPOS=1, NEXTERNAL-1) / %s /' %
+                ', '.join('0D0' for unused in charges[:-1])]
             tag_lines = ['DATA (PARTICLE_TAG_D(1, IPOS), IPOS=1, NEXTERNAL) / %s /' \
                             %  ', '.join(bool_dict[tag] for tag in tags)]
             fks_j_from_i_lines = ['DATA (FKS_J_FROM_I_D(1, %d, JPOS), JPOS = 0, 1)  / 1, %d /' \
@@ -4305,6 +4791,14 @@ Parameters              %(params)s\n\
         replace_dict['col_lines'] = '\n'.join(col_lines)
         replace_dict['pdg_lines'] = '\n'.join(pdg_lines)
         replace_dict['charge_lines'] = '\n'.join(charge_lines)
+        replace_dict['born_pdg_lines'] = '\n'.join(born_pdg_lines)
+        replace_dict['born_charge_lines'] = '\n'.join(born_charge_lines)
+        replace_dict['extra_cnt_pdg_lines'] = '\n'.join(
+            extra_cnt_pdg_lines)
+        replace_dict['extra_cnt_color_lines'] = '\n'.join(
+            extra_cnt_color_lines)
+        replace_dict['extra_cnt_charge_lines'] = '\n'.join(
+            extra_cnt_charge_lines)
         replace_dict['tag_lines'] = '\n'.join(tag_lines)
         replace_dict['fks_j_from_i_lines'] = '\n'.join(fks_j_from_i_lines)
         replace_dict['split_type_lines'] = '\n'.join(split_type_lines)
@@ -4370,12 +4864,18 @@ Parameters              %(params)s\n\
         for sector, info in enumerate(infos, 1):
             real = fksborn.real_processes[info['n_me']-1]
             real_iden = real.matrix_element['identical_particle_factor']
-            if born_iden <= 0 or real_iden <= 0:
+            sector_processes = fks_common.physical_fks_processes(real.matrix_element, info)
+            sector_born_iden = born_iden
+            if 'flavor_class' in info:
+                real_iden = sector_processes[0].identical_particle_factor()
+                sector_born_iden = fks_common.physical_fks_processes(
+                    fksborn.born_me, info, 'born')[0].identical_particle_factor()
+            if sector_born_iden <= 0 or real_iden <= 0:
                 raise MadGraph5Error('Non-positive MC statistical denominator')
             # Preserve the entire ordered subprocess list: the inner PDF index
             # is subsequently interpreted in the outer event's flavour list.
             processes = tuple(process_identity(proc, real.particle_tags)
-                              for proc in real.matrix_element['processes'])
+                              for proc in sector_processes)
             key = (processes, real_iden)
             if key not in group_keys:
                 if any(any(proc in old_processes for proc in processes)
@@ -4428,7 +4928,7 @@ Parameters              %(params)s\n\
                       if stat_proc_states[k-1] == stat_proc_states[j-1]])):
                     raise MadGraph5Error('Different FKS statistical factors in grouped '
                                          'subprocesses of sector %d; separate these processes' % sector)
-            symmetry.append((fac_i, fac_j, born_iden, real_iden))
+            symmetry.append((fac_i, fac_j, sector_born_iden, real_iden))
             orbit = []
             for ii in ii_list:
                 for jj in jj_list:
@@ -4881,19 +5381,36 @@ Parameters              %(params)s\n\
     #===============================================================================
     # get_leshouche_lines
     #===============================================================================
-    def get_leshouche_lines(self, matrix_element, ime):
+    def get_leshouche_lines(self, matrix_element, ime, physical_pdgs=None):
         #test written
-        """Write the leshouche.inc file for MG4"""
+        """Write the leshouche.inc file for MG4.
+
+        Grouped FKS output exports one executable physical class per
+        ``NFKSPROCESS``.  Its IDUP_D row must therefore contain that class's
+        physical PDGs, not the merged pseudo-PDGs carried by the topology
+        process used to generate the matrix element.
+        """
     
         # Extract number of external particles
         (nexternal, ninitial) = matrix_element.get_nexternal_ninitial()
     
         lines = []
-        for iproc, proc in enumerate(matrix_element.get('processes')):
+        processes = matrix_element.get('processes')
+        if physical_pdgs is not None:
+            if len(physical_pdgs) != nexternal:
+                raise fks_common.FKSProcessError(
+                    'Physical Les Houches row has %d PDGs, expected %d' %
+                    (len(physical_pdgs), nexternal))
+            # A grouped FKS class already denotes one physical subprocess.
+            # Keep only one topology process for its mothers/color flows.
+            processes = processes[:1]
+        for iproc, proc in enumerate(processes):
             legs = proc.get_legs_with_decays()
+            pdgs = (physical_pdgs if physical_pdgs is not None else
+                    [leg.get('id') for leg in legs])
             lines.append("I   %4d   %4d       %s" % \
                          (ime, iproc + 1,
-                          " ".join([str(l.get('id')) for l in legs])))
+                          " ".join(str(pdg) for pdg in pdgs)))
             for i in [1, 2]:
                 lines.append("M   %4d   %4d   %4d      %s" % \
                          (ime, i, iproc + 1,
@@ -4933,7 +5450,7 @@ Parameters              %(params)s\n\
 
                     nflow = len(color_flow_list)
 
-        nproc = len(matrix_element.get('processes'))
+        nproc = len(processes)
     
         return lines, nproc, nflow
 
@@ -5041,10 +5558,40 @@ Parameters              %(params)s\n\
         return lines, nproc, nflow
 
 
+    @staticmethod
+    def get_flavor_denominator_factors(matrix_element, physical_rows=None,
+                                       normalization_process=None):
+        """Return the denominator for each physical matrix-element row.
+
+        Members of one merged topology share initial spin/color averages but
+        can have different final-state identical-particle factors.  Rebuild a
+        physical process for each row rather than inheriting the representative
+        pseudo-particle factor.
+        """
+
+        if physical_rows is None:
+            physical_rows = matrix_element.get_external_flavors(
+                return_pdgs=True)[1]
+        if normalization_process is None:
+            normalization_process = matrix_element.get('processes')[0]
+        base_denominator = (matrix_element.get_denominator_factor() //
+                            matrix_element['identical_particle_factor'])
+        factors = []
+        for physical_pdgs in physical_rows:
+            physical_process = copy.deepcopy(normalization_process)
+            for leg, pdg in zip(
+                    physical_process.get_legs_with_decays(), physical_pdgs):
+                leg.set('id', pdg)
+            factors.append(
+                base_denominator *
+                physical_process.identical_particle_factor())
+        return factors
+
     #===============================================================================
     # get_den_factor_lines
     #===============================================================================
-    def get_den_factor_lines(self, fks_born, born_me=None):
+    def get_den_factor_lines(self, fks_born, born_me=None,
+                             resolve_virtual=True):
         """returns the lines with the information on the denominator keeping care
         of the identical particle factors in the various real emissions
         If born_me is provided, it is used instead of fksborn.born_me"""
@@ -5055,11 +5602,22 @@ Parameters              %(params)s\n\
             compensate = False
     
         lines = []
-        info_list = fks_born.get_fks_info_list()
+        info_list = fks_born.get_fks_info_list(
+            resolve_virtual=resolve_virtual)
         if info_list:
             # if the reals have been generated, fill with the corresponding average factor
             lines.append('INTEGER IDEN_VALUES(%d)' % len(info_list))
-            if not compensate:
+            if any(info.get('flavor_class') for info in info_list):
+                born_process = fks_born.born_me.get('processes')[0]
+                physical_rows = [info['flavor_class']['born_pdgs']
+                                 for info in info_list]
+                factors = self.get_flavor_denominator_factors(
+                    born_me, physical_rows=physical_rows,
+                    normalization_process=born_process)
+                lines.append('DATA IDEN_VALUES /' +
+                             ', '.join('%d' % factor
+                                       for factor in factors) + '/')
+            elif not compensate:
                 lines.append('DATA IDEN_VALUES /' + \
                              ', '.join(['%d' % ( 
                              born_me.get_denominator_factor()) \
@@ -5083,10 +5641,11 @@ Parameters              %(params)s\n\
     #===============================================================================
     # get_ij_lines
     #===============================================================================
-    def get_ij_lines(self, fks_born):
+    def get_ij_lines(self, fks_born, resolve_virtual=True):
         """returns the lines with the information on the particle number of the born 
         that splits"""
-        info_list = fks_born.get_fks_info_list()
+        info_list = fks_born.get_fks_info_list(
+            resolve_virtual=resolve_virtual)
         lines = []
         if info_list:
             # if the reals have been generated, fill with the corresponding value of ij if
@@ -5110,6 +5669,10 @@ Parameters              %(params)s\n\
 
         processes = matrix_element.get('processes')
         model = processes[0].get('model')
+
+        if ninitial == 2 and model.get('merged_particles') and \
+                not subproc_group:
+            return self.get_grouped_pdf_lines_mir(mirror=mirror)
 
         pdf_definition_lines = ""
         ee_pdf_definition_lines = ""
@@ -5270,6 +5833,88 @@ Parameters              %(params)s\n\
 
         # Remove last line break from pdf_lines
         return pdf_definition_lines[:-1], pdf_data_lines[:-1], pdf_lines[:-1], ee_pdf_definition_lines
+
+    def get_grouped_pdf_lines_mir(self, mirror=False):
+        """Return NLO luminosity code selected by the physical FKS class.
+
+        A grouped topology carries pseudo-PDGs whose names are neither valid
+        Fortran identifiers nor valid PDF flavors.  ``PDG_TYPE_D`` is the
+        authoritative physical row, so resolve both incoming PDF codes from
+        ``NFKSPROCESS`` at runtime instead of creating topology-named scalar
+        variables.
+        """
+
+        pdf_vars = """INTEGER NFKSPROCESS
+      COMMON/C_NFKSPROCESS/NFKSPROCESS
+      INCLUDE 'fks_info.inc'
+      INTEGER FKS_PDF_PDG1,FKS_PDF_PDG2
+      DOUBLE PRECISION FKS_PDF1,FKS_PDF2"""
+        ee_vars = """DOUBLE PRECISION DUMMY_COMPONENTS(N_EE)
+      DOUBLE PRECISION FKS_PDF1_COMPONENTS(N_EE)
+      DOUBLE PRECISION FKS_PDF2_COMPONENTS(N_EE)"""
+
+        def beam_lines(beam):
+            pdf_beam = 3 - beam if mirror else beam
+            return """FKS_PDF_PDG%(beam)d=PDG_TYPE_D(NFKSPROCESS,%(beam)d)
+      IF (FKS_PDF_PDG%(beam)d.EQ.21) THEN
+        FKS_PDF_PDG%(beam)d=0
+      ELSEIF (FKS_PDF_PDG%(beam)d.EQ.22) THEN
+        FKS_PDF_PDG%(beam)d=7
+      ELSEIF (FKS_PDF_PDG%(beam)d.EQ.-11) THEN
+        FKS_PDF_PDG%(beam)d=-8
+      ELSEIF (FKS_PDF_PDG%(beam)d.EQ.11) THEN
+        FKS_PDF_PDG%(beam)d=8
+      ELSEIF (FKS_PDF_PDG%(beam)d.EQ.-13) THEN
+        FKS_PDF_PDG%(beam)d=-9
+      ELSEIF (FKS_PDF_PDG%(beam)d.EQ.13) THEN
+        FKS_PDF_PDG%(beam)d=9
+      ELSEIF (FKS_PDF_PDG%(beam)d.EQ.-15) THEN
+        FKS_PDF_PDG%(beam)d=-10
+      ELSEIF (FKS_PDF_PDG%(beam)d.EQ.15) THEN
+        FKS_PDF_PDG%(beam)d=10
+      ENDIF
+      FKS_PDF%(beam)d=1D0
+      FKS_PDF%(beam)d_COMPONENTS(1:N_EE)=0D0
+      IF (ABS(LPP(%(pdf_beam)d)).GE.1) THEN
+        IF (ABS(FKS_PDF_PDG%(beam)d).LE.10) THEN
+          FKS_PDF%(beam)d=PDG2PDF(LPP(%(pdf_beam)d),
+     $      FKS_PDF_PDG%(beam)d,%(pdf_beam)d,
+     $      XBK(%(pdf_beam)d),DSQRT(Q2FACT(%(pdf_beam)d)))
+          IF ((ABS(LPP(%(pdf_beam)d)).EQ.4.OR.
+     $         ABS(LPP(%(pdf_beam)d)).EQ.3)
+     $        .AND.PDLABEL.NE.'none')
+     $      FKS_PDF%(beam)d_COMPONENTS(1:N_EE)=EE_COMPONENTS(1:N_EE)
+        ELSE
+          FKS_PDF%(beam)d=0D0
+        ENDIF
+      ENDIF""" % {'beam': beam, 'pdf_beam': pdf_beam}
+
+        pdf_lines = """IF (PDG_TYPE_D(NFKSPROCESS,1).EQ.22.AND.
+     $    PDG_TYPE_D(NFKSPROCESS,2).EQ.22.AND.
+     $    ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND.
+     $    (PDLABEL(1:2).EQ.'ed'.OR.PDLABEL(1:2).EQ.'ch')) THEN
+        FKS_PDF1=DSQRT(PHOTONPDFSQUARE(XBK(1),XBK(2)))
+        FKS_PDF2=FKS_PDF1
+      ENDIF
+      IF (.NOT.(PDG_TYPE_D(NFKSPROCESS,1).EQ.22.AND.
+     $    PDG_TYPE_D(NFKSPROCESS,2).EQ.22.AND.
+     $    ABS(LPP(1)).EQ.2.AND.ABS(LPP(2)).EQ.2.AND.
+     $    (PDLABEL(1:2).EQ.'ed'.OR.PDLABEL(1:2).EQ.'ch'))) THEN
+%(beam1)s
+%(beam2)s
+      ENDIF
+      PD(0)=0D0
+      IPROC=1
+      PD(IPROC)=FKS_PDF1*FKS_PDF2
+      IF (ABS(LPP(1)).EQ.ABS(LPP(2)).AND.
+     $   (ABS(LPP(1)).EQ.3.OR.ABS(LPP(1)).EQ.4).AND.
+     $    PDLABEL.NE.'none')
+     $  PD(IPROC)=EE_COMP_PROD(FKS_PDF1_COMPONENTS,
+     $                         FKS_PDF2_COMPONENTS)""" % {
+            'beam1': beam_lines(1),
+            'beam2': beam_lines(2),
+        }
+        return pdf_vars, '', pdf_lines, ee_vars
 
 
     #test written
@@ -5936,7 +6581,8 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
     # generate_directories_fks
     #===============================================================================
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
-                                    me_ntot, path=os.getcwd(),OLP='MadLoop'):
+                                    me_ntot, path=os.getcwd(),OLP='MadLoop',
+                                    second_exporter=None, second_helas=None):
         """Generate the Pxxxxx_i directories for a subprocess in MadFKS,
         only generating the relevant files for the EW Sudakov (the caller
         then calls write_born_dirs, as for ProcessExporterFortranFKS)"""
@@ -5975,7 +6621,11 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         filename = 'extra_cnt_wrapper.f'
         self.write_extra_cnt_wrapper(writers.FortranWriter(filename),
                                      matrix_element.extra_cnt_me_list, 
-                                     fortran_model)
+                                     fortran_model, matrix_element)
+
+        filename = 'nFKSconfigs.inc'
+        self.write_nfksconfigs_file(writers.FortranWriter(filename),
+                                    matrix_element, fortran_model)
 
         filename = 'iproc.dat'
         self.write_iproc_file(writers.FortranWriter(filename),
@@ -6000,6 +6650,9 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
             (dummylines, maxproc, maxflow) = self.get_leshouche_lines(
                     matrix_element.born_me, 1)
 
+        self.write_maxconfigs_file(writers.FortranWriter('maxconfigs.inc'),
+            max(1, matrix_element.born_me.get_number_of_amplitudes()))
+
         filename = 'genps.inc'
         ngraphs = matrix_element.born_me.get_number_of_amplitudes()
         ncolor = max(1,len(matrix_element.born_me.get('color_basis')))
@@ -6018,13 +6671,17 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         filename = 'orders.inc'
         amp_split_orders, amp_split_size, amp_split_size_born = \
 			   self.write_orders_file(
-                            writers.FortranWriter(filename),
+                            writers.FortranWriter90(filename),
                             matrix_element)
 
         filename = 'amp_split_orders.inc'
         self.write_amp_split_orders_file(
                             writers.FortranWriter(filename),
                             amp_split_orders)
+        if second_exporter is not None:
+            second_exporter.generate_real_processes(
+                matrix_element, second_helas, me_number, borndir,
+                amp_split_orders)
         self.proc_characteristic['ninitial'] = ninitial
         self.proc_characteristic['nexternal'] = max(self.proc_characteristic['nexternal'], nexternal)
         
@@ -6045,6 +6702,7 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
 
         linkfiles = ['sa_ewsudakov.f',
                      'fks_phase_space_data.f',
+                     'driver.f90',
                      'sub_f2py_ewsudakov.f',
                      'sa_ewsudakov_dummyfcts.f',
                      'ewsudakov_functions.f',
@@ -6053,6 +6711,7 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
                      'add_write_info.f',
                      'coupl.inc',
                      'weight_lines.f',
+                     'weight_lines_vec.f',
                      'run.inc',
                      'run_card.inc',
                      'q_es.inc',
@@ -6079,8 +6738,10 @@ class ProcessExporterEWSudakovSA(ProcessOptimizedExporterFortranFKS):
         return calls, amp_split_orders
 
 
-class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
-    """FKS Born building-block standalone output ('output standalone_fortran --fks').
+class _ProcessExporterFortranFKSSAMixin(object):
+    """FKS Born building-block standalone output.
+
+    Selected by ``output standalone_fortran --fks``.
 
     The full optimized FKS directory is generated as usual (so the Born,
     color/charge-linked Born and spin-correlated Born code is byte-for-byte
@@ -6092,12 +6753,15 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
     """
 
     def generate_directories_fks(self, matrix_element, fortran_model, me_number,
-                                 me_ntot, path=os.getcwd(), OLP='MadLoop'):
+                                 me_ntot, path=os.getcwd(), OLP='MadLoop',
+                                 second_exporter=None, second_helas=None):
         """Run the regular FKS generation, then drop in the standalone
         Born driver and its data files."""
-        result = super(ProcessExporterFortranFKS_SA, self).\
+        result = super(_ProcessExporterFortranFKSSAMixin, self).\
             generate_directories_fks(matrix_element, fortran_model, me_number,
-                                     me_ntot, path, OLP)
+                                     me_ntot, path, OLP,
+                                     second_exporter=second_exporter,
+                                     second_helas=second_helas)
 
         born_path = os.path.join(path,
                             born_dir_name(matrix_element.born_me.get('processes')[0]))
@@ -6129,7 +6793,7 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
         """The list of the P directories and the info page, made from all
         their files, then remove those which the standalone checks do not
         need"""
-        super(ProcessExporterFortranFKS_SA, self).write_born_dirs(borndirs)
+        super(_ProcessExporterFortranFKSSAMixin, self).write_born_dirs(borndirs)
         for borndir in borndirs:
             born_path = os.path.join(self.dir_path, 'SubProcesses', borndir)
             if self.opt.get('fks_limits'):
@@ -6156,8 +6820,9 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
     # target of the P* makefile. Kept in sync with the makefile template;
     # b_sf_*.f is globbed because the count is process dependent (a pure [QED]
     # Born has none) and check_sa_fks.f is the driver we just copied in.
-    check_fks_sources = ('check_sa_fks.f', 'born.f', 'sborn_sf.f',
-                         'splitorders_stuff.f', 'orderstags_glob.f')
+    check_fks_sources = ('check_sa_fks.f', 'born.f', 'driver.f90',
+                         'sborn_sf.f', 'splitorders_stuff.f',
+                         'orderstags_glob.f')
     # the build file plus the run-time inputs the driver reads (the
     # param_card.dat symlink and the link-topology data file), and the files
     # the 'launch' flow itself touches in each P* directory. born_leshouche.inc
@@ -6233,6 +6898,18 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
         model = matrix_element.born_me.get('base_amplitude').\
             get('process').get('model')
         born_legs = matrix_element.born_me.get('processes')[0].get('legs')
+        fks_info_entry = matrix_element.get_fks_info_list(
+            resolve_virtual=False)[0]
+        flavor_class = fks_info_entry.get('flavor_class')
+        if flavor_class:
+            # Link positions are topology-level, but charge-link discovery must
+            # never inspect tuple-valued merged charges. Use the first physical
+            # class as the representative topology; all members of an NLO
+            # flavor group have the same charged-leg positions.
+            born_legs = copy.deepcopy(born_legs)
+            for leg, physical_pdg in zip(
+                    born_legs, flavor_class['born_pdgs']):
+                leg.set('id', physical_pdg)
         fks_legs = fks_common.to_fks_legs(born_legs, model)
         pdg, col = {}, {}
         for i, leg in enumerate(fks_legs):
@@ -6240,7 +6917,7 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
             col[i + 1] = leg.get('color')
 
         # config 1 (NFKSPROCESS=1) decides the link type, matching the driver
-        fks_info = matrix_element.get_fks_info_list()[0]['fks_info']
+        fks_info = fks_info_entry['fks_info']
         lines = []
         if fks_info['need_charge_links']:
             for c_link in fks_common.find_color_links(fks_legs, symm=True,
@@ -6268,14 +6945,12 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
         sborn_sf's charge ([QED]) branch builds the charge-linked Born as
         born * charges_born(m) * charges_born(n) * gal**2, so the driver needs
         these charges; the colour ([QCD]) branch ignores them."""
-        model = matrix_element.born_me.get('base_amplitude').\
-            get('process').get('model')
-        born_legs = matrix_element.born_me.get('processes')[0].get('legs')
-        fks_legs = fks_common.to_fks_legs(born_legs, model)
         lines = []
-        for i, leg in enumerate(fks_legs):
-            lines.append("      particle_charge_born(%d) = %19.15fd0" %
-                         (i + 1, leg.get('charge')))
+        nexternal, _ = matrix_element.get_nexternal_ninitial()
+        for i in range(1, nexternal):
+            lines.append(
+                "      particle_charge_born(%d) = "
+                "born_particle_charge_d(nfksprocess,%d)" % (i, i))
         out = open(filename, 'w')
         out.write("\n".join(lines))
         out.write("\n")
@@ -6285,7 +6960,7 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
         """Regular FKS finalize, plus a marker file so that 'launch' routes
         to the lightweight Born 'check_fks' build/run instead of the full
         aMC@NLO integration."""
-        result = super(ProcessExporterFortranFKS_SA, self).\
+        result = super(_ProcessExporterFortranFKSSAMixin, self).\
             finalize(matrix_elements, history, mg5options, flaglist)
         subproc = os.path.join(self.dir_path, 'SubProcesses')
         open(os.path.join(subproc, 'check_sa_fks_mode'), 'w').write('1\n')
@@ -6307,20 +6982,31 @@ class ProcessExporterFortranFKS_SA(ProcessOptimizedExporterFortranFKS):
         return result
 
     def create_run_card(self, processes, history):
-        """Regular NLO run_card, but with --limits use a built-in PDF set.
+        """Regular NLO run_card with no external PDF dependency.
 
-        test_soft_col_limits only compares the real emission with its
-        counterterms, so PDF values never enter; hadronic beams are still
-        needed when an FKS parton is in the initial state (the momentum
-        fraction must vary), and setrun then initialises the PDF for
-        alpha_s(MZ). The built-in set keeps LHAPDF out of the check."""
-        super(ProcessExporterFortranFKS_SA, self).create_run_card(processes,
-                                                                  history)
-        if not self.opt.get('fks_limits'):
-            return
+        ``check_fks`` does not use PDF values. ``test_soft_col_limits`` only
+        compares the real emission with its counterterms; hadronic beams are
+        nevertheless needed when an FKS parton is in the initial state (the
+        momentum fraction must vary), and setrun then initialises a PDF for
+        alpha_s(MZ). Use the built-in set for both paths to keep LHAPDF out of
+        these self-contained checks."""
+        super(_ProcessExporterFortranFKSSAMixin, self).create_run_card(
+            processes, history)
         for name in ('run_card_default.dat', 'run_card.dat'):
             path = pjoin(self.dir_path, 'Cards', name)
             run_card = banner_mod.RunCardNLO(path)
             run_card['pdlabel'] = 'nn23nlo'
             run_card['reweight_pdf'] = [False]
             run_card.write(path)
+
+
+class ProcessExporterFortranFKS_SA(
+        _ProcessExporterFortranFKSSAMixin,
+        ProcessOptimizedExporterFortranFKS):
+    """Optimized-loop FKS standalone exporter."""
+
+
+class ProcessExporterFortranFKS_SA_Default(
+        _ProcessExporterFortranFKSSAMixin,
+        ProcessExporterFortranFKS):
+    """Default-loop FKS standalone exporter."""

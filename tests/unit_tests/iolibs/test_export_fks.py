@@ -39,11 +39,14 @@ import tests.IOTests as IOTests
 import madgraph.interface.master_interface as MGCmd
 
 import madgraph.fks.fks_common as fks_common
+import madgraph.fks.fks_helas_objects as fks_helas_objects
 import madgraph.fks.fks_helas_objects as fks_helas
 import madgraph.core.base_objects as base_objects
 import madgraph.core.helas_objects as helas_objects
 import madgraph.iolibs.export_fks as export_fks
 import madgraph.iolibs.export_v4 as export_v4
+import madgraph.iolibs.file_writers as file_writers
+import madgraph.loop.loop_exporters as loop_exporters
 import madgraph.iolibs.file_writers as writers
 from madgraph import MadGraph5Error
 
@@ -127,6 +130,520 @@ class TestBornDirCollision(unittest.TestCase):
                          ['P0_cc_c99c', 'P0_cc_c9c', 'P0_cc_cc'])
 
 
+class TestGroupedFKSMetadata(unittest.TestCase):
+    """Physical FKS classes exported through configuration-indexed tables."""
+
+    def test_native_mc_keeps_ordered_point_dispatch_and_openmp_build_flags(self):
+        """Native MC folds share typed state; retain ordered full points.
+
+        Fortran amplitude helpers still support explicit OpenMP builds.
+        Porting native MC point state to lanes is a separate change.
+        """
+
+        template_root = os.path.join(
+            root_path, os.path.pardir, os.path.pardir, 'Template', 'NLO')
+        with open(os.path.join(
+                template_root, 'SubProcesses', 'driver_mintMC.f')) as stream:
+            driver = stream.read().upper()
+        self.assertIn('CALL MINT(SIGINTF)', driver)
+        self.assertIn('CALL GEN(SIGINTF,', driver)
+        self.assertNotIn('CALL MINT_VEC(', driver)
+        self.assertNotIn('CALL GEN_VEC(', driver)
+
+        with open(os.path.join(
+                template_root, 'Source', 'make_opts.inc')) as stream:
+            make_opts = stream.read()
+        self.assertIn('ifeq ($(openmp),true)', make_opts)
+        self.assertIn('FFLAGS += -fopenmp', make_opts)
+        self.assertIn('LDFLAGS += -fopenmp', make_opts)
+        self.assertIn('OMP_RECURSIVE_FFLAGS', make_opts)
+        self.assertIn('filter-out -fno-automatic', make_opts)
+
+        with open(os.path.join(
+                template_root, 'SubProcesses', 'makefile_fks_dir')) as stream:
+            makefile = stream.read()
+        self.assertIn('OPENMP_RECURSIVE_OBJS', makefile)
+        self.assertIn('driver_vec.o real_me_chooser.o born.o', makefile)
+        self.assertIn('$(OMP_RECURSIVE_FFLAGS)', makefile)
+
+        aloha_root = os.path.join(
+            root_path, os.path.pardir, os.path.pardir, 'aloha',
+            'template_files')
+        for filename in ('Makefile_F', 'Makefile_F_dual'):
+            with open(os.path.join(aloha_root, filename)) as stream:
+                aloha_makefile = stream.read()
+            self.assertIn('ifeq ($(openmp),true)', aloha_makefile)
+            self.assertIn('$(OMP_RECURSIVE_FFLAGS)', aloha_makefile)
+
+        build_script = os.path.join(
+            template_root, 'Utilities', 'build_openmp_benchmark.sh')
+        with open(build_script) as stream:
+            script = stream.read()
+        self.assertIn('Source/DHELAS', script)
+        self.assertIn('openmp=true', script)
+        self.assertIn('driver_mintMC.o', script)
+
+    def test_standalone_exporters_follow_loop_optimization(self):
+        self.assertTrue(issubclass(
+            export_fks.ProcessExporterFortranFKS_SA,
+            export_fks.ProcessOptimizedExporterFortranFKS))
+        self.assertTrue(issubclass(
+            export_fks.ProcessExporterFortranFKS_SA_Default,
+            export_fks.ProcessExporterFortranFKS))
+        self.assertFalse(issubclass(
+            export_fks.ProcessExporterFortranFKS_SA_Default,
+            export_fks.ProcessOptimizedExporterFortranFKS))
+
+    def test_openmp_amplitude_locals_are_not_saved_by_data(self):
+        """Grouped runtime flavor selection must remain lane-local."""
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'madgraph', 'iolibs', 'template_files')
+        for filename in ('realmatrix_splitorders_fks.inc',
+                         'bornmatrix_splitorders_fks.inc',
+                         'born_cnt_splitorders_fks.inc'):
+            with open(os.path.join(template_dir, filename)) as stream:
+                content = stream.read().upper()
+            self.assertNotIn('DATA FLAVOR', content)
+            self.assertIn('FLAVOR(:) = 1', content)
+
+    def test_sudakov_virtual_calls_use_fks_flavor(self):
+        """Sudakov diagnostics must not fall back to virtual row one."""
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'Template', 'NLO', 'SubProcesses')
+        for filename in ('check_sudakov.f', 'check_sudakov_angle2.f'):
+            with open(os.path.join(template_dir, filename)) as stream:
+                content = stream.read().upper()
+            self.assertIn("INCLUDE 'FKS_INFO.INC'", content)
+            self.assertIn(
+                'VIRTUAL_FLAVOR=VIRTUAL_FLAVOR_INDEX_D(NFKSPROCESS)',
+                content)
+            self.assertNotRegex(content,
+                                r'CALL\s+SLOOPMATRIX(?:HEL)?_THRES\(')
+            self.assertIn('CALL SLOOPMATRIX_THRES_FLAVOR(', content)
+            self.assertIn('CALL SLOOPMATRIXHEL_THRES_FLAVOR(', content)
+
+    def test_grouped_virtual_rows_sample_their_own_helicities(self):
+        """Every virtual row of a P directory does its own MC over helicities.
+
+        MadLoop keeps one helicity filter per evaluated row when there are
+        several (fks_info.inc: HELFILTER_PER_VIRTUAL_FLAVOR). BinothLHA then
+        reads the filter of the row it evaluates, and keeps the helicities
+        and the MC-or-sum choice of each row apart. Its explicit sums pass
+        HEL=-1, which resets the helicity that the MC over helicities of
+        another row leaves in MadLoop. The drivers only fall back to the
+        explicit sum for several rows without per-row filters.
+        """
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'Template', 'NLO', 'SubProcesses')
+        for filename in ('driver_mintFO.f', 'driver_mintMC.f'):
+            with open(os.path.join(template_dir, filename)) as stream:
+                content = ''.join(stream.read().upper().replace(
+                    '\n     $', '').split())
+            self.assertIn('I.EQ.0.OR.(N_VIRTUAL_FLAVOR_CONFIGS.GT.1.AND..NOT.'
+                          'HELFILTER_PER_VIRTUAL_FLAVOR)', content)
+
+        with open(os.path.join(template_dir, 'BinothLHA.f')) as stream:
+            content = stream.read().upper()
+        # BinothLHA_vec is not called: check the live subroutine only.
+        code = '\n'.join(
+            line for line in
+            content[:content.index('SUBROUTINE BINOTHLHA_VEC(')].split('\n')
+            if not line.startswith('C'))
+        live = ''.join(code.replace('\n     $', '').replace('\n     &', '')
+                       .split())
+        self.assertIn("IF(HELFILTER_PER_VIRTUAL_FLAVOR)THENWRITE(HELFILTER_FILE,"
+                      "'(A,I0,A)')'../MADLOOP5_RESOURCES/HELFILTER_',"
+                      "VIRTUAL_FLAVOR,'.DAT'", live)
+        self.assertIn('INTEGERGOODHEL(MAX_BHEL,MAX_VIRTUAL_FLAVOR_INDEX)',
+                      live)
+        self.assertIn('CALLPICKHELICITYMC(P,GOODHEL(:,VIRTUAL_FLAVOR),'
+                      'HEL(:,VIRTUAL_FLAVOR),', live)
+        self.assertFalse('MC_HEL=0' in live)
+        self.assertFalse('CALLSLOOPMATRIX_THRES_FLAVOR(' in live)
+        self.assertEqual(live.count(
+            'CALLSLOOPMATRIXHEL_THRES_FLAVOR(P,-1,VIRTUAL_FLAVOR,'), 2)
+
+        # check_poles initialises every row, so that each filter is written
+        # before the integration jobs need it.
+        with open(os.path.join(template_dir, 'check_poles.f')) as stream:
+            content = ''.join(stream.read().upper().replace(
+                '\n     $', '').split())
+        self.assertIn('IF(NPOINTSCHECKED.EQ.0.OR.HELFILTER_PER_VIRTUAL_FLAVOR)'
+                      'THEN', content)
+        self.assertIn('IF(HELFILTER_PER_VIRTUAL_FLAVOR.AND.NPOINTSCHECKED.LT.'
+                      'NBORN_FLAVOR_CONFIGS)GOTO200', content)
+
+    def test_grouped_virtual_rows_keep_their_own_madloop_filters(self):
+        """MadLoop keeps filters for the virtual rows that a P directory uses.
+
+        The virtuals of e+ e- > t t~ and mu+ mu- > t t~ group e and mu, but
+        each P directory evaluates a single row: its filters describe that
+        row, as in an ungrouped output. The P directories of p p > e+ ve
+        evaluate two rows each: every row then gets its own filter slot
+        (FILTER_FLAV_IDX=-1), and only those rows. Without the rows of its
+        caller (standalone output) a grouped virtual keeps its filters off.
+        """
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'madgraph', 'iolibs', 'template_files')
+        for loop_dir in ('loop', 'loop_optimized'):
+            with open(os.path.join(template_dir, loop_dir,
+                                   'loop_matrix_standalone.inc')) as stream:
+                content = ' '.join(stream.read().upper().split())
+            self.assertIn('IF (FILTER_FLAV_IDX.EQ.0) THEN C A SINGLE MADLOOP '
+                          'FILTER FILE', content)
+            self.assertIn('IF (FILTER_FLAV_IDX.GT.0.AND.FLAV_IDX.NE.'
+                          'FILTER_FLAV_IDX) THEN', content)
+            self.assertNotIn('NVIRTUAL_FLAVORS.GT.1', content)
+
+        get_rows = export_fks.ProcessExporterFortranFKS.\
+            get_virtual_evaluated_flavor_pdgs
+        exporter_class = loop_exporters.LoopProcessExporterFortranSA
+        expected = {'e+ e- > t t~ [QCD]': {'P0_epem_ttx': 1},
+                    'mu+ mu- > t t~ [QCD]': {'P0_mupmum_ttx': 2},
+                    'p p > e+ ve [QCD]': {'P0_QQx_veep': -1,
+                                          'P0_QxQ_veep': -1}}
+        for process, filters in expected.items():
+            interface = MGCmd.MasterCmd()
+            interface._experimental_nlo_flavor_grouping = True
+            interface.no_notification()
+            interface.exec_cmd('import model loop_sm')
+            interface.exec_cmd('generate %s' % process)
+            helas = fks_helas_objects.FKSHelasMultiProcess(
+                interface._fks_multi_proc)
+            found = {}
+            for matrix_element in helas.get_matrix_elements():
+                virtual = matrix_element.virt_matrix_element
+                if not virtual._flavor_is_populated():
+                    virtual.populate_flavor_validity()
+                n_flavors = len(virtual.get('allowed_flavors'))
+                self.assertGreater(n_flavors, 1)
+                # Without the rows of its caller the filters stay off.
+                self.assertIsNone(exporter_class.get_virtual_filter_rows(
+                    virtual))
+                self.assertEqual(exporter_class.get_virtual_filter_flavor(
+                    virtual, n_flavors), 0)
+                # The rows are set before the virtual is exported, as in
+                # generate_directories_fks.
+                virtual.evaluated_flavor_pdgs = get_rows(matrix_element)
+                exporter = exporter_class.__new__(exporter_class)
+                replace_dict = {'proc_prefix': ''}
+                exporter.set_virtual_flavor_replace_dict_entries(
+                    replace_dict, virtual)
+                filter_flavor = replace_dict['filter_flav_idx']
+                self.assertEqual(virtual.virtual_filter_flavor,
+                                 filter_flavor)
+                found['P%s' % matrix_element.born_me.get(
+                    'processes')[0].shell_string()] = filter_flavor
+                # The rows the P directory evaluates at run time.
+                virtual_rows = sorted(set(
+                    info['flavor_class']['virtual_flavor_index']
+                    for info in matrix_element.get_fks_info_list()))
+                slots = [int(slot) for slot in
+                         replace_dict['filter_slots'].split(',')]
+                self.assertEqual(len(slots), n_flavors)
+                if filter_flavor > 0:
+                    self.assertEqual(virtual_rows, [filter_flavor])
+                    self.assertEqual(replace_dict['nfilter_slots'], 1)
+                    self.assertEqual(set(slots), set([0]))
+                else:
+                    self.assertGreater(len(virtual_rows), 1)
+                    self.assertEqual(exporter_class.get_virtual_filter_rows(
+                        virtual), virtual_rows)
+                    self.assertEqual(replace_dict['nfilter_slots'],
+                                     len(virtual_rows))
+                    self.assertEqual(
+                        [row for row, slot in enumerate(slots, 1) if slot],
+                        virtual_rows)
+                    self.assertEqual([slot for slot in slots if slot],
+                                     list(range(1, len(virtual_rows) + 1)))
+                # The per-row filter code is only written for -1.
+                exporter.cmd_options = {}
+                exporter.compute_color_flows = False
+                exporter.has_loop_induced = False
+                self.assertEqual(
+                    exporter_class.get_context(exporter, virtual)[
+                        'FilterPerFlavor'], filter_flavor == -1)
+            self.assertEqual(found, filters, process)
+
+    def test_per_row_filter_code_is_only_written_for_several_rows(self):
+        """MadLoop only gets the per-row filter code for FILTER_FLAV_IDX=-1.
+
+        The loop_matrix.f of standalone outputs and of P directories with
+        one virtual row is then unchanged.
+        """
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'madgraph', 'iolibs', 'template_files')
+        context = {'LoopInduced': False, 'ComputeColorFlows': False,
+                   'AmplitudeReduction': False, 'TIRCaching': False,
+                   'MadEventOutput': False, 'UseDensity': False,
+                   'collier_available': True, 'iregi_available': False,
+                   'ninja_available': True, 'ninjars_available': False,
+                   'ninja_supports_quad_prec': False, 'ninjars_supports_quad_prec': False,
+                   'tirust_available': False, 'tirust_supports_quad_prec': False}
+        per_row_names = ('NFILTER_SLOTS', 'FILTER_SLOT', 'LOADED_FILTER_FLAV',
+                         "'HelFilter_'", "'LoopFilter_'")
+        for loop_dir in ('loop', 'loop_optimized'):
+            with open(os.path.join(template_dir, loop_dir,
+                                   'loop_matrix_standalone.inc')) as stream:
+                template = stream.read()
+            writer = file_writers.FortranWriter(os.devnull)
+            for per_row in (False, True):
+                lines = writer.preprocess_template(
+                    template, dict(context, FilterPerFlavor=per_row))
+                code = '\n'.join(lines)
+                for name in per_row_names:
+                    self.assertEqual(name in code, per_row, (loop_dir, name))
+                if per_row:
+                    # The state of a row is swapped in before the filters
+                    # are read, and the filter files are named after it.
+                    self.assertLess(code.index('LOADED_FILTER_FLAV=FLAV_IDX'),
+                                    code.index('IF(NTRY.EQ.0) THEN'))
+                    for state in ('NTRY', 'NATTEMPTS', 'FOUNDHELFILTER',
+                                  'FOUNDLOOPFILTER', 'CHECKPHASE',
+                                  'HELDOUBLECHECKED', 'DONEHELDOUBLECHECK'):
+                        self.assertIn('SLOT_%s(ISLOT)=%s' % (state, state),
+                                      code)
+                        self.assertIn('%s=SLOT_%s(ISLOT)' % (state, state),
+                                      code)
+            writer.close()
+
+    def test_fixed_order_stratifies_physical_flavors_by_topology(self):
+        """Grouped FO sampling sums flavours inside one sampled topology."""
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'Template', 'NLO', 'SubProcesses')
+        with open(os.path.join(template_dir, 'driver_mintFO.f')) as stream:
+            content = ' '.join(
+                stream.read().upper().replace('$', '').split())
+
+        self.assertIn(
+            'CALL SETUP_PHYSICAL_FKS_MAP(PHYSICAL_FKS_GROUP_COUNT, '
+            'PHYSICAL_FKS_GROUP_SIZE,PHYSICAL_FKS_GROUP_OFFSET, '
+            'PHYSICAL_FKS_MEMBERS)', content)
+        self.assertIn(
+            'IGROUP=TOPOLOGY_GROUP(FKS_TOPOLOGY_D(IFKS))', content)
+        self.assertIn('DO IFLAV_CONFIG=1,NBORN_FLAVOR_CONFIGS', content)
+        self.assertIn(
+            'NFKS_BORN=BORN_FKS_CONFIG_D(IFLAV_CONFIG)', content)
+        self.assertIn('IF (SUM) THEN NFKS_MIN=1 NFKS_MAX=', content)
+        self.assertIn('DO IGROUP=NFKS_MIN,NFKS_MAX', content)
+        self.assertIn(
+            'DO J=1,PHYSICAL_FKS_GROUP_SIZE(IGROUP,NFKS_SECTOR)',
+            content)
+        self.assertIn(
+            'IFKS=PHYSICAL_FKS_MEMBERS(I,NFKS_SECTOR)', content)
+        self.assertNotIn('PHYSICAL_FKS_MAP(0:FKS_CONFIGS,', content)
+        self.assertIn(
+            'IF (BORN_FLAVOR_INDEX_D(IFKS).NE.BORN_CLASS) CYCLE',
+            content)
+        self.assertIn('MC_INT_WGT=1D0/VOL', content)
+        self.assertIn('JAC=MC_INT_WGT', content)
+        self.assertIn('SIG_NO_NBODY=SIG_NO_NBODY+SIG', content)
+        self.assertIn('ABS(SIG_NO_NBODY)*VOL)', content)
+        self.assertNotIn('GET_MC_INTEGER_GROUP_VOLUME', content)
+
+    def test_fixed_order_sreal_store_uses_current_interface(self):
+        """FO calls must keep the stored and returned amplitudes distinct.
+
+        ``sreal_store`` gained a ``real_amp_split`` input after its returned
+        amplitude.  A missing argument is not diagnosed without an explicit
+        Fortran interface and shifts every subsequent array argument.
+        """
+
+        template_path = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'Template', 'NLO', 'SubProcesses', 'driver_mintFO.f')
+        with open(template_path) as stream:
+            content = ''.join(
+                stream.read().upper().replace('$', '').split())
+
+        self.assertEqual(content.count('CALLSREAL_STORE_BUFFERED('), 8)
+        self.assertEqual(
+            content.count('RET_AMP_SPLIT,REAL_AMP_SPLIT'), 8)
+        for routine in (
+                'COMPUTE_SOFT_COUNTER_TERM',
+                'COMPUTE_SOFT_COLLINEAR_COUNTER_TERM',
+                'COMPUTE_COLLINEAR_COUNTER_TERM',
+                'COMPUTE_REAL_EMISSION'):
+            calls = re.findall(
+                r'CALL%s_BUFFERED\(([^)]*)\)' % routine, content)
+            self.assertEqual(len(calls), 2)
+            self.assertTrue(all(
+                'RET_AMP_SPLIT' in call for call in calls))
+
+    def test_grouped_poles_use_physical_born_classes(self):
+        """Pole checks select links and virtuals from each physical class."""
+
+        template_dir = os.path.join(
+            root_path, os.path.pardir, os.path.pardir,
+            'Template', 'NLO', 'SubProcesses')
+        with open(os.path.join(template_dir, 'fks_singular.f')) as stream:
+            content = ' '.join(stream.read().upper().replace('$', '').split())
+        getpoles = content.split('SUBROUTINE GETPOLES', 1)[1].split(
+            'SUBROUTINE SETFKSFACTOR', 1)[0]
+        self.assertIn("INCLUDE 'FKS_INFO.INC'", getpoles)
+        self.assertIn(
+            'BORN_FLAVOR_INDEX_D(NFKSPROCESS).NE. '
+            'BORN_FLAVOR_INDEX_D(NFKSPROCESS_SAVE)', getpoles)
+
+        with open(os.path.join(template_dir, 'check_poles.f')) as stream:
+            content = ' '.join(stream.read().upper().replace('$', '').split())
+        self.assertIn("INCLUDE 'FKS_INFO.INC'", content)
+        self.assertIn(
+            'NFKSPROCESS=BORN_FKS_CONFIG_D( '
+            'MOD(NPOINTSCHECKED,NBORN_FLAVOR_CONFIGS)+1)', content)
+        self.assertIn('VIRTUAL_FLAVOR_INDEX_D(NFKSPROCESS)', content)
+
+    def test_physical_denominator_factors(self):
+        """Merged rows retain their own final-state symmetry factors."""
+
+        process = base_objects.Process({
+            'legs': base_objects.LegList([
+                base_objects.Leg({'id': 81, 'state': False, 'number': 1}),
+                base_objects.Leg({'id': 81, 'state': False, 'number': 2}),
+                base_objects.Leg({'id': 24, 'state': True, 'number': 3}),
+                base_objects.Leg({'id': 81, 'state': True, 'number': 4}),
+                base_objects.Leg({'id': 81, 'state': True, 'number': 5}),
+            ])})
+
+        class MatrixElementStub(dict):
+            def get_denominator_factor(self):
+                return 72
+
+            def get_external_flavors(self, return_pdgs=False):
+                rows = [[1, 2, 24, 1, 1], [2, 2, 24, 1, 2]]
+                return ([None, None], rows) if return_pdgs else [None, None]
+
+        matrix_element = MatrixElementStub({
+            'processes': [process], 'identical_particle_factor': 2})
+        exporter_class = export_fks.ProcessExporterFortranFKS
+        get_factors = exporter_class.get_flavor_denominator_factors
+        self.assertEqual(
+            get_factors(matrix_element),
+            [72, 36])
+
+    def test_write_fks_info_uses_physical_flavor_classes(self):
+        interface = MGCmd.MasterCmd()
+        interface._experimental_nlo_flavor_grouping = True
+        interface.no_notification()
+        interface.exec_cmd('import model loop_sm')
+        interface.exec_cmd('generate p p > w+ w- [QCD]')
+        helas = fks_helas_objects.FKSHelasMultiProcess(
+            interface._fks_multi_proc)
+        matrix_element = helas.get_matrix_elements()[0]
+
+        info_list = matrix_element.get_fks_info_list()
+        self.assertEqual(len(info_list), 16)
+        self.assertTrue(all('flavor_class' in info for info in info_list))
+        self.assertTrue(all(abs(pdg) not in
+                            interface._curr_model.get('merged_particles')
+                            for info in info_list for pdg in info['pdgs']))
+
+        exporter = export_fks.ProcessExporterFortranFKS.__new__(
+            export_fks.ProcessExporterFortranFKS)
+
+        def write_fks_info():
+            handle, path = tempfile.mkstemp(prefix='fks_info_',
+                                            suffix='.inc')
+            os.close(handle)
+            try:
+                writer = file_writers.FortranWriter(path)
+                exporter.write_fks_info_file(
+                    writer, matrix_element, None)
+                writer.close()
+                with open(path) as stream:
+                    return stream.read()
+            finally:
+                if os.path.exists(path):
+                    os.remove(path)
+
+        # BinothLHA reads one helicity filter per virtual row only once
+        # MadLoop was exported with one filter slot per row.
+        virtual = matrix_element.virt_matrix_element
+        for filter_flavor, flag in ((None, '.FALSE.'), (0, '.FALSE.'),
+                                    (-1, '.TRUE.')):
+            if filter_flavor is not None:
+                virtual.virtual_filter_flavor = filter_flavor
+            content = write_fks_info()
+            self.assertIn('PARAMETER (HELFILTER_PER_VIRTUAL_FLAVOR=%s)' % flag,
+                          content)
+
+        self.assertIn('INTEGER REAL_FLAVOR_INDEX_D(16)', content)
+        self.assertIn('INTEGER BORN_FLAVOR_INDEX_D(16)', content)
+        self.assertIn('INTEGER VIRTUAL_FLAVOR_INDEX_D(16)', content)
+        self.assertIn('PARAMETER (MAX_VIRTUAL_FLAVOR_INDEX=16)', content)
+        self.assertIn('PARAMETER (N_VIRTUAL_FLAVOR_CONFIGS=4)', content)
+        self.assertIn('PARAMETER (HAS_PHYSICAL_FKS_CLASSES=.TRUE.)',
+                      content)
+        compact_content = ' '.join(content.lower().replace('$', '').split())
+        compact_content = compact_content.replace(' ,', ',')
+        self.assertIn('PARAMETER (NBORN_FLAVOR_CONFIGS=4)', content)
+        self.assertIn('data born_fks_config_d / 1, 2, 3, 4 /',
+                      content.lower())
+        self.assertIn(
+            'data born_fks_map_d / 1, 2, 3, 4, 1, 2, 3, 4, '
+            '1, 2, 3, 4, 1, 2, 3, 4 /', compact_content)
+        self.assertIn(
+            'data fks_topology_d / 1, 1, 1, 1, 2, 2, 2, 2, '
+            '3, 3, 3, 3, 4, 4, 4, 4 /', compact_content)
+        self.assertIn('data real_flavor_index_d / 1, 2, 3, 4,',
+                      content.lower())
+        self.assertIn('data born_flavor_index_d / 1, 2, 3, 4,',
+                      content.lower())
+        self.assertNotIn(' 81,', content)
+        self.assertNotIn('(-0.333', content)
+        for index, info in enumerate(info_list, 1):
+            self.assertIn(
+                'DATA (BORN_PDG_TYPE_D(%d, IPOS), '
+                'IPOS=1, NEXTERNAL-1) / %s /' %
+                (index, ', '.join(str(pdg) for pdg in
+                                  info['flavor_class']['born_pdgs'])),
+                compact_content.upper())
+
+        real_me = matrix_element.real_processes[0].matrix_element
+        pdf_vars, pdf_data, pdf_lines, ee_vars = \
+            exporter.get_pdf_lines_mir(real_me, 2)
+        self.assertIn("INCLUDE 'fks_info.inc'", pdf_vars)
+        self.assertIn('PDG_TYPE_D(NFKSPROCESS,1)', pdf_lines)
+        self.assertIn('PDG_TYPE_D(NFKSPROCESS,2)', pdf_lines)
+        self.assertIn('PD(IPROC)=FKS_PDF1*FKS_PDF2', pdf_lines)
+        self.assertNotIn('_QUARK', pdf_vars + pdf_data + pdf_lines + ee_vars)
+
+        _, _, mirrored_pdf_lines, _ = exporter.get_grouped_pdf_lines_mir(
+            mirror=True)
+        self.assertIn(
+            'FKS_PDF_PDG1=PDG_TYPE_D(NFKSPROCESS,1)',
+            mirrored_pdf_lines)
+        self.assertIn('FKS_PDF1=PDG2PDF(LPP(2),', mirrored_pdf_lines)
+        self.assertIn('FKS_PDF2=PDG2PDF(LPP(1),', mirrored_pdf_lines)
+
+        handle, path = tempfile.mkstemp(
+            prefix='leshouche_info_', suffix='.dat')
+        os.close(handle)
+        try:
+            exporter.write_leshouche_info_file(path, matrix_element)
+            with open(path) as stream:
+                idup_rows = [tuple(int(pdg) for pdg in line.split()[3:])
+                             for line in stream if line.startswith('I')]
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+        self.assertEqual(idup_rows,
+                         [tuple(info['pdgs']) for info in info_list])
+        self.assertTrue(all(abs(pdg) not in
+                            interface._curr_model.get('merged_particles')
+                            for row in idup_rows for pdg in row))
 class TestRealChannelExport(unittest.TestCase):
     """Check real topology ownership and the helicity-summed partition."""
 
@@ -176,6 +693,24 @@ class TestRealChannelExport(unittest.TestCase):
             self.assertIn('real_channel_me(1)', output)
             self.assertIn('real_sector_me(1)', output)
 
+    def test_channels_partition_each_physical_real_flavour(self):
+        pairs = [(1, 2), (1, 7), (1, 2), (2, 2), (1, 7)]
+        matrix_element = SimpleNamespace(
+            real_processes=[self.real_me([[3, 3], [4], [3, 3]]),
+                            self.real_me([[3]]), self.real_me([[3]])],
+            get_fks_info_list=lambda: [
+                {'n_me': ime, 'flavor_class': {'real_flavor_index': row}}
+                for ime, row in pairs])
+        exporter = object.__new__(export_fks.ProcessExporterFortranFKS)
+        channels, sectors, representatives = exporter.get_real_channels(matrix_element)
+        self.assertEqual(channels, [
+            (1, 1, 1, 1), (1, 1, 2, 3),
+            (1, 2, 1, 1), (1, 2, 2, 3), (2, 4, 1, 1)])
+        self.assertEqual(sectors, [1, 1, 1, 2, 1])
+        # A structural real ME with no executable physical class has no hard
+        # channels; it must not make grouped mixed-order export fail.
+        self.assertEqual(representatives, [1, 4, 0])
+
     def test_real_diagram_weights_follow_computed_helicities(self):
         compiler = shutil.which('gfortran')
         if not compiler:
@@ -188,12 +723,24 @@ class TestRealChannelExport(unittest.TestCase):
             template = stream.read()
         template = template[template.index('      SUBROUTINE SMATRIX%(proc_prefix)s_SPLITORDERS'):]
         template = template[:template.index('C Helper functions')]
+        # This test exercises the actual scalar filter and colour routine.
+        # The independent vector evaluator has its own acceptance coverage.
+        first = template.index('      RECURSIVE SUBROUTINE SMATRIX%(proc_prefix)s_SPLITORDERS_VEC')
+        last = template.index('      BLOCK DATA HELFILTER%(proc_prefix)s')
+        template = template[:first] + template[last:]
+        template = template[:template.index('      SUBROUTINE MATRIX_%(proc_prefix)s_VEC')]
+
         # Helicity -1 has the same full matrix element as +1 and is not
         # recomputed; helicity 0 has none (its two diagrams cancel) and is
         # skipped. Both have nonzero diagram squares, which the weights
         # leave out at every point, the first one included.
         source = template % {
             'proc_prefix': '1', 'info_lines': '', 'process_lines': '',
+            'hel_configs': 1, 'flavor_mask_decl': '', 'flavor_mask_setup': '',
+            'helas_calls_vec': '', 'hel_configs_helas': 1, 'helas_flavor_mask_setup': '',
+            'hel_index_setup': '      HEL_INDEX=1',
+            'flavor_den_factor_setup': '',
+
             'ncomb': 3, 'nSqAmpSplitOrders': 1, 'nAmpSplitOrders': 1,
             'helicity_lines': '      data nhel /1,-1,0/',
             'den_factor_line': '      data iden /1/',
@@ -213,8 +760,11 @@ class TestRealChannelExport(unittest.TestCase):
       end
       program test_real_weights
       implicit none
+      integer nfksprocess
+      common /c_nfksprocess/nfksprocess
       double precision p(0:3,1),ans(0:1)
       include 'real_matrix_weights.inc'
+      nfksprocess=1
       p=0d0
       get_real_diagram_weights=.true.
       real_amp2=-1d0
@@ -233,9 +783,22 @@ class TestRealChannelExport(unittest.TestCase):
 """
         with tempfile.TemporaryDirectory() as path:
             for name, content in {
+                'model.f90': '''module model_object
+type coupptr
+complex(8), pointer :: p
+end type
+type flv_coupling
+integer :: partner(1),partner2(1)
+type(coupptr) :: val(1)
+end type
+end module
+''',
                 'matrix.f': source,
                 'nexternal.inc': '      integer nexternal\n      parameter(nexternal=1)\n',
                 'coupl.inc': '',
+                'nFKSconfigs.inc': '',
+                'fks_info.inc': ('      integer REAL_FLAVOR_INDEX_D(1)\n'
+                                 '      parameter(REAL_FLAVOR_INDEX_D=(/1/))\n'),
                 'real_matrix_weights.inc': (
                     '      double precision real_amp2(2)\n'
                     '      common /c_real_diagram_weights/ real_amp2\n'
@@ -244,10 +807,11 @@ class TestRealChannelExport(unittest.TestCase):
             }.items():
                 with open(os.path.join(path, name), 'w') as stream:
                     stream.write(content)
-            subprocess.check_output([compiler, '-ffixed-line-length-none',
-                                     '-fcheck=all', aloha_functions,
+            result = subprocess.run([compiler, '-ffixed-line-length-none',
+                                     '-fcheck=all', 'model.f90', aloha_functions,
                                      'matrix.f', '-o', 'check'],
-                                    cwd=path, stderr=subprocess.STDOUT)
+                                    cwd=path, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             subprocess.check_output([os.path.join(path, 'check')], cwd=path,
                                     stderr=subprocess.STDOUT)
 
@@ -262,6 +826,7 @@ class TestBornGscale(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         interface = MGCmd.MasterCmd()
+        interface.do_set('apply_flavor_grouping False --no_save')
         interface.do_import('model loop_sm')
         # s-channel gluon (QCD order 2) and photon/Z (QCD order 0)
         interface.do_generate('u u~ > t t~ QCD^2<=4 QED^2<=4 [real=QCD]')
@@ -334,6 +899,8 @@ class IOExportFKSTest(IOTests.IOTestManager):
                                precmd=True, postcmd=True)
 
         interface = MGCmd.MasterCmd()
+        # The archived exporter fixtures describe grouped physical-flavour tables.
+        interface._experimental_nlo_flavor_grouping = True
         
         if model.endswith('CMS'):
             run_cmd('set complex_mass_scheme')
@@ -402,6 +969,113 @@ class TestFKSOutput(unittest.TestCase):
     identical results
     """
 
+    def test_fks_wavefunction_calls_exist_without_loops(self):
+        """fks_singular.f only calls wavefunction routines, with the
+        ALOHA-object interface, that the plain (non-loop) ALOHA library
+        provides: real-only outputs such as [real=QCD QED] get that library,
+        and an unknown routine made them fail to link."""
+        import re
+        with open(os.path.join(MGCmd.MG5DIR, 'Template', 'NLO',
+                               'SubProcesses', 'fks_singular.f')) as stream:
+            source = stream.read()
+        with open(os.path.join(MGCmd.MG5DIR, 'aloha', 'template_files',
+                               'aloha_functions.f')) as stream:
+            library = stream.read().lower()
+        calls = re.findall(r'call\s+([iosv]xxx\w\w)\s*\(([^)]*)\)',
+                           source, re.I)
+        self.assertTrue(calls)
+        for name, arguments in calls:
+            self.assertIn('subroutine %s(' % name.lower(), library, name)
+            # p, mass, helicity, particle/antiparticle, flavor, output
+            self.assertEqual(len(arguments.split(',')), 6, name)
+
+    def test_add_wgt_calls_pass_all_arguments(self):
+        """Native weights take five arguments; explicit buffers take seven.
+
+        Both APIs require an orders array, including artificial soft weights.
+        """
+        import glob
+        import re
+
+        def arguments(source, start):
+            # count the top-level arguments of the parenthesis at 'start'
+            depth, count = 0, 1
+            for char in source[start:]:
+                if char == '(':
+                    depth += 1
+                elif char == ')':
+                    depth -= 1
+                    if depth == 0:
+                        return count
+                elif char == ',' and depth == 1:
+                    count += 1
+            raise AssertionError('unbalanced call')
+
+        template = os.path.join(MGCmd.MG5DIR, 'Template', 'NLO',
+                                'SubProcesses')
+        arities = {}
+        calls = []
+        for path in glob.glob(os.path.join(template, '*.f')):
+            with open(path) as stream:
+                # join Fortran fixed-form continuation lines
+                source = re.sub(r'\n     [$&]', '', stream.read())
+            for match in re.finditer(r'subroutine\s+(add_wgt(?:_buffered)?)\s*\(',
+                                     source, re.I):
+                arities[match[1].lower()] = arguments(source, match.end() - 1)
+            for match in re.finditer(r'call\s+(add_wgt(?:_buffered)?)\s*\(', source, re.I):
+                calls.append((os.path.basename(path),
+                              match[1].lower(),
+                              arguments(source, match.end() - 1),
+                              source[match.start():match.start() + 60]))
+        self.assertEqual(arities, {'add_wgt': 5, 'add_wgt_buffered': 7})
+        self.assertTrue(calls)
+        for name, routine, count, text in calls:
+            self.assertEqual(count, arities[routine], '%s: %s' % (name, text))
+
+    def test_bornsoftvirtual_recomputes_link_borns(self):
+        """The integrated soft term of bornsoftvirtual evaluates the
+        colour/charge links for nFKSprocess_col_used/_chg_used, whose Born
+        counterterm values (ans_cnt, split orders) differ from those of the
+        configuration passed in. It must recompute them there, as MG5 does
+        with sborn: reusing the passed born_cnt changed the integrated soft
+        term at almost every phase-space point (W+j, mixed QCD/QED), while
+        with the recomputation the integrand equals MG5's point by point."""
+        import re
+        with open(os.path.join(MGCmd.MG5DIR, 'Template', 'NLO',
+                               'SubProcesses', 'fks_buffered.f')) as stream:
+            source = stream.read()
+        start = source.index('      subroutine bornsoftvirtual_buffered(')
+        body = source[start:source.index('\n      end\n', start)]
+        # the link loop: from the I(reg) comment to restoring nFKSprocess
+        begin = body.index('I(reg) terms')
+        stop = body.index('nFKSprocess = nFKSprocess_save\n', begin)
+        loop = body[begin:stop]
+        code = '\n'.join(line for line in loop.splitlines()
+                         if not re.match(r'[cC*!]', line))
+        chooser = code.index('call fks_inc_chooser()')
+        recompute = code.find('call sborn_amp_frame(p_born', chooser)
+        links = code.index('call sborn_sf_store(', chooser)
+        self.assertNotEqual(recompute, -1,
+                            'the link loop must recompute the Born')
+        self.assertLess(recompute, links)
+        # and the configuration's own Born values are restored afterwards
+        after = body[stop:]
+        self.assertIn('ans_cnt(:,:) = born_cnt(:,:)', after)
+
+    def test_tir_library_paths_are_available_at_runtime(self):
+        """External TIR shared libraries need an rpath in NLO executables."""
+        exporter = object.__new__(export_fks.ProcessExporterFortranFKS)
+        exporter.mgme_dir = MGCmd.MG5DIR
+        make_opts = exporter.write_make_opts(None, [
+            '-L/opt/ninja/lib/ -lninja',
+            '-L/opt/ninja/lib/ -lavh_olo',
+            '-L/opt/collier/ -lcollier'], [])
+
+        self.assertIn('-Wl,-rpath,/opt/ninja/lib/', make_opts)
+        self.assertIn('-Wl,-rpath,/opt/collier/', make_opts)
+        self.assertEqual(
+            make_opts.count('-Wl,-rpath,/opt/ninja/lib/'), 1)
+
     def tearDown(self):
         def run_cmd(cmd):
             interface.exec_cmd(cmd, errorhandling=False, printcmd=False, 
@@ -414,7 +1088,9 @@ class TestFKSOutput(unittest.TestCase):
     # what differs between two outputs of the same process: the dates, the
     # timings, the command history (which has the option itself) and the
     # pickled model (a copy of the model of the session)
-    ignored_files = ['amcatnlo.tar.gz', 'index.html',
+    # gen_jpeg-pl copies each subprocess thumbnail to this shared preview;
+    # its final image depends on worker completion order, unlike the sources.
+    ignored_files = ['amcatnlo.tar.gz', 'index.html', os.path.join('HTML', 'card.jpg'),
                      os.path.join('Cards', 'proc_card_mg5.dat')]
     ignored_patterns = [r'_debug\.log$', r'\.pkl$']
 
@@ -930,9 +1606,6 @@ class TestFKSOutput(unittest.TestCase):
             run_cmd('set OLP MadLoop')
 
         shutil.rmtree(path)
-
-
-
 
 
 class TestColorMatrixEncodingGate(unittest.TestCase):

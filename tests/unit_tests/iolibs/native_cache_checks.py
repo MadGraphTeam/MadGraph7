@@ -2,6 +2,7 @@
 
 import json
 import re
+import sys
 
 from madgraph.iolibs import born_support as support
 from madgraph.models import import_ufo, model_reader
@@ -45,14 +46,14 @@ def check_real_cache(output, run_command):
         for source in sorted(sub.glob('matrix_*.f')):
             number = int(source.stem.split('_')[-1])
             name = 'smatrix%d' % number
-            support.write_fortran(work/source.name, [support.rename(line, {name:name+'_direct'})
+            support.write_fortran(work/source.name, [support.rename(line, {name+'_amp':name+'_amp_direct',name:name+'_direct'})
                                   for line in support.statements(source.read_text())])
             matrices.append(work/source.name)
             source_lines = list(support.statements(source.read_text()))
             names = {name.lower():name.lower()+'_oracle' for line in source_lines
                      for name in re.findall(r'(?i)^\s*(?:[\w*]+\s+)*?'
                                             r'(?:subroutine|function)\s+(\w+)',line)}
-            oracle_names[name] = name+'_oracle'
+            oracle_names[number] = name+'_amp_oracle'
             # The original matrix owns the shared diagram-weight BLOCK DATA.
             # Clone only evaluator routines, keeping its COMMON initializer
             # defined once when the direct and oracle matrices are linked.
@@ -60,30 +61,34 @@ def check_real_cache(output, run_command):
                       for line in support.routine(source.read_text(),routine_name)]
             # Independent all-helicity sum, retaining the actual diagrams and
             # colour/order contractions but bypassing every learned zero mask.
-            oracle = [re.sub(r'(?i)\bntry\s*=\s*ntry\s*\+\s*1', 'NTRY=1',line)
-                      for line in oracle]
+            counter = re.compile(r'(?i)\bntry(\(hel_index\))?\s*=\s*ntry(?:\(hel_index\))?\s*\+\s*1')
+            if not any(counter.search(line) for line in oracle):
+                raise AssertionError('No helicity-discovery counter in %s' % source)
+            oracle = [counter.sub(r'NTRY\1=1',line) for line in oracle]
             support.write_fortran(work/(source.stem+'_oracle.f'),oracle)
             matrices.append(work/(source.stem+'_oracle.f'))
-            wrappers += ['subroutine %s(p,wgt)' % name, 'implicit none',
-                         "include 'nexternal.inc'", 'real(8) p(0:3,nexternal),wgt',
+            wrappers += ['subroutine %s_amp(p,parts,wgt)' % name, 'implicit none',
+                         "include 'nexternal.inc'", "include 'orders.inc'",
+                         'real(8) p(0:3,nexternal),parts(amp_split_size),wgt',
                          'integer calls', 'common/test_real_calls/calls',
-                         'calls=calls+1', 'call %s_direct(p,wgt)' % name, 'end']
-        # Count actual matrix-evaluator calls, not entries to the cached API.
+                         'calls=calls+1','call %s_amp_direct(p,parts,wgt)' % name,'end']
         support.write_fortran(work/'wrappers.f', wrappers)
-        oracle_names['smatrix_real'] = 'smatrix_real_oracle'
-        oracle_chooser = [support.rename(line,oracle_names) for line in
-                          support.statements((sub/'real_me_chooser.f').read_text())]
-        oracle_chooser += ['subroutine smatrix_reference(p,wgt)',
+        # Resolve native aliases in the caller frame, then evaluate an independent
+        # all-helicity copy of the selected matrix; never call the production cache.
+        oracle = ['subroutine smatrix_reference(p,wgt)',
             'use mc_native_context,only:shared_real_active', 'implicit none',
-            "include 'nexternal.inc'", 'real(8) p(0:3,nexternal),wgt', 'logical active',
-            'active=shared_real_active', 'shared_real_active=.false.',
-            'call smatrix_real_oracle(p,wgt)', 'shared_real_active=active', 'end']
-        support.write_fortran(work/'oracle_chooser.f',oracle_chooser)
-        source = (sub/'born_support.f').read_text()
-        support.write_fortran(work/'capture.f', support.routine(
-            source, 'mc_capture_model_state') + support.routine(
-            source, 'mc_prepare_model_configuration') +
-            model_state_checks.revision_helpers(output))
+            "include 'nexternal.inc'", "include 'orders.inc'",
+            'real(8) p(0:3,nexternal),q(0:3,nexternal),wgt', 'logical active',
+            'integer nfksprocess,saved,evaluator,row','common/c_nfksprocess/nfksprocess',
+            'active=shared_real_active','shared_real_active=.false.','saved=nfksprocess',
+            'call mc_resolve_native_real(p,saved,q,evaluator,row)','nfksprocess=row',
+            'select case(evaluator)']
+        for number,name in sorted(oracle_names.items()):
+            oracle += ['case(%d)' % number,'call %s(q,amp_split,wgt)' % name]
+        oracle += ['case default','error stop "Missing reference real evaluator"',
+                   'end select','nfksprocess=saved','shared_real_active=active','end']
+        support.write_fortran(work/'oracle_chooser.f',oracle)
+        support.write_fortran(work/'model_revision.f',model_state_checks.revision_helpers(output))
         support.write_fortran(work/'helpers.f', sum((support.routine(
             (sub/'splitorders_stuff.f').read_text(), name) for name in
             ('orders_to_amp_split_pos','amp_split_pos_to_orders','orders_equal')), []))
@@ -131,12 +136,12 @@ def check_real_cache(output, run_command):
                       'boosted(3,:)=sinh(0.3d0)*q(0,:)+cosh(0.3d0)*q(3,:)',
                       'stage=1', 'call smatrix_reference(boosted,ans)',
                       'call close_real(ans,reference(ihist))',
-                      'call mc_end_real_point()', 'call smatrix_real(boosted,ans)',
+                      'call mc_end_real_point()', 'call smatrix_real_native(boosted,ans)',
                       'call close_real(ans,reference(ihist))',
                       'shared_real_active=.true.',
                       'stage=2', 'do j=1,2',
                       'amp_split=-999d0', 'wgt_me_real=-999d0',
-                      'call smatrix_real(boosted,ans)',
+                      'call smatrix_real_native(boosted,ans)',
                       'call close_real(ans,reference(ihist))',
                       'call close_real(wgt_me_real,reference(ihist))',
                       'do i=1,amp_split_size',
@@ -153,18 +158,18 @@ def check_real_cache(output, run_command):
             if changed in fixed:
                 lines += ['call mc_born_model_changed()']
             lines += [
-                      'i=calls', 'call smatrix_real(q,ans)', 'if(calls.ne.i+1)stop 93',
+                      'i=calls', 'call smatrix_real_native(q,ans)', 'if(calls.ne.i+1)stop 93',
                       'call mc_end_real_point()',
                       'stage=3', 'call smatrix_reference(q,tmp(0))', 'call close_real(ans,tmp(0))',
                       'shared_real_active=.true.']
             lines += [name+'=(0d0,0d0)' for name,kind,index in members if name.startswith('gc_')]
             if any(name.startswith('gc_') for name in fixed):
                 lines += ['call mc_born_model_changed()']
-            lines += ['call smatrix_real(q,ans)', 'call close_real(ans,0d0)',
+            lines += ['call smatrix_real_native(q,ans)', 'call close_real(ans,0d0)',
                       'call smatrix_reference(q,tmp(0))', 'call close_real(ans,tmp(0))']
             lines += ['%s=state%%%s_values(%s)' % member for member in members]
             lines += ['call mc_born_model_changed()']
-            lines += ['shared_real_active=.true.', 'stage=4', 'call smatrix_real(q,ans)',
+            lines += ['shared_real_active=.true.', 'stage=4', 'call smatrix_real_native(q,ans)',
                       'call close_real(ans,reference(MC_HIST_LAST(owner)))',
                       'call mc_end_real_point()', 'call set_native_history(0)']
         lines += ['enddo', 'if(hits.le.0)stop 92',
@@ -181,12 +186,16 @@ def check_real_cache(output, run_command):
             lines, members, sizes, layout))
         # MG7 matrices import the wavefunction record module defined here.
         aloha = output/'Source/DHELAS/aloha_functions.f'
-        paths = [aloha, sub/'mc_native_context.f90', work/'capture.f', sub/'real_me_chooser.f',
+        paths = [output/'Source/MODEL/flavor_couplings.f','-x','f77',output/'Source/MODEL/coupl.f90','-x','none',aloha,
+                 sub/'mc_decision_ledger.f90',sub/'mc_batch_trace.f90',sub/'mc_native_context.f90',
+                 sub/'born_support.f',work/'model_revision.f',sub/'real_me_chooser.f',sub/'native_real_me_chooser.f',
                  *matrices, work/'wrappers.f', work/'oracle_chooser.f',work/'helpers.f',work/'check.f',
                  *(p for p in sorted((output/'Source/DHELAS').glob('*.f')) if p != aloha),
                  output/'Source/MODEL/model_functions.f']
         run_command(['gfortran','-O0','-g','-fcheck=all','-ffixed-line-length-none',
-                     '-ffree-line-length-none','-I'+str(sub),'-I'+str(output/'lib'),
+                     '-ffree-line-length-none','-ffunction-sections',
+                     '-Wl,-dead_strip' if sys.platform=='darwin' else '-Wl,--gc-sections',
+                     '-I'+str(sub),'-I'+str(output/'lib'),'-I'+str(output/'Source/MODEL'),
                      *map(str,paths),'-L'+str(output/'lib'),'-lmc_born_support',
                      '-Wl,-rpath,'+str(output/'lib'),'-o','check'], work)
         result = run_command(['./check'],work)

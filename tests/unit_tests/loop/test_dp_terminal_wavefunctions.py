@@ -882,6 +882,122 @@ class DPTerminalConsumerProofTest(unittest.TestCase):
     def test_mcatnlo_loop_directory_accepted(self):
         self.assertTrue(self.validate(self.fks_fixture()))
 
+    def test_fixed_form_model_module_suffix_and_object_are_recognized(self):
+        fixture = self.fks_fixture()
+        model = fixture[0].parents[2] / 'Source/MODEL'
+        source = model / 'coupl.f90'
+        source.write_text('      MODULE COUPLINGS\n      IMPLICIT NONE\n'
+                          '      DOUBLE PRECISION, ALLOCATABLE :: G_VEC(:)\n'
+                          '      END MODULE COUPLINGS\n')
+        (model / 'makeinc.inc').write_text('MODEL = coupl.o\n')
+        self.assertTrue(self.validate(fixture))
+        # Its fixed-form source is scanned in full, including storage aliases.
+        source.write_text('      SUBROUTINE HIDDEN()\n'
+                          '      COMMON/WL/A\n      END\n')
+        self.assertFalse(self.validate(fixture))
+        source.write_text('module couplings\nend module couplings\n')
+        self.assertFalse(self.validate(fixture))
+        source.unlink()
+        self.assertFalse(self.validate(fixture))
+
+    def test_standalone_link_to_the_model_module_is_the_model_unit(self):
+        # Standalone output links the couplings module into SubProcesses; the
+        # link is skipped because the MODEL unit it resolves to is in scope.
+        export = self.work / 'standalone_coupl'
+        fixture = self.fixture(directory=export / 'SubProcesses/P0_test')
+        model = export / 'Source/MODEL'
+        model.mkdir(parents=True)
+        (model / 'makefile').write_text(
+            (Path(__file__).resolve().parents[3] /
+             'madgraph/models/template_files/fortran/makefile_standalone').read_text())
+        source = model / 'coupl.f90'
+        module = ('      MODULE COUPLINGS\n      IMPLICIT NONE\n'
+                  '      DOUBLE PRECISION, ALLOCATABLE :: G_VEC(:)\n'
+                  '      END MODULE COUPLINGS\n')
+        source.write_text(module)
+        link = export / 'SubProcesses/coupl.f90'
+        link.symlink_to('../Source/MODEL/coupl.f90')
+        self.assertTrue(self.validate(fixture))
+        # What the link names is still checked in full, through MODEL.
+        source.write_text('      SUBROUTINE HIDDEN()\n'
+                          '      COMMON/TEST_WL/A\n      END\n')
+        self.assertFalse(self.validate(fixture))
+        source.write_text(module)
+        # A link to another file, or a copy, is not the MODEL unit.
+        other = export / 'Source/other.f90'
+        other.write_text(module)
+        link.unlink()
+        link.symlink_to('../Source/other.f90')
+        self.assertFalse(self.validate(fixture))
+        link.unlink()
+        link.write_text(module)
+        self.assertFalse(self.validate(fixture))
+
+    def test_other_free_form_model_sources_and_changed_recipe_are_rejected(self):
+        for name, recipe in (('custom.f90', False), ('coupl.f90', True)):
+            with self.subTest(name=name):
+                fixture = self.fks_fixture()
+                model = fixture[0].parents[2] / 'Source/MODEL'
+                (model / name).write_text('      MODULE COUPLINGS\n'
+                                         '      END MODULE COUPLINGS\n')
+                if recipe:
+                    self.replace(model, 'makefile', '-ffixed-form', '-ffree-form')
+                self.assertFalse(self.validate(fixture))
+
+    def flavour_module_fixture(self, extent=3):
+        fixture = self.fks_fixture()
+        source = fixture[0].parents[2] / 'Source'
+        helas = source / 'DHELAS'
+        helas.mkdir()
+        template = (Path(__file__).resolve().parents[3] /
+                    'aloha/template_files/aloha_functions_loop.f').read_text()
+        module = template.split('      end module ALOHA_OBJECT', 1)[0]
+        (helas / 'aloha_functions.f').write_text(module + '      end module ALOHA_OBJECT\n')
+        (source / 'MODEL/flavor_couplings.f').write_text(
+            '      MODULE MODEL_OBJECT\n'
+            '      TYPE COUPPTR\n      SEQUENCE\n'
+            '      DOUBLE COMPLEX, POINTER :: P\n      END TYPE COUPPTR\n'
+            '      TYPE FLV_COUPLING\n      SEQUENCE\n'
+            '      INTEGER :: PARTNER(%d)\n'
+            '      INTEGER :: PARTNER2(%d)\n'
+            '      TYPE(COUPPTR) :: VAL(%d)\n'
+            '      END TYPE FLV_COUPLING\n'
+            '      TYPE(FLV_COUPLING) :: GC_1,GC_2\n'
+            '      END MODULE MODEL_OBJECT\n' % (extent, extent, extent))
+        return fixture
+
+    def test_generated_flavour_helpers_and_passive_model_records_are_accepted(self):
+        for extent in (0, 3):
+            with self.subTest(extent=extent):
+                self.assertTrue(self.validate(self.flavour_module_fixture(extent)))
+
+    def test_flavour_helper_modules_cannot_redirect_consumers(self):
+        mutations = (
+            ('DHELAS/aloha_functions.f', 'GET_FLV_PARTNER=0', 'GET_FLV_PARTNER=1'),
+            ('DHELAS/aloha_functions.f', 'USE MODEL_OBJECT', 'USE OTHER_OBJECT'),
+            ('MODEL/flavor_couplings.f', 'PARTNER2(3)', 'PARTNER2(4)'),
+            ('MODEL/flavor_couplings.f', ':: GC_1,GC_2', ':: UPDATE_WL_1_1'),
+            ('MODEL/flavor_couplings.f', ':: GC_1,GC_2', ':: LOOPMAXCOEFS'),
+            ('MODEL/flavor_couplings.f', '      TYPE COUPPTR',
+             '      USE OTHER_OBJECT\n      TYPE COUPPTR'),
+            ('MODEL/flavor_couplings.f', '      END MODULE MODEL_OBJECT',
+             '      INTERFACE UPDATE_WL_1_1\n      MODULE PROCEDURE OTHER\n'
+             '      END INTERFACE\n      END MODULE MODEL_OBJECT'),
+        )
+        for name, old, new in mutations:
+            with self.subTest(source=name, change=new):
+                fixture = self.flavour_module_fixture()
+                self.replace(fixture[0].parents[2] / 'Source', name, old, new)
+                self.assertFalse(self.validate(fixture))
+        fixture = self.flavour_module_fixture()
+        model = fixture[0].parents[2] / 'Source/MODEL/flavor_couplings.f'
+        model.unlink()
+        self.assertFalse(self.validate(fixture))
+        fixture = self.flavour_module_fixture()
+        model = fixture[0].parents[2] / 'Source/MODEL/flavor_couplings.f'
+        model.with_name('duplicate.f').write_text(model.read_text())
+        self.assertFalse(self.validate(fixture))
+
     def test_mcatnlo_other_sources_cannot_name_the_loop_storage(self):
         mentions = {
             'common.f': '      SUBROUTINE X()\n      COMMON/WL/A\n      END\n',

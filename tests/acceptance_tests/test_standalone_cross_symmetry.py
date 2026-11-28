@@ -3956,6 +3956,7 @@ int main( int argc, char** argv )
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <vector>
 int main( int argc, char** argv )
 {
@@ -3988,6 +3989,25 @@ int main( int argc, char** argv )
   void* out[4] = { me.data(), hel.data(), col.data(), dia.data() };
   if( umami_matrix_element( h, nevt, nevt, 0, 6, ik, in, 4, ok, out ) != UMAMI_SUCCESS ) return 3;
   for( int ie = 0; ie < nevt; ie++ ) printf( "%.17g %d %d %u\n", me[ie], hel[ie], col[ie], dia[ie] );
+  if( argc == 4 + 4 * npar )
+  {
+    int norders = 0;
+    if( umami_get_meta( UMAMI_META_SQUARED_ORDER_COUNT, &norders ) != UMAMI_SUCCESS || norders < 1 ) return 4;
+    std::unique_ptr<bool[]> selected( new bool[norders] );
+    if( umami_get_meta( UMAMI_META_SQUARED_ORDER_SELECTED, selected.get() ) != UMAMI_SUCCESS ) return 5;
+    std::vector<double> orders( nevt * norders );
+    UmamiOutputKey sum_keys[] = { UMAMI_OUT_MATRIX_ELEMENT, UMAMI_OUT_SQUARED_ORDERS };
+    void* sums[] = { me.data(), orders.data() };
+    // Sum helicities for the component comparison. Preserve the sampled output above.
+    if( umami_matrix_element( h, nevt, nevt, 0, 3, ik, in, 2, sum_keys, sums ) != UMAMI_SUCCESS ) return 6;
+    for( int ie = 0; ie < nevt; ++ie )
+    {
+      double sum = 0;
+      for( int order = 0; order < norders; ++order )
+        if( selected[order] ) sum += orders[order * nevt + ie];
+      if( !( me[ie] > 0 && std::abs( sum - me[ie] ) <= 1.e-12 * me[ie] ) ) return 7;
+    }
+  }
   umami_free( h );
   return 0;
 }
@@ -4037,10 +4057,11 @@ int main( int argc, char** argv )
                           '(make BACKEND=%s failed)' % backend)
         point = ['%.17g' % x for p in self._IDS_POINT for x in p]
 
-        def run(ids):
+        def run(ids, check_components=False):
+            options = ['--check-components'] if check_components else []
             out = subprocess.check_output(
                 ['./check_sa.exe', ','.join(str(i) for i in ids),
-                 str(len(ids))] + point, cwd=pdir).decode()
+                 str(len(ids))] + point + options, cwd=pdir).decode()
             return [(float(me), int(hel), int(col), int(dia))
                     for me, hel, col, dia in
                     (line.split() for line in out.splitlines())]
@@ -4132,7 +4153,7 @@ int main( int argc, char** argv )
             mixed += [fid + ntab * (1 + i % 3), fid]
         for backend in ('scalar', 'simd_128'):
             run = self._ids_runner(pdir, backend)
-            ref = run([fid for fid in valid for _ in range(2)])
+            ref = run([fid for fid in valid for _ in range(2)], check_components=True)
             got = run(mixed)
             tag = '%s %s' % (os.path.basename(pdir), backend)
             for ievt, fid in enumerate(mixed):

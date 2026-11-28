@@ -14,7 +14,8 @@ module scale_module
   ! The H colour assignment and its dipole scales must have the same owner.
   integer,public,allocatable :: event_colour_H(:,:,:,:)
 !  double precision,public :: SCALUP
-  double precision,private :: global_ref_scale,shower_scale_factor
+  double precision,public :: global_ref_scale
+  double precision,private :: shower_scale_factor
   double precision,private,parameter :: frac_low=0.1d0,frac_upp=1.0d0
   double precision,private,parameter :: scaleMClow=0d0,scaleMCdelta=3d0
   double precision,public,parameter :: scaleMCcut=3d0

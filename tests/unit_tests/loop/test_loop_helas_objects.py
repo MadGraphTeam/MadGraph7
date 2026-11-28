@@ -56,6 +56,22 @@ class LoopHelasMatrixElementTest(unittest.TestCase):
     """Test class for all functions related to the LoopHelasMatrixElement"""
     
     myloopmodel = loop_base_objects.LoopModel()
+
+    def test_loop_denominators_use_exported_cms_mass(self):
+        """Different CMS propagators must not share a reduction group."""
+        from unittest.mock import Mock, patch
+
+        initial = Mock()
+        initial.get_loop_mother.return_value = None
+        final = Mock()
+        final.get_loop_mother.return_value = initial
+        final.get_struct_external_leg_ids.return_value = [1, 2]
+        loop = loop_helas_objects.LoopHelasAmplitude()
+        with patch.object(loop, 'get_final_loop_wavefunction', return_value=final), \
+             patch.object(create_aloha.aloha, 'complex_mass', True):
+            for width, mass in [('WW', 'CMASS_MW'), ('ZERO', 'MW')]:
+                final.get.side_effect = {'mass': 'MW', 'width': width}.__getitem__
+                self.assertEqual(loop.get_denominators(), (((1, 2), mass),))
     
     def setUp(self):
         """load the NLO toy model"""

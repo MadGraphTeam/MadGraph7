@@ -1,1 +1,1 @@
-../../_shared/short_ML_SMQCD_LoopInduced%gg_hh%%..%..%Source%MODEL%flavor_couplings.f
+../../_shared/short_ML_SMQCD_default%gg_ttx%%..%..%Source%MODEL%flavor_couplings.f

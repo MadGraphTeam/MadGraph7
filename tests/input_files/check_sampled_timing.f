@@ -9,6 +9,15 @@
       common/timing_counts/points,samples,sampler_state
       integer i,block_samples,positions(100),expected(100),nseed,mode
       integer,allocatable::seed(:)
+      integer,allocatable::parked(:),unsampled(:)
+      interface
+         subroutine timing_suspend_point(categories)
+           integer,allocatable,intent(out)::categories(:)
+         end subroutine
+         subroutine timing_resume_point(categories)
+           integer,allocatable,intent(inout)::categories(:)
+         end subroutine
+      end interface
       real randoms(10000),value
       character*32 arg
       integer callback_points,sampled_calls,closing_calls
@@ -82,6 +91,48 @@
          if(elapsed(timing_weights).ne.7d0)stop 'Default interval'
          if(sum(elapsed).ne.23d0)stop 'Categories overlap'
          if(reads.ne.5)stop 'Repeated category reads clocks'
+      elseif(arg.eq.'interleave')then
+         call select_point()
+         clock=2d0
+         call timing_enter(timing_born)
+         clock=5d0
+         call timing_suspend_point(parked)
+         if(timing_sampled.or.size(parked).ne.2)stop 1
+         call timing_begin_point()
+         if(timing_sampled)stop 2
+         clock=200d0
+         call timing_suspend_point(unsampled)
+         if(allocated(unsampled))stop 3
+         call timing_resume_point(parked)
+         if(allocated(parked))stop 4
+         clock=203d0
+         call timing_leave(timing_born)
+         clock=205d0
+         call timing_end_point()
+         call timing_resume_point(unsampled)
+         if(timing_sampled)stop 5
+         call timing_end_point()
+         if(elapsed(timing_born).ne.6d0)stop 6
+         if(elapsed(timing_weights).ne.4d0)stop 7
+      elseif(arg.eq.'wave')then
+c A wave serving no sampled draw reads no clock and charges nothing.
+         reads=0
+         call timing_begin_real_wave(0,16)
+         clock=50d0
+         call timing_end_real_wave()
+         if(reads.ne.0.or.elapsed(timing_real).ne.0d0)stop 1
+c One sampled draw among four lanes is charged a quarter of the wave.
+         clock=10d0
+         call timing_begin_real_wave(1,4)
+         clock=18d0
+         call timing_end_real_wave()
+         if(elapsed(timing_real).ne.2d0)stop 2
+         if(sum(elapsed).ne.2d0)stop 3
+         if(reads.ne.2)stop 4
+c The wave runs between draws, never inside a sampled one.
+         call select_point()
+         call timing_begin_real_wave(1,4)
+         stop 'Failed to reject a wave inside a point'
       elseif(arg.eq.'empty')then
          call timing_enter(-1)
          call timing_leave(-1)

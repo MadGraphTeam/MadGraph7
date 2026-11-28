@@ -401,6 +401,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             &MatrixElementApi::particle_count,
             pydoc::doc("MatrixElementApi::particle_count")
         )
+        .def("squared_order_count", &MatrixElementApi::squared_order_count)
         .def(
             "diagram_count",
             &MatrixElementApi::diagram_count,
@@ -577,6 +578,8 @@ PYBIND11_MODULE(_madspace_py, m) {
     py::dict umami_input_keys, umami_output_keys;
     for (auto [name, key] : std::initializer_list<std::pair<const char*, int>>{
              {"momenta", UMAMI_IN_MOMENTA},
+             {"g_strong", UMAMI_IN_G_STRONG},
+             {"g_ew", UMAMI_IN_G_EW},
              {"alpha_s", UMAMI_IN_ALPHA_S},
              {"flavor_index", UMAMI_IN_FLAVOR_INDEX},
              {"random_color", UMAMI_IN_RANDOM_COLOR},
@@ -1823,6 +1826,8 @@ PYBIND11_MODULE(_madspace_py, m) {
         "MatrixElementInput",
         {
             {"momenta_in", MatrixElement::momenta_in},
+            {"g_strong_in", MatrixElement::g_strong_in},
+            {"g_ew_in", MatrixElement::g_ew_in},
             {"alpha_s_in", MatrixElement::alpha_s_in},
             {"flavor_in", MatrixElement::flavor_in},
             {"random_color_in", MatrixElement::random_color_in},
@@ -1845,6 +1850,7 @@ PYBIND11_MODULE(_madspace_py, m) {
         matrix_element,
         "MatrixElementOutput",
         {
+            {"squared_orders_out", MatrixElement::squared_orders_out},
             {"matrix_element_out", MatrixElement::matrix_element_out},
             {"diagram_amp2_out", MatrixElement::diagram_amp2_out},
             {"color_index_out", MatrixElement::color_index_out},
@@ -1871,7 +1877,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 bool,
                 const std::vector<me_int_t>&,
                 std::size_t,
-                me_int_t>(),
+                me_int_t,
+                std::size_t>(),
             py::arg("matrix_element_index"),
             py::arg("particle_count"),
             // C++ defaults are {momenta_in} / {matrix_element_out}; required in Python
@@ -1883,6 +1890,7 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("me_frame") = std::vector<me_int_t>{},
             py::arg("incoming_count") = 2,
             py::arg("channel") = -1,
+            py::arg("squared_order_count") = 0,
             pydoc::doc("MatrixElement::MatrixElement")
         )
         .def(

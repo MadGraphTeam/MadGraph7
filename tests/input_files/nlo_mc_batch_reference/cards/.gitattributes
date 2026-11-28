@@ -1,0 +1,2 @@
+# Preserve the byte-for-byte native cards used to bind the reference receipts.
+*.dat -whitespace

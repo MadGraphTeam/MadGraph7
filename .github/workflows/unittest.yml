@@ -32,10 +32,23 @@ concurrency:
   cancel-in-progress: true
 
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
-
+  # The full bundle below skips same-repository PR events, so give the MC@NLO
+  # regressions a focused PR check in addition to their push-run coverage.
+  nlo_mc_lane_state_pr:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == false
+    steps:
+      - uses: actions/checkout@v5
+      - name: "Check Fortran compiler"
+        run: gfortran --version
+      - name: "NLO MC per-lane state"
+        run: ./tests/test_manager.py -t0 TestMCLaneState
+      - name: "NLO MC@NLO event queue"
+        run: ./tests/test_manager.py -t0 TestMCEventQueue
+      - name: "Native MINT scheduling and real-provider ownership"
+        if: ${{ !cancelled() }}
+        run: ./tests/test_manager.py -t0 TestMintChannels TestNativeScheduler TestNativeRealContinuation TestNativeWeightLines TestNativeContextMemory TestMCDecisionLedger NativeDispatchGate NativeProviderWave TestProviderPacking TestVirtualFiniteCommon TestNLOModelReload TestFlavourCouplingVectorScope TestLoopCheckFlavourDependencies TestBornHelicitySnapshot TestVirtualFoldCache TestNLOCouplingTimer TestHostBlasBuild TestNLORealDiagramRouting TestNLOAlphasWrapper TestProviderBufferedBorn TestProviderHelicitySampler
 
   unittest_bundle_1:
     # former jobs, run one after the other: test_additional_unittest unittest_0
@@ -52,6 +65,28 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/clean_tmp
 
+      - name: "Phase-04 NLO real offload contracts"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -t0 TestNLORealOffloadContract
+
+      - name: "NLO MC per-lane state"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -t0 TestMCLaneState
+
+      - name: "NLO MC@NLO event queue"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -t0 TestMCEventQueue
+      - name: "Native MINT scheduling and real-provider ownership"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -t0 TestMintChannels TestNativeScheduler TestNativeRealContinuation TestNativeWeightLines TestNativeContextMemory TestMCDecisionLedger NativeDispatchGate NativeProviderWave TestProviderPacking TestVirtualFiniteCommon TestNLOModelReload TestFlavourCouplingVectorScope TestLoopCheckFlavourDependencies TestBornHelicitySnapshot TestVirtualFoldCache TestNLOCouplingTimer TestHostBlasBuild TestNLORealDiagramRouting TestNLOAlphasWrapper TestProviderBufferedBorn TestProviderHelicitySampler
       - name: "MadLoop NinjaRS interfaces, defaults, and reporting"
         if: ${{ !cancelled() }}
         run: |
@@ -136,7 +171,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
             cd $GITHUB_WORKSPACE
-            ./tests/test_manager.py test_case_sensitive test_refactorize test_export_matrix_element_python_madevent_group test_python_export_functions test_run_python_matrix_element test_python_template_uses_decay_aware_broken_symmetry_metadata test_broken_symmetry_decomposes_each_decay_component test_broken_symmetry_distinguishes_identical_parent_with_different_decays test_get_fortran_str test_generate_virtuals_helas_matrix_element test_generate_virtuals_single_process test_fks_helas_multi_process_pptt test_fks_helas_multi_process_ppwj test_fks_helas_multi_process_ppz test_fks_helas_multi_process_ppz_loonly test_fks_helas_process_init test_fks_helas_real_process_init test_get_fks_info_list test_set_color_links test_FKSMultiProcess test_FKSMultiProcess_add test_FKSMultiProcess_no_fsr test_FKSMultiProcess_no_isr test_FKSProcess_aguux_qed -t0
+            ./tests/test_manager.py test_case_sensitive test_refactorize test_create_mod_coupl_without_running_coupling test_export_matrix_element_python_madevent_group test_python_export_functions test_run_python_matrix_element test_python_template_uses_decay_aware_broken_symmetry_metadata test_broken_symmetry_decomposes_each_decay_component test_broken_symmetry_distinguishes_identical_parent_with_different_decays test_get_fortran_str test_generate_virtuals_helas_matrix_element test_generate_virtuals_single_process test_fks_helas_multi_process_pptt test_fks_helas_multi_process_ppwj test_fks_helas_multi_process_ppz test_fks_helas_multi_process_ppz_loonly test_fks_helas_process_init test_fks_helas_real_process_init test_get_fks_info_list test_set_color_links test_FKSMultiProcess test_FKSMultiProcess_add test_FKSMultiProcess_no_fsr test_FKSMultiProcess_no_isr test_FKSProcess_aguux_qed -t0
 
       # ---- unittest_25 ----
       - name: "unittest_25"
@@ -500,6 +535,15 @@ jobs:
         run: |
             cd $GITHUB_WORKSPACE
             ./tests/test_manager.py test_CF_simple test_cf_computation test_generate_ewsud_ttbar test_generate_ewsud_ww test_generate_ewsud_zz test_check_import_model test_schedular test_dummy_fcts test_UFO_Python_helas_call_writer_fd test_get_symmetric_color test_get_symmetric_lorentz test_remove_interactions2 test_remove_interactions3 test_fd_python_value_matches_unitary_fixed_point test_shower_card_write -t0
+
+      # ---- grouped FKS metadata ----
+      # Physical flavour classes of grouped NLO P directories, and the virtual
+      # row the MadLoop filters (HelFilter.dat) are set up for.
+      - name: "grouped FKS metadata: flavour classes and MadLoop filters"
+        if: ${{ !cancelled() }}
+        run: |
+            cd $GITHUB_WORKSPACE
+            ./tests/test_manager.py -t0 TestGroupedFKSMetadata
 
       # ---- unittest_run_output (from mg5 3.8.2) ----
       # combine_runs, histograms and the madevent run helpers (Delphes split

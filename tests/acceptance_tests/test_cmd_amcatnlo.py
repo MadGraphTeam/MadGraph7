@@ -776,6 +776,45 @@ class MECmdShell(IOTests.IOTestManager):
         check_html_page(self, pjoin(self.path, 'HTML', 'run_01', 'results.html'))
 
 
+    def test_calculate_xsect_nlo_dy_vs_mg5(self):
+        """Fixed-order NLO p p > e+ e- [QCD] reproduces MG5 v3.8.0.
+
+        The fixed-order driver must evaluate the real matrix element itself:
+        sreal_store only takes it as an input.  When it did not, the real
+        emission was replaced by a Born quantity and the result of
+        p p > t t~ [QCD] was about 580 times too large, while the tests above
+        only checked that the output files exist.
+
+        Reference: MG5 v3.8.0 with its default run card for this process,
+        changed only as below (pdlabel nn23nlo, iseed 42, no reweighting)
+        with req_acc_FO 0.001: 2093.77 +/- 1.91 pb.  Grouped flavours are the
+        MG7 default.
+        """
+        self.generate('p p > e+ e- [QCD]', 'loop_sm')
+
+        card_path = pjoin(self.path, 'Cards', 'run_card.dat')
+        run_card = banner.RunCardNLO(card_path)
+        run_card.set('pdlabel', 'nn23nlo', user=True)
+        run_card.set('iseed', 42, user=True)
+        run_card.set('req_acc_FO', 0.01, user=True)
+        run_card.set('reweight_scale', False, user=True)
+        run_card.set('reweight_PDF', False, user=True)
+        run_card.write(card_path)
+        self.assertEqual((run_card['lpp1'], run_card['lpp2']), (1, 1))
+
+        self.do('calculate_xsect NLO -f')
+
+        res = open(pjoin(self.path, 'Events', 'run_01', 'res_1.txt')).read()
+        totals = re.findall(r'([-\d.eE+]+)\s+\+-\s+([-\d.eE+]+)',
+                            res.split('Total ABS')[-1])
+        self.assertEqual(len(totals), 2, 'cannot read the totals from res_1.txt')
+        xsec, error = float(totals[1][0]), float(totals[1][1])
+        reference, reference_error = 2093.77, 1.91
+        self.assertLess(abs(xsec - reference),
+                        5 * math.sqrt(error**2 + reference_error**2),
+                        '%s +/- %s pb differs from MG5 v3.8.0 %s +/- %s pb' %
+                        (xsec, error, reference, reference_error))
+
     def test_calculate_xsect_lo(self):
         """test the param_card created is correct"""
         
@@ -822,6 +861,11 @@ class MECmdShell(IOTests.IOTestManager):
         self.assertEqual(len(mfile), 1, 'no matrix file for u d~ > w+ g g')
         mfile = mfile[0]
         pfx = mfile[len('matrix_'):-len('.f')]
+        from tests.acceptance_tests.test_nlo_real_offload_contract import TestNLORealFortranOracle
+        native_probe = TestNLORealFortranOracle()
+        row_to_me, _ = native_probe._real_me_contract(proc_dir)
+        physical_row = next(row for row, real_me in sorted(row_to_me.items())
+                            if real_me == int(pfx))
         body = open(pjoin(proc_dir, mfile)).read()
         body = body.split('SUBROUTINE SMATRIX%s_SPLITORDERS' % pfx)[1]
         body = body.split('\n      END\n')[0]
@@ -833,7 +877,8 @@ class MECmdShell(IOTests.IOTestManager):
                 ('__IDEN__', re.search(r'DATA IDEN/(\d+)/', body).group(1)),
                 ('__NHEL__', '\n'.join(l for l in body.split('\n')
                                        if 'DATA (NHEL(I,' in l)),
-                ('__PFX__', pfx)):
+                ('__PFX__', pfx),
+                ('__NFKSPROCESS__', str(physical_row))):
             driver = driver.replace(key, value)
         open(pjoin(proc_dir, 'real_tie_frame.f'), 'w').write(driver)
 
@@ -843,11 +888,18 @@ class MECmdShell(IOTests.IOTestManager):
                                cwd=pjoin(self.path, 'Source'),
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.assertEqual(build.returncode, 0, build.stdout.decode())
+        # These launch-time option files are unused by the amplitude probe.
+        for name in ('analyse_opts', 'pythia8_opts'):
+            path = pjoin(self.path, 'SubProcesses', name)
+            if not os.path.exists(path):
+                open(path, 'w').close()
+        native_objects = native_probe._native_real_link_objects(self.path, proc_dir)
+        objects = ['real_tie_frame.o', mfile[:-2] + '.o']
+        misc.compile(objects, cwd=proc_dir)
         build = subprocess.run(
-            ['gfortran', '-O', '-ffixed-line-length-none', '-I.', '-I../../lib',
-             'real_tie_frame.f', mfile, 'born_support.f', '../../Source/timing.f',
-             '-o', 'real_tie_frame', '-L../../lib', '-lmc_born_support',
-             '-ldhelas', '-lmodel', '-Wl,-rpath,' + pjoin(self.path, 'lib')],
+            ['gfortran', '-o', 'real_tie_frame'] + objects + native_objects +
+            ['-L../../lib', '-ldhelas', '-lmodel'] +
+            native_probe._native_real_link_flags(self.path, proc_dir),
             cwd=proc_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.assertEqual(build.returncode, 0,
                          'could not build the driver:\n%s' % build.stdout.decode())

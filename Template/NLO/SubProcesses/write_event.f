@@ -66,6 +66,21 @@ c Write-out the events
       return
       end
 
+c The event finalizer consumes the active native RNG and colour/scale
+c state exactly once. Only the immutable formatted event is queued.
+      subroutine capture_event_record(record,x,weight,putonshell,p_label)
+      use mc_event_records, only: native_event_record,begin_event_capture,
+     $     end_event_capture,event_capture_unit
+      implicit none
+      type(native_event_record),target,intent(inout) :: record
+      double precision,intent(in) :: x(*),weight
+      logical,intent(in) :: putonshell
+      integer,intent(in) :: p_label
+      call begin_event_capture(record)
+      call finalize_event(x,weight,event_capture_unit,putonshell,p_label)
+      call end_event_capture(record)
+      end
+
       subroutine write_header_init
       implicit none
       integer lunlhe

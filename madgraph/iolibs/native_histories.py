@@ -7,6 +7,10 @@ small real/PDF dispatchers are installed in each subprocess.
 """
 
 import re
+from pathlib import Path
+
+
+TEMPLATES = Path(__file__).parent / "template_files"
 
 from madgraph import MadGraph5Error
 from madgraph.iolibs import born_support as born
@@ -31,6 +35,8 @@ def sector_data(lines, old, new, orders=None):
     for line in lines:
         match = re.match(r'\s*data\s+(\w+)\s*/(.*)/\s*$', line, re.I)
         if match:
+            if match[1].lower() == 'born_fks_config_d':
+                continue  # compact local Born-class list, not sector-indexed
             values = match[2].split(',')
             value = values[old-1].strip()
             if orders and match[1].lower() in ('isplitorder_born_d','isplitorder_cnt_d'):
@@ -52,6 +58,17 @@ def sector_data(lines, old, new, orders=None):
             line = head+'/'+','.join(reordered)+'/'+tail
         result.append(line)
     return result
+
+
+def scalar_sector_value(lines, name, sector, default=None):
+    for line in lines:
+        match = re.match(r'\s*data\s+' + re.escape(name) + r'\s*/(.*)/\s*$', line, re.I)
+        if match:
+            return match[1].split(',')[sector-1].strip()
+        match = re.match(r'\s*data\s+' + re.escape(name) + r'\s*\(\s*%d\s*\)\s*/(.*)/\s*$' % sector, line, re.I)
+        if match:
+            return match[1].strip()
+    return default
 
 
 def dat_sector(text, old, new):
@@ -98,6 +115,13 @@ def write_context(root, outer, records, tables, sources):
     native_keys = {(h['context'],h['sector']) for t in tables for h in t['histories']}
     original = [(local,s['sector']) for s in outer['sectors']] or [(local,1)]
     keys = original+sorted(native_keys-set(original))
+    # Physical Born representatives can be auxiliary aliases too. Retain every
+    # referenced representative before assigning the stable alias numbering.
+    for c, sector in keys:
+        lines = list(born.statements(sources[c]['fks_info.inc']))
+        representative = scalar_sector_value(lines, 'BORN_FKS_MAP_D', sector)
+        if representative is not None and (c,int(representative)) not in keys:
+            keys.append((c,int(representative)))
     aliases = {key:i for i,key in enumerate(keys,1)}
     reachable = sorted({c for c,s in keys})
     count, integrated = len(keys), len(original)
@@ -124,21 +148,37 @@ def write_context(root, outer, records, tables, sources):
     nhel = [re.sub(r'(?i)max_bcol\s*=\s*\d+','MAX_BCOL=%d' % maxbcol,line)
             for line in born.statements(sources[local]['born_nhel.inc'])]
     write(directory/'born_nhel.inc',nhel)
-    fks = ['integer ipos,jpos',
-           'integer fks_i_d(%d),fks_j_d(%d),extra_cnt_d(%d)' % (count,count,count),
-           'integer isplitorder_born_d(%d),isplitorder_cnt_d(%d)' % (count,count),
-           'integer fks_j_from_i_d(%d,nexternal,0:nexternal)' % count,
-           'integer particle_type_d(%d,nexternal),pdg_type_d(%d,nexternal)' % (count,count),
-           'logical particle_tag_d(%d,nexternal)' % count,
-           'double precision particle_charge_d(%d,nexternal)' % count,
-           'logical split_type_d(%d,%d)' % (count,len(outer['orders'])),
-           'logical need_color_links_d(%d),need_charge_links_d(%d)' % (count,count)]
+    local_fks = list(born.statements(sources[local]['fks_info.inc']))
+    fks = [re.sub(r'(?i)(\b\w+_d\s*\()\s*\d+',r'\g<1>'+str(count),line)
+           for line in local_fks if not re.match(r'\s*data\b',line,re.I)]
+    fks += [line for line in local_fks if re.match(r'\s*data\s+born_fks_config_d\b',line,re.I)]
+    local_topologies = [int(scalar_sector_value(local_fks,'FKS_TOPOLOGY_D',s,'0'))
+                        for _,s in original]
+    topology_ids = {(local,value):value for value in local_topologies}
+    next_topology = max(local_topologies,default=0)+1
     symmetry = ['integer FKS_FAC_I_D(%d),FKS_FAC_J_D(%d)' % (count,count),
                 'double precision FKS_IDEN_BORN_D(%d),FKS_IDEN_REAL_D(%d)' % (count,count)]
     leshouche, configs = [], []
     for alias,(c,s) in enumerate(keys,1):
         ordermap = [outer['orders'].index(o)+1 for o in by_id[c]['orders']]
-        fks += sector_data(born.statements(sources[c]['fks_info.inc']),s,alias,ordermap)
+        source_fks = list(born.statements(sources[c]['fks_info.inc']))
+        for line in sector_data(source_fks,s,alias,ordermap):
+            field = re.match(r'\s*data\s+(\w+)\s*\(\s*%d\s*\)\s*/(.*)/\s*$' % alias,line,re.I)
+            if field:
+                name,value=field[1].lower(),field[2].strip()
+                if name=='born_fks_map_d':
+                    value=str(aliases[c,int(value)])
+                elif name=='fks_flavor_class_d' and int(value)>0:
+                    value=str(alias)
+                elif name=='fks_topology_d':
+                    key=(c,int(value))
+                    if key not in topology_ids:
+                        topology_ids[key]=next_topology;next_topology+=1
+                    value=str(topology_ids[key])
+                elif name=='virtual_flavor_index_d' and c!=local:
+                    value='0'  # native Born/real aliases have no local virtual filter
+                line='data %s(%d) /%s/' % (field[1],alias,value)
+            fks.append(line)
         symmetry += sector_data(born.statements(sources[c]['fks_symmetry.inc']),s,alias)
         leshouche += dat_sector(sources[c]['leshouche_info.dat'],s,alias)
         configs += dat_sector(sources[c]['configs_and_props_info.dat'],s,alias)
@@ -169,6 +209,7 @@ def write_context(root, outer, records, tables, sources):
     write_module(directory,outer,by_id,keys,reachable,rows,maxproc)
     write_born_tables(directory)
     write_dispatchers(directory,outer,by_id,keys,sources)
+    (directory/'mc_provider_worker.f').write_bytes((TEMPLATES/'mc_native_provider_worker.f').read_bytes())
     props = ['subroutine mc_native_props(pmass,pwidth,pow)',
              'use mc_native_context, only: active_context,ensure_native_context',
              'implicit none', "include 'nexternal.inc'", "include 'maxconfigs.inc'",
@@ -244,12 +285,19 @@ def write_module(directory,outer,by_id,keys,reachable,rows,maxproc):
              'logical,save::shared_real_active=.false.',
              'integer,save::shared_real_epoch=0',
              'real(8),save::shared_real_point(0:3,%d)' % outer['nexternal'],
+             'integer,parameter::provider_legs=%d,provider_orders=%d' % (outer['nexternal'],len(outer['amp_orders'])),
+             *(TEMPLATES/'mc_native_provider_types.inc').read_text().splitlines(),
              'contains','subroutine ensure_native_context()',
              'if(active_context.eq.0)call activate_native_context(1)','end subroutine',
-             'subroutine activate_native_context(sector)', 'integer,intent(in)::sector', 'integer context,status',
+             'subroutine activate_native_context(sector)', 'integer,intent(in)::sector', 'integer context,status,previous_sector',
              'if(sector.lt.1.or.sector.gt.size(native_context_ids))stop "Invalid native sector"',
-             'context=native_context_ids(sector)','active_sector=native_sector_ids(sector)',
-             'if(context.eq.active_context)return',
+             'context=native_context_ids(sector)','previous_sector=active_sector',
+             'active_sector=native_sector_ids(sector)',
+             'if(context.eq.active_context)then',
+             'if(previous_sector.ne.active_sector)then',
+             'if(allocated(native_metadata%sector_born_ids))native_epoch=native_epoch+1',
+             'call mc_sync_native_tables()','endif',
+             'return','endif',
              'if(contexts(context)%context.eq.0)then',
              'call born_query(context_providers(context),context,contexts(context),status)',
              'if(status.ne.0)stop "Native Born metadata query failed"','endif',
@@ -277,7 +325,9 @@ def write_module(directory,outer,by_id,keys,reachable,rows,maxproc):
               'shared_real_point=p', 'shared_real_active=p(0,1).gt.0d0',
               'shared_real_epoch=shared_real_epoch+1', 'end subroutine',
               'subroutine mc_end_real_point()',
-              'shared_real_active=.false.', 'end subroutine', 'end module']
+              'shared_real_active=.false.', 'end subroutine',
+              *(TEMPLATES/'mc_native_provider_methods.inc').read_text().splitlines(),
+              'end module']
     (directory/'mc_native_context.f90').write_text('\n'.join(lines)+'\n')
 
 
@@ -296,36 +346,49 @@ def write_born_tables(directory):
 
 
 def write_dispatchers(directory,outer,by_id,keys,sources):
+    # Preserve the feature's three-argument scalar/vector offload router.
+    # Native history/cache routing surrounds it, rather than replacing it
+    # with a Fortran-only call. Its filename and build identity stay intact.
+    chooser = directory/'real_me_chooser.f'
+    original = chooser.read_text() if chooser.exists() else ''
+    buffered_local = bool(re.search(r'(?i)subroutine\s+smatrix_real(?:_local)?\s*\([^,]+,[^,]+,[^)]+\)', original))
+    if buffered_local and re.search(r'(?i)subroutine\s+smatrix_real\s*\(', original):
+        chooser.write_text(re.sub(r'\bsmatrix_real\b','smatrix_real_local',original,flags=re.I))
+    elif original and not buffered_local and not re.search(
+            r'(?i)subroutine\s+smatrix_real\s*\([^,]+,[^,)]+\)', original):
+        raise MadGraph5Error('Unrecognized native real chooser interface in %s' % chooser)
     # A restricted massive helicity state depends on its quantization frame.
     # Conservatively keep all polarization-restricted MEs in the caller frame;
     # they can still use exact momentum/model cache hits there.
     share_frame = [not any(leg[2] for process in by_id[c]['sectors'][s-1]['processes']
                            for leg in process[1]) if by_id[c]['sectors'] else False
                    for c,s in keys]
-    real = ['subroutine smatrix_real(p,wgt)',
-            'use mc_native_context, only: shared_real_active,shared_real_epoch,shared_real_point,active_history,history_permutations',
+    real = ['subroutine smatrix_real_native(p,wgt)',
+            'use mc_native_context, only: shared_real_active,real_cache_size,cache=>real_cache,next_entry=>real_cache_next,mc_real_cache_lookup,mc_ensure_real_cache',
             'use mc_born_types, only: BornModelState,born_model_state_equal',
+            'use mc_decision_ledger, only: current_draw,current_fold',
+            'use mc_batch_trace, only: batch_trace_unit,trace_request,trace_bind,trace_result,trace_consume',
+            'use iso_fortran_env, only: int64',
             'implicit none',"include 'nexternal.inc'", "include 'orders.inc'",
-            "include 'real_matrix_weights.inc'",
-            # A small bounded cache needs no allocation on the hot path. Its
-            # model vectors keep their allocated storage between real points.
-            'integer,parameter::cache_size=16',
-            'logical,parameter::share_real_frame(%d)=[%s]' %
-            (len(keys),','.join('.true.' if allowed else '.false.' for allowed in share_frame)),
-            'type RealCacheEntry', 'integer::evaluator=0',
-            'real(8) momenta(0:3,nexternal),weight,amplitudes(amp_split_size)',
-            'real(8) diagram_weights(size(real_amp2))',
-            'logical::has_diagram_weights=.false.',
-            'type(BornModelState) model', 'end type',
-            'type(RealCacheEntry),save::cache(cache_size)',
+            "include 'real_matrix_weights.inc'", "include 'fks_info.inc'",
+            'integer(int64)::request', 'logical::trace_real',
+            'double precision g,all_g', 'common/strong/g,all_g',
+            'double complex gal(2)', 'common/weak/gal',
             'type(BornModelState),save::state',
-            'integer,save::epoch=-1,next_entry=1',
-            'double precision p(0:3,nexternal),q(0:3,nexternal),r(0:3,nexternal),wgt',
+            'double precision p(0:3,nexternal),q(0:3,nexternal),wgt',
             'double precision wgt_me_born,wgt_me_real',
             'common/c_wgt_me_tree/wgt_me_born,wgt_me_real',
-            'integer nfksprocess,evaluator,i,j',
+            'integer nfksprocess,evaluator,evaluator_sector,requested_alias,i,j',
             'common/c_nfksprocess/nfksprocess',
-            'if(nfksprocess.lt.1.or.nfksprocess.gt.%d)stop "Invalid native real sector"' % len(keys),
+            'requested_alias=nfksprocess',
+            'call mc_resolve_native_real(p,nfksprocess,q,evaluator,evaluator_sector)']
+    router = ['subroutine mc_resolve_native_real(p,nfksprocess,q,evaluator,evaluator_sector)',
+              'use mc_native_context, only: shared_real_point,shared_real_active,active_history,history_permutations',
+              'implicit none',"include 'nexternal.inc'",
+              'integer nfksprocess,evaluator,evaluator_sector,i',
+              'double precision p(0:3,nexternal),q(0:3,nexternal),r(0:3,nexternal)',
+              'logical,parameter::share_real_frame(%d)=[%s]' %
+              (len(keys),','.join('.true.' if allowed else '.false.' for allowed in share_frame)),
             'r=p', 'if(shared_real_active.and.share_real_frame(nfksprocess))then',
             # The checked radiation projection supplies native counterevents;
             # its roundoff must not define a different physical real point.
@@ -342,7 +405,8 @@ def write_dispatchers(directory,outer,by_id,keys,sources):
         sector = native['sectors'][s-1] if native['sectors'] else dict(real=0)
         lumi += ['case(%d)' % alias]
         if c == outer['context']:
-            real += ['case(%d)' % alias, 'q=r', 'evaluator=%d' % sector['real']] if native['sectors'] else []
+            router += ['case(%d)' % alias, 'q=r', 'evaluator=%d' % sector['real'],
+                     'evaluator_sector=%d' % s] if native['sectors'] else []
             lumi += ['call dlum_%d(dlum)' % sector['real']]
             continue
         # A native real amplitude is already present in the owner directory.
@@ -351,10 +415,14 @@ def write_dispatchers(directory,outer,by_id,keys,sources):
         match = next(((os,perm) for os in outer['sectors'] for np in sector['processes']
                       for op in os['processes'] for perm in born.labelled_maps(born.freeze(np),born.freeze(op),outer['nincoming'],anchors=())),None)
         if match is None:
-            raise MadGraph5Error('No local real evaluator for native history %s' % ((c,s),))
-        os,perm = match
-        real += ['case(%d)' % alias]+['q(:,%d)=r(:,%d)' % (target,i) for i,target in enumerate(perm,1)]
-        real += ['evaluator=%d' % os['real']]
+            # Representative closure can import a Born-only context. It is
+            # valid for Born generation but must never evaluate a real weight.
+            router += ['case(%d)' % alias, 'stop "Born-only native alias has no local real evaluator"']
+            os = None
+        else:
+            os,perm = match
+            router += ['case(%d)' % alias]+['q(:,%d)=r(:,%d)' % (target,i) for i,target in enumerate(perm,1)]
+            router += ['evaluator=%d' % os['real'],'evaluator_sector=%d' % os['sector']]
         name = 'dlum_native_%d_%d' % (c,sector['real'])
         lumi += ['call %s(dlum)' % name]
         if name not in copied:
@@ -362,25 +430,26 @@ def write_dispatchers(directory,outer,by_id,keys,sources):
             lines = [born.rename(line,{'dlum_%d' % sector['real']:name})
                      for line in born.statements(sources[c]['parton_lum_%d.f' % sector['real']])]
             write(directory/('parton_lum_native_%d_%d.f' % (c,sector['real'])),lines)
-    real += ['case default','stop "Invalid native real sector"','end select',
-             'if(shared_real_active)then',
-             'if(epoch.ne.shared_real_epoch)then',
-             'cache%evaluator=0','next_entry=1','epoch=shared_real_epoch','endif',
-             'call mc_capture_model_state(state)',
-             'do j=1,cache_size',
-             'if(cache(j)%evaluator.ne.evaluator)cycle',
-             'if(any(cache(j)%momenta.ne.q))cycle',
-             'if(.not.born_model_state_equal(cache(j)%model,state))cycle',
-             'if(get_real_diagram_weights.and..not.cache(j)%has_diagram_weights)cycle',
+    router += ['case default','stop "Invalid native real sector"','end select','end']
+    real += ['if(shared_real_active)then','call mc_capture_model_state(state)',
+             'j=mc_real_cache_lookup(q,evaluator,requested_alias,get_real_diagram_weights,state)','if(j.ne.0)then',
              'wgt=cache(j)%weight','amp_split=cache(j)%amplitudes',
              'if(get_real_diagram_weights)real_amp2=cache(j)%diagram_weights',
-             'wgt_me_real=wgt','return','enddo','endif',
-             'select case(evaluator)']
+             'wgt_me_real=wgt','return','endif','endif',
+             'nfksprocess=evaluator_sector',
+             'trace_real=.false.','if(current_draw.gt.0)trace_real=batch_trace_unit().ne.-1',
+             'if(trace_real)then',
+             'call trace_request(current_draw,current_fold,evaluator_sector,real_flavor_index_d(evaluator_sector),q,g,dble(gal(1)),request)',
+             'call trace_bind([request])','endif','select case(evaluator)']
     for evaluator in sorted({s['real'] for s in outer['sectors']}):
-        real += ['case(%d)' % evaluator, 'call smatrix%d(q,wgt)' % evaluator]
+        real += ['case(%d)' % evaluator,
+                 ('call smatrix_real_local(q,amp_split,wgt)' if buffered_local else 'call smatrix%d(q,wgt)' % evaluator)]
     real += ['case default','stop "Invalid local real evaluator"','end select',
-             'if(shared_real_active)then', 'j=next_entry',
-             'cache(j)%evaluator=evaluator','cache(j)%momenta=q',
+             'if(trace_real)call trace_result(1,request,wgt,amp_split)',
+             'nfksprocess=requested_alias','wgt_me_real=wgt',
+             'if(trace_real)call trace_consume(current_draw,request,wgt_me_real,amp_split)',
+             'if(shared_real_active)then', 'call mc_ensure_real_cache()', 'j=next_entry',
+             'cache(j)%evaluator=evaluator','cache(j)%sector=requested_alias','cache(j)%momenta=q',
              'cache(j)%model%real_values=state%real_values',
              'cache(j)%model%configuration_epoch=state%configuration_epoch',
              'cache(j)%model%complex_values=state%complex_values',
@@ -388,7 +457,47 @@ def write_dispatchers(directory,outer,by_id,keys,sources):
              'cache(j)%amplitudes=amp_split',
              'cache(j)%has_diagram_weights=get_real_diagram_weights',
              'if(get_real_diagram_weights)cache(j)%diagram_weights=real_amp2',
-             'next_entry=mod(next_entry,cache_size)+1','endif','end']
+             'next_entry=mod(next_entry,real_cache_size)+1','endif','end']
+    fallback = ['subroutine mc_execute_native_fallback(req)',
+                'use mc_native_context, only: native_provider_request','implicit none',
+                "include 'orders.inc'",'type(native_provider_request) req',
+                'integer sector,previous','common/c_nfksprocess/sector',
+                'previous=sector','sector=req%row']
+    if buffered_local:
+        fallback += ['call smatrix_real_local(req%momenta,req%components,req%total)']
+    else:
+        fallback += ['select case(req%evaluator)']
+        for evaluator in sorted({s['real'] for s in outer['sectors']}):
+            fallback += ['case(%d)' % evaluator,f'call smatrix{evaluator}(req%momenta,req%total)']
+        fallback += ['case default','error stop "Unknown native fallback evaluator"','end select','req%components=amp_split']
+    fallback += ['sector=previous','end']
+    oracle = ['subroutine mc_native_oracle(req,total,components)',
+              'use mc_native_context, only: native_provider_request','implicit none',
+              "include 'orders.inc'",'type(native_provider_request) req','double precision total,components(amp_split_size)',
+              'integer sector,previous','common/c_nfksprocess/sector',
+              'previous=sector','sector=req%row','select case(req%evaluator)']
+    for evaluator in sorted({s['real'] for s in outer['sectors']}):
+        oracle += ['case(%d)' % evaluator]
+        if buffered_local:
+            oracle += [f'call smatrix{evaluator}_amp(req%momenta,components,total)']
+        else:
+            oracle += [f'call smatrix{evaluator}(req%momenta,total)','components=amp_split']
+    oracle += ['case default','error stop "Unknown native oracle evaluator"','end select','sector=previous','end']
     lumi += ['case default','stop "Invalid native PDF sector"','end select','call mc_filter_native_lum(dlum)','end']
-    write(directory/'real_me_chooser.f',real)
+    lumi += ['double precision function dlum_vec(sector)','implicit none',
+             'integer sector,nfksprocess,previous','common/c_nfksprocess/nfksprocess',
+             'double precision dlum','external dlum','previous=nfksprocess',
+             'nfksprocess=sector','dlum_vec=dlum()','nfksprocess=previous','end']
+    if buffered_local:
+        # Keep the established feature ABI and provide a named native scalar
+        # API. Frame wrappers consume explicit split-order outputs as before.
+        real += ['subroutine smatrix_real(p,ret_amp_split,wgt)','implicit none',
+                 "include 'nexternal.inc'", "include 'orders.inc'",
+                 'double precision p(0:3,nexternal),ret_amp_split(amp_split_size),wgt',
+                 'call smatrix_real_native(p,wgt)','ret_amp_split=amp_split','end']
+    else:
+        real += ['subroutine smatrix_real(p,wgt)','implicit none',
+                 "include 'nexternal.inc'",'double precision p(0:3,nexternal),wgt',
+                 'call smatrix_real_native(p,wgt)','end']
+    write(directory/('native_real_me_chooser.f' if buffered_local else 'real_me_chooser.f'),real+router+fallback+oracle)
     write(directory/'parton_lum_chooser.f',lumi)

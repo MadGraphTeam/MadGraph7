@@ -110,6 +110,42 @@ end program
 ''', [('context.f90', modules),
       ('virtual_approximation.f', (TEMPLATE / 'virtual_approximation.f').read_text())])
 
+    def test_fit_keeps_its_feature_count_when_a_fresh_lane_is_restored(self):
+        # Native MC restores every lane's point state before committing it.
+        # A draw that never reached the virtual carries the default four
+        # features; the fit and the saved grid must still use all sixteen.
+        self.compile_and_run('''program check
+use virt_surrogate
+implicit none
+integer i,j,nf,ion,ifit
+real(8) theta(16)
+character(3) tag
+type(surrogate_point) fresh
+call vs_reset
+theta=[(real(i,8)/7d0,i=1,16)]
+do i=1,160
+  j=1+mod(i-1,16)
+  vs_nfeat=16;vs_feat=0d0;vs_feat(j)=1d0;vs_feat(1)=1d0+vs_feat(1)
+  call vs_accumulate(1,dot_product(theta,vs_feat(1:16)),0d0,1d0)
+enddo
+call restore_surrogate_point(fresh)
+if(vs_nfeat/=4)error stop 'fixture: a fresh point no longer has four features'
+call vs_solve(1,.false.)
+vs_nfeat=16;vs_featok=.true.
+do i=1,16
+  vs_feat=0d0;vs_feat(i)=1d0
+  if(abs(vs_value(1)-theta(i))>1d-6)error stop 'fit lost the features beyond the fresh lane count'
+enddo
+call restore_surrogate_point(fresh)
+open(unit=15,status='scratch',form='formatted')
+call vs_write_grids(15,1)
+rewind(15)
+read(15,*)tag,ion,ifit,nf
+close(15)
+if(nf/=16)error stop 'saved grid dropped surrogate coefficients'
+end program
+''')
+
     def test_separate_virtual_and_mixed_weights_fit_identical_targets(self):
         modules = '''module weight_lines
 integer :: icontr=4,itype(4)=[14,14,14,15],amppos(4)=[1,2,2,1]

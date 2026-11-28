@@ -7,7 +7,7 @@ C     compute the contribution due to the parameter renormalisation
       DOUBLE PRECISION INVARIANTS(NEXTERNAL-1, NEXTERNAL-1)
       INCLUDE 'coupl.inc'
       INCLUDE '../../Source/MODEL/input.inc'
-
+%(saved_amplitude_declarations)s
 C     ipara = 1->Gmu; 2->MZ; 3->MW; 4->MT/YMT; 5->MH; 6->tadpole
       INTEGER IMAXPARA, IPARA
       PARAMETER (IMAXPARA=6)
@@ -68,7 +68,7 @@ C     check that mdl_mt and mdl_ymt are equal
         XUP = XSAVE * (1D0 + XDELTA)
         XDN = XSAVE * (1D0 - XDELTA)
 
-C        call %(mename)s(P,NHEL,%(hell)s matxcen)
+C        call %(mename)s(P,NHEL,%(hell)s matxcen%(saved_amplitude_argument)s)
 C        amp_split_cen(:) = amp_split_ewsud(:)
         
 C       vary the parameter up
@@ -88,7 +88,7 @@ C       vary the parameter up
         ENDIF
 
         CALL COUP()
-        call %(mename)s(P,NHEL,%(hell)s matxup)
+        call %(mename)s(P,NHEL,%(hell)s matxup%(saved_amplitude_argument)s)
         AMP_SPLIT_UP(:) = AMP_SPLIT_EWSUD(:)
         AMP_SPLIT_UP2(:) = AMP_SPLIT_EWSUD_LO2(:)
 
@@ -109,7 +109,7 @@ C       vary the parameter down
         ENDIF
 
         CALL COUP()
-        call %(mename)s(P,NHEL,%(hell)s matxdn)
+        call %(mename)s(P,NHEL,%(hell)s matxdn%(saved_amplitude_argument)s)
         AMP_SPLIT_DN(:) = AMP_SPLIT_EWSUD(:)
         AMP_SPLIT_DN2(:) = AMP_SPLIT_EWSUD_LO2(:)
 

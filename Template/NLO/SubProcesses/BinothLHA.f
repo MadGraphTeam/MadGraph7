@@ -1,4 +1,5 @@
-      subroutine BinothLHA(p,born_wgt,virt_wgt)
+      subroutine BinothLHA(p,born_wgt,virt_wgt,amp_split_born,loc_saveamp
+     $    ,amp_split_finite_ML,born_amp_split_cnt)
 c
 c Given the Born momenta, this is the Binoth-Les Houches interface file
 c that calls the OLP and returns the virtual weights. For convenience
@@ -8,9 +9,12 @@ c
       implicit none
       include "nexternal.inc"
       include "coupl.inc"
+      include 'genps.inc'
       include "../../Source/MODEL/input.inc"
       include 'born_nhel.inc'
-      double precision pi,zero
+      include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
+      double precision pi, zero,mone
       parameter (pi=3.1415926535897932385d0)
       parameter (zero=0d0)
       double precision p(0:3,nexternal-1)
@@ -22,6 +26,11 @@ c
       data firsttime,firsttime_conversion /.true.,.true./
       logical firsttime_run
       data firsttime_run /.true./
+      integer nFKSprocess,virtual_flavor
+      common/c_nFKSprocess/nFKSprocess
+      logical virtual_flavor_checked(MAX_VIRTUAL_FLAVOR_INDEX)
+      save virtual_flavor_checked
+      data virtual_flavor_checked/MAX_VIRTUAL_FLAVOR_INDEX*.false./
       double precision qes2
       common /coupl_es/ qes2
       logical fksprefact
@@ -54,8 +63,17 @@ c statistics for MadLoop
       parameter (nbadmax = 5)
       double precision pmass(nexternal)
       character*1 include_hel(max_bhel)
-      integer goodhel(max_bhel),hel(0:max_bhel)
-      save hel,goodhel
+c The helicities sampled in the MC over helicities of each virtual
+c row, from its helicity filter, and whether the row samples them (1)
+c or sums them explicitly (0). MadLoop keeps one helicity filter per
+c row when this P directory evaluates several of them
+c (HELFILTER_PER_VIRTUAL_FLAVOR).
+      integer goodhel(max_bhel,MAX_VIRTUAL_FLAVOR_INDEX)
+      integer hel(0:max_bhel,MAX_VIRTUAL_FLAVOR_INDEX)
+      integer mc_hel_flavor(MAX_VIRTUAL_FLAVOR_INDEX)
+      save hel,goodhel,mc_hel_flavor
+      data mc_hel_flavor/MAX_VIRTUAL_FLAVOR_INDEX*0/
+      character*64 helfilter_file
       logical fillh
       integer mc_hel,ihel
       double precision volh
@@ -66,10 +84,13 @@ c statistics for MadLoop
       logical, allocatable, save :: keep_order(:)
       include 'a0Gmuconv.inc'
       include 'orders.inc'
+      double precision amp_split_born(1:amp_split_size)
+      double complex loc_saveamp(ngraphs,max_bhel)
       integer amp_orders(nsplitorders)
       integer split_amp_orders(nsplitorders), iamp
       double precision amp_split_finite_ML(amp_split_size)
-      common /to_amp_split_finite/amp_split_finite_ML
+      double complex born_amp_split_cnt(amp_split_size,2,nsplitorders)
+C      common /to_amp_split_finite/amp_split_finite_ML
       double precision prec_found(amp_split_size)
       double precision amp_split_poles_ML(amp_split_size,2),
      $ amp_split_poles_FKS(amp_split_size,2)
@@ -96,6 +117,17 @@ c masses
       data nbad / 0 /
 
       IOErrCounter = 0
+      if (HAS_PHYSICAL_FKS_CLASSES) then
+         virtual_flavor=VIRTUAL_FLAVOR_INDEX_D(nFKSprocess)
+      else
+         virtual_flavor=1
+      endif
+      if (virtual_flavor.lt.1.or.
+     $    virtual_flavor.gt.MAX_VIRTUAL_FLAVOR_INDEX) then
+         write(*,*) 'Invalid virtual flavor index',virtual_flavor,
+     $        nFKSprocess
+         stop 1
+      endif
 c update the ren_scale for MadLoop and the couplings (should be the
 c Ellis-Sexton scale)
       mu_r = sqrt(QES2)
@@ -142,13 +174,643 @@ c splips unnoticed.
          endif
          firsttime_run = .false.
       endif
-      firsttime=firsttime.or.force_polecheck
+      firsttime=(.not.virtual_flavor_checked(virtual_flavor)).or.
+     $     force_polecheck
       if (firsttime) then
          write(*,*) "alpha_s value used for the virtuals"/
      &        /" is (for the first PS point): ", alpha_S
          tolerance=IRPoleCheckThreshold/10d0 ! for the pole check below
-         call sloopmatrix_thres(p, virt_wgts, tolerance, accuracies,
-     $        ret_code)
+c HEL=-1 sums over all helicities. It also resets the helicity left in
+c MadLoop by the MC over helicities of another virtual row.
+         call sloopmatrixhel_thres_flavor(p,-1,virtual_flavor,virt_wgts,
+     $        tolerance,accuracies,ret_code)
+C        look for orders which match the nlo order constraint 
+         do i = 1, nsqso
+           keep_order(i) = .true.
+           do j = 1, nsplitorders
+             if(getordpowfromindex_ML5(j, i) .gt. nlo_orders(j)) then
+               keep_order(i) = .false.
+               exit
+             endif
+           enddo
+           if (keep_order(i)) then
+             write(*,*) 'VIRT: keeping split order ', i
+           else
+             write(*,*) 'VIRT: not keeping split order ', i
+           endif
+         enddo
+         do i = 1, nsqso
+           if (keep_order(i)) then
+             virt_wgt= virt_wgt + virt_wgts(1,i)
+             single  = single + virt_wgts(2,i)
+             double  = double + virt_wgts(3,i)
+C         keep track of the separate pieces correspoinding to
+C          different coupling combinations
+             do j = 1, nsplitorders
+              amp_orders(j) = getordpowfromindex_ML5(j, i)
+             enddo
+             amp_split_finite_ML(orders_to_amp_split_pos(amp_orders)) =
+     $            virt_wgts(1,i)
+             amp_split_poles_ML(orders_to_amp_split_pos(amp_orders),1) =
+     $            virt_wgts(2,i)
+             amp_split_poles_ML(orders_to_amp_split_pos(amp_orders),2) =
+     $            virt_wgts(3,i)
+             prec_found(orders_to_amp_split_pos(amp_orders))
+     $            =accuracies(i)
+           endif
+        enddo
+      else
+         tolerance=PrecisionVirtualAtRunTime
+c Just set the accuracy found to a positive value as it is not specified
+c once the initial pole check is performed.
+         if (mc_hel_flavor(virtual_flavor).eq.0) then
+
+            call sloopmatrixhel_thres_flavor(p,-1,virtual_flavor,
+     $           virt_wgts,tolerance,accuracies,ret_code)
+            do i = 1, nsqso
+              if (keep_order(i)) then
+                virt_wgt= virt_wgt + virt_wgts(1,i)
+                single  = single + virt_wgts(2,i)
+                double  = double + virt_wgts(3,i)
+C         keep track of the separate pieces correspoinding to
+C          different coupling combinations
+                do j = 1, nsplitorders
+                 amp_orders(j) = getordpowfromindex_ML5(j, i)
+                enddo
+                amp_split_finite_ML(orders_to_amp_split_pos(amp_orders))
+     $               = virt_wgts(1,i)
+                amp_split_poles_ML(orders_to_amp_split_pos(amp_orders)
+     $               ,1) = virt_wgts(2,i)
+                amp_split_poles_ML(orders_to_amp_split_pos(amp_orders)
+     $               ,2) = virt_wgts(3,i)
+                prec_found(orders_to_amp_split_pos(amp_orders))
+     $               =accuracies(i)
+              endif
+            enddo
+         elseif (mc_hel_flavor(virtual_flavor).eq.1) then
+c Use the Born helicity amplitudes to sample the helicities of the
+c virtual as flat as possible
+            call PickHelicityMC(p,goodhel(:,virtual_flavor),
+     $           hel(:,virtual_flavor),ihel,volh,loc_saveamp)
+            !
+            fillh=.false.
+            call sloopmatrixhel_thres_flavor(p,hel(ihel,virtual_flavor),
+     $           virtual_flavor,virt_wgts_hel,tolerance,accuracies,
+     $           ret_code)
+            hel_fact = dble(goodhel(ihel,virtual_flavor))/volh/4d0
+            do i = 1, nsqso
+              if (keep_order(i)) then
+                born_hel_from_virt=born_hel_from_virt+virt_wgts_hel(0,i)
+                virt_wgt= virt_wgt + virt_wgts_hel(1,i) * hel_fact
+                single  = single + virt_wgts_hel(2,i) * hel_fact
+                double  = double + virt_wgts_hel(3,i) * hel_fact
+C         keep track of the separate pieces correspoinding to
+C          different coupling combinations
+                do j = 1, nsplitorders
+                 amp_orders(j) = getordpowfromindex_ML5(j, i)
+                enddo
+                amp_split_finite_ML(orders_to_amp_split_pos(amp_orders))
+     $               = virt_wgts_hel(1,i) * hel_fact
+                amp_split_poles_ML(orders_to_amp_split_pos(amp_orders)
+     $               ,1) = virt_wgts_hel(2,i) * hel_fact
+                amp_split_poles_ML(orders_to_amp_split_pos(amp_orders)
+     $               ,2) = virt_wgts_hel(3,i) * hel_fact
+                prec_found(orders_to_amp_split_pos(amp_orders))
+     $               =accuracies(i)
+              endif
+            enddo
+
+CCC            if (abs((wgt_hel(hel(ihel))-born_hel_from_virt/4d0)
+CCC     $           /wgt_hel(hel(ihel))).gt.1e-5) then
+CCC               write(*,*) 'ERROR HEL', wgt_hel(hel(ihel))
+CCC     $              ,born_hel_from_virt/4d0,wgt_hel(hel(ihel))
+CCC     $              /(born_hel_from_virt/4d0)
+CCC                stop
+CCC            endif
+c Average over initial state helicities 
+            if (nincoming.ne.2) then
+               write (*,*)
+     &              'Cannot do MC over helicities for 1->N processes'
+               stop
+            endif
+         else
+            write (*,*) 'Can only do sum over helicities,'/
+     $           /' or pure MC over helicities',
+     $           mc_hel_flavor(virtual_flavor)
+            stop
+         endif
+      endif
+
+      if(cs_run) then     
+        print*,"I am skipping checkpoles"
+        return
+      endif
+
+c======================================================================
+c If the Virtuals are in the Dimensional Reduction scheme, convert them
+c to the CDR scheme with the following factor (not needed for MadLoop,
+c because they are already in the CDR scheme format)
+c      if (firsttime_conversion) then
+c         call DRtoCDR(conversion)
+c         firsttime_conversion=.false.
+c      endif
+c      virt_wgt=virt_wgt+conversion*born_wgt*ao2pi
+c======================================================================
+
+c======================================================================
+c If there are tagged photon and other particles in the process, 
+C one must use a mixed Gmu-alpha0 renormalisation.
+      ntagph = get_n_tagged_photons() 
+      if (ntagph.ne.0) then
+        do i = 1, AMP_SPLIT_SIZE_BORN 
+          call amp_split_pos_to_orders(i, amp_orders)
+          born_wgt = amp_split_born(i)
+          ! this is the number of powers of 'e' in the born
+          qed_pow_b = amp_orders(qed_pos)
+          amp_orders(qed_pos) = amp_orders(qed_pos) + 2
+          if (amp_orders(qed_pos).gt.NLO_ORDERS(qed_pos)) cycle
+
+          amp_split_poles_ML(orders_to_amp_split_pos(amp_orders),1) = 
+     $        amp_split_poles_ML(orders_to_amp_split_pos(amp_orders),1) +
+     $         get_virtual_a0Gmu_conv(qed_pow_b,ntagph,1,born_wgt)
+
+          amp_split_finite_ML(orders_to_amp_split_pos(amp_orders)) = 
+     $        amp_split_finite_ML(orders_to_amp_split_pos(amp_orders)) +
+     $         get_virtual_a0Gmu_conv(qed_pow_b,ntagph,0,born_wgt)
+
+        enddo
+      endif
+c======================================================================
+
+c
+c Check poles for the first PS points when doing MC over helicities, and
+c for all phase-space points when not doing MC over helicities. Skip
+c MadLoop initialization PS points.
+      cpol=.false.
+      ret_code_common=ret_code
+      if ((firsttime .or. mc_hel_flavor(virtual_flavor).eq.0) .and.
+     $     mod(ret_code,100)/10.ne.3
+     $     .and. mod(ret_code,100)/10.ne.4) then
+         call getpoles(p,QES2,madfks_double,madfks_single,fksprefact)
+         polecheck_passed = .true.
+         ! loop over the full result and each of the amp_split
+         ! contribution
+         do iamp=1,amp_split_size
+          ! skip 0 contributions in the amp_split array
+            if (iamp.ne.0) then
+               if (amp_split_poles_FKS(iamp,1).eq.0d0.and.
+     $              amp_split_poles_FKS(iamp,1).eq.0d0) cycle
+            endif
+            if (iamp.eq.0) then
+               if (firsttime) then
+                  write(*,*) ''
+                  write(*,*) 'Sum of all split-orders'
+               endif
+            else
+               if (firsttime) then
+                  write(*,*) ''
+                  write(*,*) 'Splitorders', iamp
+                  call amp_split_pos_to_orders(iamp,split_amp_orders)
+                  do i = 1, nsplitorders
+                     write(*,*) '      ',ordernames(i), ':',
+     $                    split_amp_orders(i)
+                  enddo
+               endif
+               single=amp_split_poles_ML(iamp,1)
+               double=amp_split_poles_ML(iamp,2)
+               madfks_single=amp_split_poles_FKS(iamp,1)
+               madfks_double=amp_split_poles_FKS(iamp,2)
+            endif
+            avgPoleRes(1)=(single+madfks_single)/2.0d0
+            avgPoleRes(2)=(double+madfks_double)/2.0d0
+            PoleDiff(1)=dabs(single - madfks_single)
+            PoleDiff(2)=dabs(double - madfks_double)
+            if ((dabs(avgPoleRes(1))+dabs(avgPoleRes(2))).ne.0d0) then
+               cpol = .not.((((PoleDiff(1)+PoleDiff(2))/
+     $              (dabs(avgPoleRes(1))+dabs(avgPoleRes(2)))) .lt.
+     $              tolerance*10d0).or.(mod(ret_code,10).eq.7.and..not.force_polecheck))
+            else
+               cpol = .not.((PoleDiff(1)+PoleDiff(2).lt.tolerance*10d0)
+     $              .or.(mod(ret_code,10).eq.7))
+            endif
+            if (tolerance.lt.0.0d0) then
+               cpol = .false.
+            endif
+            if (.not. cpol .and. firsttime) then
+               write(*,*) "---- POLES CANCELLED ----"
+               write(*,*) " COEFFICIENT DOUBLE POLE:"
+               write(*,*) "       MadFKS: ", madfks_double,
+     &              "          OLP: ", double
+               write(*,*) " COEFFICIENT SINGLE POLE:"
+               write(*,*) "       MadFKS: ",madfks_single,
+     &              "          OLP: ",single
+               if (iamp.eq.0) then
+                  write(*,*) " FINITE:"
+                  write(*,*) "          OLP: ",virt_wgt
+                  write(*,*) "          BORN: ",born_wgt
+                  write(*,*) " MOMENTA (Exyzm): "
+                  do i = 1, nexternal-1
+                     write(*,*) i,p(0,i),p(1,i),p(2,i),p(3,i),pmass(i)
+                  enddo
+               endif
+               if (mc_hel.ne.0) then
+ 198              continue
+c Set-up the MC over helicities of this virtual row. This assumes that
+c its helicity filter exists, which should be the case when firsttime
+c is false.
+                  mc_hel_flavor(virtual_flavor)=mc_hel
+                  if (NHelForMCoverHels.lt.0) then
+                     mc_hel_flavor(virtual_flavor)=0
+                     goto 203
+                  endif
+                  if (HELFILTER_PER_VIRTUAL_FLAVOR) then
+                     write (helfilter_file,'(a,i0,a)')
+     $                    '../MadLoop5_resources/HelFilter_',
+     $                    virtual_flavor,'.dat'
+                  else
+                     helfilter_file='../MadLoop5_resources/HelFilter.dat'
+                  endif
+                  open (unit=67,file=helfilter_file,
+     $                 status='old',action='read',iostat=IOErr, err=201)
+                  hel(0,virtual_flavor)=0
+                  j=0
+c optimized loop output
+                  do i=1,max_bhel
+                     read(67,*,err=202) goodhel(i,virtual_flavor)
+                     if (goodhel(i,virtual_flavor).gt.-10000 .and.
+     $                    goodhel(i,virtual_flavor).ne.0) then
+                        j=j+1
+                        goodhel(j,virtual_flavor)=
+     $                       goodhel(i,virtual_flavor)
+                        hel(0,virtual_flavor)=hel(0,virtual_flavor)+1
+                        hel(j,virtual_flavor)=i
+                     endif
+                  enddo
+                  goto 203
+ 201              continue
+                  if (IOErr.eq.2.and.IOErrCounter.lt.10) then
+                     IOErrCounter = IOErrCounter+1
+                     write(*,*) "File "//trim(helfilter_file)//
+     $                    " busy, retrying for the ",IOErrCounter,
+     $                    " time."
+                     call date_and_time(values=dt)
+                     call sleep(1+(dt(8)/200))
+                     goto 198
+                  endif
+                  write (*,*) 'Cannot do MC over hel: "'/
+     &                 /trim(helfilter_file)//'" does not exist'/
+     &                 /' or does not have the correct format.'/
+     $                 /' Change NHelForMCoverHels in FKS_params.dat '/
+     &                 /'to explicitly summ over them instead.'
+                  stop
+c                  mc_hel=0
+c                  goto 203
+ 202              continue
+c non optimized loop output
+                  rewind(67)
+                  read(67,*,err=201) (include_hel(i),i=1,max_bhel)
+                  do i=1,max_bhel
+                     if (include_hel(i).eq.'T') then
+                        j=j+1
+                        goodhel(j,virtual_flavor)=1
+                        hel(0,virtual_flavor)=hel(0,virtual_flavor)+1
+                        hel(j,virtual_flavor)=i
+                     endif
+                  enddo
+ 203              continue
+c Only do MC over helicities if there are NHelForMCoverHels
+c or more non-zero (independent) helicities
+                  if (NHelForMCoverHels.eq.-1) then
+                     write (*,*) 'Not doing MC over helicities: '/
+     $                    /'HelForMCoverHels=-1'
+                     mc_hel_flavor(virtual_flavor)=0
+                  elseif (hel(0,virtual_flavor).lt.NHelForMCoverHels)
+     $                    then
+                     write (*,'(a,i3,a)') 'Only ',hel(0,virtual_flavor)
+     $                    ,' independent helicities:'/
+     $                    /' switching to explicitly summing over them'
+                     mc_hel_flavor(virtual_flavor)=0
+                  endif
+                  close(67)
+               endif
+            elseif(cpol .and. firsttime) then
+               polecheck_passed = .false.
+               write(*,*) "POLES MISCANCELLATION, DIFFERENCE > ",
+     &              tolerance*10d0
+               write(*,*) " COEFFICIENT DOUBLE POLE:"
+               write(*,*) "       MadFKS: ", madfks_double,
+     &              "          OLP: ", double
+               write(*,*) " COEFFICIENT SINGLE POLE:"
+               write(*,*) "       MadFKS: ",madfks_single,
+     &              "          OLP: ",single
+               if (iamp.eq.0) then
+                  write(*,*) " FINITE:"
+                  write(*,*) "          OLP: ",virt_wgt
+                  write(*,*) "          BORN: ",born_wgt
+                  write(*,*) " MOMENTA (Exyzm): "
+                  do i = 1, nexternal-1
+                     write(*,*) i,p(0,i),p(1,i),p(2,i),p(3,i),pmass(i)
+                  enddo
+               endif
+               write(*,*) 
+               write(*,*) " SCALE**2: ", QES2
+               if (nbad .lt. nbadmax) then
+                  nbad = nbad + 1
+                  write(*,*) " Trying another PS point"
+               elseif (.not.force_polecheck) then
+                  write(*,*) " TOO MANY FAILURES, QUITTING"
+                  stop
+               endif
+            endif
+         enddo
+         !This is to prevent the code from hanging if one does MC over
+         ! helicities and the pole-check fails at the first PS point
+         firsttime = .false..or.cpol
+         virtual_flavor_checked(virtual_flavor)=.not.firsttime
+      endif
+c Update the statistics using the MadLoop return code (ret_code)
+      ntot = ntot+1             ! total number of PS
+      if (ret_code/100.eq.1) then
+         nsun = nsun+1          ! stability unknown
+      elseif (ret_code/100.eq.2) then
+         nsps = nsps+1          ! stable PS point
+      elseif (ret_code/100.eq.3) then
+         nups = nups+1          ! unstable PS point, but rescued
+      elseif (ret_code/100.eq.4) then
+         neps = neps+1          ! exceptional PS point: unstable, and not possible to rescue
+      else
+         n100=n100+1            ! no known ret_code (100)
+      endif
+      if (mod(ret_code,100)/10.eq.1 .or. mod(ret_code,100)/10.eq.3) then
+         nddp = nddp+1          ! only double precision was used
+         if (mod(ret_code,100)/10.eq.3) nini=nini+1 ! MadLoop initialization phase
+      elseif (mod(ret_code,100)/10.eq.2 .or. mod(ret_code,100)/10.eq.4)
+     $        then
+         nqdp = nqdp+1          ! quadruple precision was used
+         if (mod(ret_code,100)/10.eq.4) nini=nini+1 ! MadLoop initialization phase
+      else
+         n10=n10+1              ! no known ret_code (10)
+      endif
+      n1(mod(ret_code,10))=n1(mod(ret_code,10))+1 ! unit ret code distribution
+c Unit 2 is NinjaRS; classify precision with T, not the stability digit H.
+      if (mod(ret_code,10).eq.2.and.(mod(ret_code,100)/10.eq.1.or.
+     $     mod(ret_code,100)/10.eq.3)) NINJARS_DP_USAGE=NINJARS_DP_USAGE+1
+      if (mod(ret_code,10).eq.2.and.(mod(ret_code,100)/10.eq.2.or.
+     $     mod(ret_code,100)/10.eq.4)) NINJARS_QP_USAGE=NINJARS_QP_USAGE+1
+c Unit 3 is shared by IREGI and TIRust (MLReductionLib=9).
+      if (mod(ret_code,10).eq.3.and.ML_GET_RET_CODE_LIBRARY().eq.9) then
+         if (mod(ret_code,100)/10.eq.1.or.mod(ret_code,100)/10.eq.3)
+     $        TIRUST_DP_USAGE=TIRUST_DP_USAGE+1
+         if (mod(ret_code,100)/10.eq.2.or.mod(ret_code,100)/10.eq.4)
+     $        TIRUST_QP_USAGE=TIRUST_QP_USAGE+1
+      endif
+
+c Write out the unstable, non-rescued phase-space points (MadLoop return
+c code is in the four hundreds) or the ones that are found by the pole
+c check (only available when not doing MC over hels)
+      do iamp=1,amp_split_size
+         if (.not.firsttime .and. (ret_code/100.eq.4 .or. cpol .or.
+     $        prec_found(iamp).gt.0.05d0 .or.
+     $        isnan(amp_split_finite_ML(iamp)))) then
+            if (neps.lt.10) then
+               if (neps.eq.1) then
+                  open(unit=78, file='UPS.log')
+               else
+                  open(unit=78, file='UPS.log', access='append')
+               endif
+               write(78,*) '===== EPS #',neps,' ====='
+               write(78,*) 'mu_r    =',mu_r           
+               write(78,*) 'alpha_S =',alpha_S
+               write(78,*) 'MadLoop return code, pole check and'/
+     $              /' accuracy reported',ret_code,cpol,prec_found
+               if (mc_hel_flavor(virtual_flavor).ne.0) then
+                  write (78,*)'helicity (MadLoop only)',
+     $                 hel(ihel,virtual_flavor),
+     $                 mc_hel_flavor(virtual_flavor)
+               endif
+               write(78,*) '1/eps**2 expected from MadFKS='
+     $              ,amp_split_poles_FKS(iamp,2)
+               write(78,*) '1/eps**2 obtained in MadLoop ='
+     $              ,amp_split_poles_ML(iamp,2)
+               write(78,*) '1/eps    expected from MadFKS='
+     $              ,amp_split_poles_FKS(iamp,1)
+               write(78,*) '1/eps    obtained in MadLoop ='
+     $              ,amp_split_poles_ML(iamp,1)
+               write(78,*) 'finite   obtained in MadLoop ='
+     $              ,amp_split_finite_ML(iamp)
+               write(78,*) 'Accuracy estimated by MadLop ='
+     $              ,prec_found(iamp)
+               do i = 1, nexternal-1
+                  write(78,'(i2,1x,5e25.15)') 
+     &                 i, p(0,i), p(1,i), p(2,i), p(3,i), pmass(i)
+               enddo
+               close(78)
+            endif
+            if ( prec_found(iamp).gt.0.05d0 .or.
+     $           isnan(amp_split_finite_ML(iamp)) ) then
+               write (*,*) 'WARNING: unstable non-rescued phase-space'/
+     $              /' found for which the accuracy reported by'/
+     $              /' MadLoop is worse than 5%. Setting virtual to'/
+     $              /' zero for this PS point.'
+               amp_split_finite_ML(iamp) = 0d0
+            endif
+         endif
+      enddo
+c also set the central value to zero if it is very unstable
+      if (.not.firsttime .and.
+     $     (accuracies(0).gt.0.05d0 .or. isnan(virt_wgt))) then
+         virt_wgt=0d0
+      endif
+c If a MadLoop initialisation PS point (and stability is unknown), we
+c better set the virtual to zero to NOT include it in the
+c result. Sometimes this can be an unstable point with a very large
+c weight, screwing up the complete integration afterward.
+      if ( ( mod(ret_code,100)/10.eq.4 .or. mod(ret_code,100)/10.eq.3 )
+     $     .and. ret_code/100.eq.1) then
+         do iamp=1,amp_split_size
+            amp_split_finite_ML(iamp) = 0d0
+         enddo
+         virt_wgt=0d0
+      endif
+      return
+      end
+
+
+      subroutine BinothLHA_vec(p,born_wgt,virt_wgt,amp_split_born,loc_saveamp
+     $    ,amp_split_finite_ML,born_amp_split_cnt)
+c
+c Given the Born momenta, this is the Binoth-Les Houches interface file
+c that calls the OLP and returns the virtual weights. For convenience
+c also the born_wgt is passed to this subroutine.
+c
+      use FKSParams
+      implicit none
+      include "nexternal.inc"
+      include "coupl.inc"
+      include 'genps.inc'
+      include "../../Source/MODEL/input.inc"
+      include 'born_nhel.inc'
+      include 'nFKSconfigs.inc'
+      include 'fks_info.inc'
+      double precision pi, zero,mone
+      parameter (pi=3.1415926535897932385d0)
+      parameter (zero=0d0)
+      double precision p(0:3,nexternal-1)
+      double precision virt_wgt,born_wgt,double,single
+     $     ,born_wgt_recomputed,born_wgt_recomp_direct
+      double precision, allocatable :: virt_wgts(:,:)
+      double precision, allocatable :: virt_wgts_hel(:,:)
+      double precision mu,ao2pi,conversion,alpha_S
+      save conversion
+      logical firsttime,firsttime_conversion
+      data firsttime,firsttime_conversion /.true.,.true./
+      logical firsttime_run
+      data firsttime_run /.true./
+      integer nFKSprocess,virtual_flavor
+      common/c_nFKSprocess/nFKSprocess
+      logical virtual_flavor_checked(MAX_VIRTUAL_FLAVOR_INDEX)
+      save virtual_flavor_checked
+      data virtual_flavor_checked/MAX_VIRTUAL_FLAVOR_INDEX*.false./
+      double precision qes2
+      common /coupl_es/ qes2
+      logical fksprefact
+      parameter (fksprefact=.true.)
+      integer ret_code
+      double precision madfks_single, madfks_double
+      double precision tolerance
+      double precision, allocatable :: accuracies(:)
+      integer i,j,IOErr, IOErrCounter
+      integer dt(8)
+      integer nbad, nbadmax
+      double precision target,ran2,accum
+      external ran2
+      double precision hel_fact
+CCC      double precision wgt_hel(max_bhel)
+CCC      common/c_born_hel/wgt_hel
+      integer nsqso, MLResArrayDim
+c statistics for MadLoop
+      INTEGER NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      COMMON/NINJARSSTATS/NINJARS_DP_USAGE,NINJARS_QP_USAGE
+      INTEGER TIRUST_DP_USAGE,TIRUST_QP_USAGE
+      COMMON/TIRUSTSTATS/TIRUST_DP_USAGE,TIRUST_QP_USAGE
+      INTEGER ML_GET_RET_CODE_LIBRARY
+      EXTERNAL ML_GET_RET_CODE_LIBRARY
+      double precision avgPoleRes(2),PoleDiff(2)
+      integer ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1(0:9)
+      common/ups_stats/ntot,nsun,nsps,nups,neps,n100,nddp,nqdp,nini,n10,n1
+      parameter (nbadmax = 5)
+      double precision pmass(nexternal)
+      character*1 include_hel(max_bhel)
+      integer goodhel(max_bhel),hel(0:max_bhel)
+      save hel,goodhel
+      logical fillh
+      integer mc_hel,ihel
+      double precision volh
+      common/mc_int2/volh,mc_hel,ihel,fillh
+      logical cpol
+      integer getordpowfromindex_ml5
+      integer orders_to_amp_split_pos
+      logical, allocatable, save :: keep_order(:)
+      include 'a0Gmuconv.inc'
+      include 'orders.inc'
+      double precision amp_split_born(1:amp_split_size)
+      double complex loc_saveamp(ngraphs,max_bhel)
+      integer amp_orders(nsplitorders)
+      integer split_amp_orders(nsplitorders), iamp
+      double precision amp_split_finite_ML(amp_split_size)
+      double complex born_amp_split_cnt(amp_split_size,2,nsplitorders)
+C      common /to_amp_split_finite/amp_split_finite_ML
+      double precision prec_found(amp_split_size)
+      double precision amp_split_poles_ML(amp_split_size,2),
+     $ amp_split_poles_FKS(amp_split_size,2)
+      common /to_amp_split_poles_FKS/amp_split_poles_FKS
+      logical force_polecheck, polecheck_passed
+      common /to_polecheck/force_polecheck, polecheck_passed
+      integer ret_code_common
+      common /to_ret_code/ret_code_common
+      double precision born_hel_from_virt
+
+      logical cs_run
+      COMMON /to_cs_run/ cs_run
+
+      logical updateloop
+      common /to_updateloop/updateloop
+
+      integer get_n_tagged_photons
+      external get_n_tagged_photons
+      double precision get_virtual_a0Gmu_conv
+      external get_virtual_a0Gmu_conv 
+      integer ntagph, qed_pow_b
+c masses
+      include 'pmass.inc'
+      data nbad / 0 /
+
+      IOErrCounter = 0
+      if (HAS_PHYSICAL_FKS_CLASSES) then
+         virtual_flavor=VIRTUAL_FLAVOR_INDEX_D(nFKSprocess)
+      else
+         virtual_flavor=1
+      endif
+      if (virtual_flavor.lt.1.or.
+     $    virtual_flavor.gt.MAX_VIRTUAL_FLAVOR_INDEX) then
+         write(*,*) 'Invalid virtual flavor index',virtual_flavor,
+     $        nFKSprocess
+         stop 1
+      endif
+c update the ren_scale for MadLoop and the couplings (should be the
+c Ellis-Sexton scale)
+      mu_r = sqrt(QES2)
+      ! force to update also loop-related parameters
+      updateloop=.true.
+      call update_as_param()
+      updateloop=.false.
+
+      alpha_S=g**2/(4d0*PI)
+      ao2pi= alpha_S/(2d0*PI)
+      virt_wgt= 0d0
+      single  = 0d0
+      double  = 0d0
+      born_hel_from_virt = 0d0
+C     reset the various arrays
+      amp_split_finite_ML(1:amp_split_size) = 0d0
+      amp_split_poles_ML(1:amp_split_size,1) = 0d0
+      amp_split_poles_ML(1:amp_split_size,2) = 0d0
+      prec_found(1:amp_split_size) = 0d0
+c This is no longer needed, because now the Born has the correct symmetry factor:
+      if (firsttime_run) then
+c The helicity double check should have been performed during the
+c pole check, so we skip it here. It also makes sure that there is
+c no conflict on the write access to HelFilter.dat when running
+c locally in multicore without a cluster_tmp_path
+         if (.not. force_polecheck)
+     &        call set_forbid_hel_doublecheck(.True.)
+         call get_nsqso_loop(nsqso)
+         call get_answer_dimension(MLResArrayDim)
+         allocate(accuracies(0:nsqso))
+         allocate(virt_wgts(0:3,0:MLResArrayDim))
+         allocate(virt_wgts_hel(0:3,0:MLResArrayDim))
+         allocate(keep_order(nsqso))
+c Make sure that whenever in the initialisation phase, MadLoop calls
+c itself again to perform stability check to make sure no unstable EPS
+c splips unnoticed.
+         CALL FORCE_STABILITY_CHECK(.TRUE.)
+         IF (.not. force_polecheck) THEN ! still have the pole for the pole check
+            CALL COLLIER_COMPUTE_UV_POLES(.FALSE.)
+            CALL COLLIER_COMPUTE_IR_POLES(.FALSE.)
+         else
+            CALL COLLIER_COMPUTE_UV_POLES(.TRUE.)
+            CALL COLLIER_COMPUTE_IR_POLES(.TRUE.)
+         endif
+         firsttime_run = .false.
+      endif
+      firsttime=(.not.virtual_flavor_checked(virtual_flavor)).or.
+     $     force_polecheck
+      if (firsttime) then
+         write(*,*) "alpha_s value used for the virtuals"/
+     &        /" is (for the first PS point): ", alpha_S
+         tolerance=IRPoleCheckThreshold/10d0 ! for the pole check below
+          call sloopmatrix_thres_flavor(p,virtual_flavor,virt_wgts,
+     $        tolerance,accuracies,ret_code)
 C        look for orders which match the nlo order constraint 
          do i = 1, nsqso
            keep_order(i) = .true.
@@ -190,8 +852,8 @@ c Just set the accuracy found to a positive value as it is not specified
 c once the initial pole check is performed.
          if (mc_hel.eq.0) then
 
-            call sloopmatrix_thres(p,virt_wgts,tolerance,accuracies
-     $           ,ret_code)
+             call sloopmatrix_thres_flavor(p,virtual_flavor,virt_wgts,
+     $           tolerance,accuracies,ret_code)
             do i = 1, nsqso
               if (keep_order(i)) then
                 virt_wgt= virt_wgt + virt_wgts(1,i)
@@ -215,11 +877,11 @@ C          different coupling combinations
          elseif (mc_hel.eq.1) then
 c Use the Born helicity amplitudes to sample the helicities of the
 c virtual as flat as possible
-            call PickHelicityMC(p,goodhel,hel,ihel,volh)
+            call PickHelicityMC(p,goodhel,hel,ihel,volh,loc_saveamp)
             !
             fillh=.false.
-            call sloopmatrixhel_thres(p,hel(ihel),virt_wgts_hel
-     $           ,tolerance,accuracies,ret_code)
+             call sloopmatrixhel_thres_flavor(p,hel(ihel),virtual_flavor,
+     $           virt_wgts_hel,tolerance,accuracies,ret_code)
             hel_fact = dble(goodhel(ihel))/volh/4d0
             do i = 1, nsqso
               if (keep_order(i)) then
@@ -286,7 +948,7 @@ C one must use a mixed Gmu-alpha0 renormalisation.
       if (ntagph.ne.0) then
         do i = 1, AMP_SPLIT_SIZE_BORN 
           call amp_split_pos_to_orders(i, amp_orders)
-          born_wgt = amp_split(i)
+          born_wgt = amp_split_born(i)
           ! this is the number of powers of 'e' in the born
           qed_pow_b = amp_orders(qed_pos)
           amp_orders(qed_pos) = amp_orders(qed_pos) + 2
@@ -374,6 +1036,10 @@ c MadLoop initialization PS points.
                      write(*,*) i,p(0,i),p(1,i),p(2,i),p(3,i),pmass(i)
                   enddo
                endif
+c A single MadLoop HelFilter.dat cannot describe several physical
+c virtual flavours.  MadLoop therefore keeps all helicities active for
+c grouped virtual output; use the matching explicit helicity sum here.
+               if (N_VIRTUAL_FLAVOR_CONFIGS.gt.1) mc_hel=0
                if (mc_hel.ne.0) then
  198              continue
 c Set-up the MC over helicities. This assumes that the 'HelFilter.dat'
@@ -476,6 +1142,7 @@ c or more non-zero (independent) helicities
          !This is to prevent the code from hanging if one does MC over
          ! helicities and the pole-check fails at the first PS point
          firsttime = .false..or.cpol
+         virtual_flavor_checked(virtual_flavor)=.not.firsttime
       endif
 c Update the statistics using the MadLoop return code (ret_code)
       ntot = ntot+1             ! total number of PS

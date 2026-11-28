@@ -1217,16 +1217,26 @@ c
       implicit none
       include "genps.inc"
       include 'nexternal.inc'
+      include 'orders.inc'
+      include 'fks_info.inc'
       include 'born_nhel.inc'
       integer idup(nexternal-1,maxproc)
       integer mothup(2,nexternal-1,maxproc)
       integer icolup(2,nexternal-1,max_bcol)
       include 'born_leshouche.inc'
       integer IDUP_tmp(nexternal),i
+      integer nFKSprocess
+      common/c_nFKSprocess/nFKSprocess
 c
-      do i=1,nexternal-1
-         IDUP_tmp(i)=IDUP(i,1)
-      enddo
+      if (HAS_PHYSICAL_FKS_CLASSES) then
+         do i=1,nexternal-1
+            IDUP_tmp(i)=BORN_PDG_TYPE_D(nFKSprocess,i)
+         enddo
+      else
+         do i=1,nexternal-1
+            IDUP_tmp(i)=IDUP(i,1)
+         enddo
+      endif
       IDUP_tmp(nexternal)=0
 c
       return
@@ -1267,6 +1277,4 @@ c     (entry custom_fct of the run_card)
 
       return
       end
-
-
 

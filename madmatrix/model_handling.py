@@ -11,6 +11,8 @@ import glob
 import math
 import contextlib
 import re
+import hashlib
+import json
 
 # AV - create a plugin-specific logger
 import logging
@@ -982,6 +984,20 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
 
     # AV - modify aloha_writers.ALOHAWriterForCPP method (improve formatting)
     # This is called once per FFV function, i.e. once per WriteALOHA instance?
+    def stable_vector_denominator(self):
+        """Standard real-mass three-vector virtuality from its signed parents.
+
+        The common denominator helper preserves the backend's amplitude-precision
+        division and keeps the usual expression outside cancelling binary64 lanes.
+        """
+        parents = [i for i in range(1, 4) if i != self.outgoing]
+        signs = self.get_momentum_conservation_sign()
+        arguments = ['%s%d.pvec' % (self.particles[i-1], i) for i in parents]
+        arguments += ['M%d' % self.outgoing, 'W%d' % self.outgoing]
+        arguments += ['-1.' if signs[i-1] == '-' else '1.' for i in parents]
+        return 'madmatrix::virtuality_sum2( dP%d, %s )' % (
+            self.outgoing, ', '.join(arguments))
+
     # It is called by WriteALOHA.write, after get_header_txt, get_declaration_txt, get_momenta_txt, before get_foot_txt
     # This affects 'denom = COUP' in HelAmps_sm.cc
     # This affects 'V1[2] = ' and 'F1[2] = ' in HelAmps_sm.cc
@@ -1183,7 +1199,15 @@ class MadMatrixALOHAWriter(aloha_writers.ALOHAWriterForGPU):
                         out.write('\n#ifndef MADARITH_DOUBLEEXPANSION\n')
                     # complex-mass scheme: M is complex and carries the width
                     mass = 'M%(i)s' % mydict if aloha.complex_mass else 'M%(i)s, W%(i)s' % mydict
-                    if aloha.complex_mass or aloha.t_channel_width:
+                    if (not arith_doubleexpansion and not aloha.loop_mode
+                            and not fd_gauge and not aloha.complex_mass
+                            and tuple(self.routine.spins) == (3, 3, 3)):
+                        expression = self.stable_vector_denominator()
+                        expression = expression.replace('virtuality_sum2( ', 'denom_sum2( ' + coup_args, 1)
+                        if not aloha.t_channel_width:
+                            expression = expression[:-2] + ', true )'
+                        out.write('    %s = %s;\n' % (mydict['declnamedenom'], expression))
+                    elif aloha.complex_mass or aloha.t_channel_width:
                         out.write('    %s = %s;\n' % (mydict['declnamedenom'], propagator(mass)))
                     else:
                         # spacelike (t-channel) propagator: no pole to
@@ -1839,6 +1863,17 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
                                    complex_map_name='m_complex_model_params') + \
                                '\n' + \
                                self.write_register_parameters(self.coups_indep, [])
+        # Normalize only the explicit QED power. The card's masses, widths
+        # and mixing parameters remain in the amplitudes at their card values.
+        # Use the same positive charge convention as Fortran's GAL(1).
+        names = {p.name.lower(): p.name for p in self.params_indep}
+        if 'aewm1' in names:
+            reference = 'sqrt(4. * M_PI / std::abs(%s))' % names['aewm1']
+        elif 'mdl_ee' in names:
+            reference = 'std::abs(%s)' % names['mdl_ee']
+        else:
+            reference = '0.'   # No defined electric charge in this model.
+        replace_dict['ew_reference'] = reference
         replace_dict['register_slha_keys'] = \
                                self.write_register_slha_keys(
                                    [e for e in self.params_ext_slha if e[0] != 'aS'])
@@ -2136,6 +2171,38 @@ class MadMatrixUFOModelConverter(export_cpp.UFOModelConverterGPU):
             self.coups_dep[buffer_name] = base_objects.ModelVariable(
                 buffer_name, '%s = %s;' % (buffer_name, name), 'complex', ('aS',))
 
+        # Loop-capable UFO models place every alpha_s-dependent UV/R2 helper in
+        # the same dependency bucket as ordinary tree couplings. The generic
+        # converter historically emitted every parameter in that bucket even
+        # when ``wanted_couplings`` selected only (say) GC_5 = i*G. Apart from
+        # bloating a tree library, loop-only helpers use functions such as COND
+        # and reglog which are intentionally absent from MadMatrix device code.
+        # Retain the transitive parameter closure of the selected couplings.
+        # Always keep the parameters up to and including G (mdl_sqrt__aS, G):
+        # super_generate_parameters_class_files writes those as comments and
+        # only writes the later parameters for real once it has reached G.
+        # Without G, every running parameter (e.g. one read only by a running
+        # propagator, b b~ > h > ta+ ta-) would be commented out.
+        if wanted_couplings:
+            expressions = [coupling.expr
+                           for coupling in self.coups_dep.values()]
+            names = [parameter.name for parameter in self.params_dep]
+            selected = set(names[:names.index('G') + 1]) if 'G' in names else set()
+            changed = True
+            while changed:
+                changed = False
+                text = '\n'.join(expressions)
+                for parameter in self.params_dep:
+                    if parameter.name in selected:
+                        continue
+                    if re.search(r'(?<![A-Za-z0-9_])%s(?![A-Za-z0-9_])' %
+                                 re.escape(parameter.name), text):
+                        selected.add(parameter.name)
+                        expressions.append(parameter.expr)
+                        changed = True
+            self.params_dep = [parameter for parameter in self.params_dep
+                               if parameter.name in selected]
+
     def get_mg5_info_lines(self):
         return super().get_mg5_info_lines().replace('# ', '//')
 
@@ -2181,8 +2248,23 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
     # AV - overload export_cpp.OneProcessExporterCPP constructor (rename gCPPProcess to CPPProcess)
     def __init__(self, *args, **kwargs):
         ###misc.sprint('Entering OneProcessExporterMadMatrix.__init__')
-        ###for kwarg in kwargs: misc.sprint( 'kwargs[%s] = %s' %( kwarg, kwargs[kwarg] ) )
+        physical_flavor_indices = kwargs.pop('physical_flavor_indices', False)
+        self.nlo_real_order_blocks = kwargs.pop('nlo_real_order_blocks', False)
         super().__init__(*args, **kwargs)
+        self.physical_flavor_indices = physical_flavor_indices
+        if physical_flavor_indices:
+            # Ordinary MG7 groups physically distinct rows which have the same
+            # generated coupling class behind one runtime flavour index. FKS
+            # already owns a one-based physical local index and its adapter ABI
+            # requires the exact 1 -> 0 conversion, so expose every physical row
+            # as one singleton runtime group for NLO real libraries.
+            physical_flavors, physical_pdgs = \
+                self.matrix_element.get_external_flavors(return_pdgs=True)
+            self.all_flavors = [[flavor] for flavor in physical_flavors]
+            self.all_flavors_pdgs = [[pdgs] for pdgs in physical_pdgs]
+            self.set_flavor_indices()
+            self.set_active_flavors()
+            self.set_channels_colors_map()
         self.process_class = 'CPPProcess'
         ###if self.in_madevent_mode: proc_id = kwargs['prefix']+1 # madevent+madmatrix (NB: HERE SELF.IN_MADEVENT_MODE DOES NOT WORK!)
         if 'prefix' in kwargs: proc_id = kwargs['prefix']+1 # madevent+madmatrix (ime+1 from ProcessExporterFortranMEGroup.generate_subprocess_directory)
@@ -2205,7 +2287,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['noutcoming'] = nexternal - nincoming
         replace_dict['nbhel'] = self.matrix_elements[0].get_helicity_combinations() # number of helicity combinations
         replace_dict['ndiagrams'] = len(self.matrix_elements[0].get('diagrams')) # AV FIXME #910: elsewhere matrix_element.get('diagrams') and max(config[0]...
-        replace_dict['nmaxflavor'] = len(self.matrix_elements[0].get_external_flavors_with_iden()) # number of flavor combinations
+        replace_dict['nmaxflavor'] = len(self.runtime_flavor_groups()) # number of flavor combinations
         # Only written when the jamps are actually split, so that a process
         # without squared split orders keeps the header it always had
         replace_dict['split_order_constants'] = '' if not self.split_orders_active() else (
@@ -2946,6 +3028,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # needs to be after get_matrix_element_calls to have nwf ready
         self.edit_processdata()
         self.edit_processtables()
+        self.edit_process_fingerprint()
         self.edit_crossing_demo() # per-process folded-crossing flavor ids for check_sa
         # The build rules live in SubProcesses/<p_makefile>; SubProcesses/makefile
         # itself is the dispatcher that fans out over all the P* directories.
@@ -2986,7 +3069,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         replace_dict['noutcoming'] = nexternal - nincoming
         replace_dict['nbhel'] = me.get_helicity_combinations()
         replace_dict['ndiagrams'] = len(me.get('diagrams'))
-        replace_dict['nmaxflavor'] = len(me.get_external_flavors_with_iden())
+        replace_dict['nmaxflavor'] = len(self.runtime_flavor_groups(me))
         replace_dict['nwave'] = 4 + (1 if fd_gauge else 0)
         replace_dict['ncolor'] = len(me.get_color_amplitudes())
         so = self.split_orders_info() if self.split_orders_active() else None
@@ -3131,6 +3214,73 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         with open(pjoin(self.path, 'crossing_demo.dat'), 'w') as fsock:
             fsock.write(' '.join(str(i) for i in ids) + '\n')
 
+    def process_fingerprint(self):
+        """Stable identity of the generated numerical process contract."""
+        me = self.matrix_elements[0]
+        process = me.get('processes')[0]
+        squared_orders, unused = me.get_split_orders_mapping()
+        payload = {
+            'process': process.nice_string().strip(),
+            'nexternal': me.get_nexternal_ninitial()[0],
+            'umami_minor': 5,
+            'flavours': [[list(row) for row in group]
+                         for group in self.runtime_flavor_groups(me)],
+            'split_orders': list(process.get('split_orders') or []),
+            'squared_orders': [list(order) for order in squared_orders],
+        }
+        if self.nlo_real_order_blocks:
+            payload['order_block_contract'] = 'nlo-real-all-local-umami15-v2'
+        encoded = json.dumps(payload, sort_keys=True,
+                             separators=(',', ':')).encode('utf-8')
+        return hashlib.sha256(encoded).hexdigest()
+
+    def edit_process_fingerprint(self):
+        """Write the per-library identity and the UMAMI order and external-leg tables."""
+        me = self.matrix_elements[0]
+        process = me.get('processes')[0]
+        model = process.get('model')
+        orders, _ = me.get_split_orders_mapping()
+        names = list(process.get('split_orders'))
+        selected = self.split_orders_info()
+        powers = [order[i] for i in range(len(names)) for order in orders]
+        qed = [order[names.index('QED')] for order in orders] if 'QED' in names else []
+        legs = process.get('legs_with_decays')
+        particles = [model.get_particle(leg.get('id')) for leg in legs]
+        charges = [particle.get_charge() for particle in particles]
+        # get_meta has no flavour argument. Only expose unambiguous leg data.
+        physical_legs = (len(self.physical_flavor_rows()) == 1
+                         and not getattr(self, 'use_crossing', False)
+                         and not any(isinstance(charge, tuple) for charge in charges))
+        ew_resolved = orders and ('QED' in names or 'QED' not in model.get('coupling_orders'))
+        tagged = sum(leg.get('id') == 22 and dict.get(leg, 'is_tagged', False) for leg in legs)
+        scheme = ''
+        if model.get('startfromalpha0'):
+            scheme = 'alpha(0)'
+        elif model.get('name').lower().startswith('loop_qcd_qed_sm_gmu'):
+            scheme = 'G_mu'
+        arrays = {
+            'int powers': powers or [0],
+            'int qed': qed or [0] * max(1, len(orders)),
+            'bool selected': ['true' if keep else 'false' for keep in
+                              (selected['chosen'] if selected else [True])],
+            'int colors': [particle.get_color() for particle in particles],
+            'double charges': [0 if isinstance(q, tuple) else float(q) for q in charges],
+        }
+        lines = ['#pragma once', '#define MADMATRIX_PROCESS_FINGERPRINT "%s"' %
+                 self.process_fingerprint(), 'namespace UmamiOrders {',
+                 'constexpr char names[] = %s;' % json.dumps(','.join(names)),
+                 'constexpr char alphaScheme[] = %s;' % json.dumps(scheme),
+                 'constexpr bool resolved = %s;' % ('true' if orders else 'false'),
+                 'constexpr bool hasQED = %s;' % ('true' if any(qed) else 'false'),
+                 'constexpr bool ewResolved = %s;' % ('true' if ew_resolved else 'false'),
+                 'constexpr bool physicalLegs = %s;' % ('true' if physical_legs else 'false'),
+                 'constexpr int taggedPhotons = %d;' % tagged]
+        for decl, values in arrays.items():
+            lines.append('constexpr %s[] = { %s };' %
+                         (decl, ', '.join(map(str, values))))
+        lines.append('}')
+        with open(pjoin(self.path, 'process_fingerprint.h'), 'w') as stream:
+            stream.write('\n'.join(lines) + '\n')
     _blas_available = None
     _blas_flags = ''
 
@@ -3191,6 +3341,11 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         if not hasattr(self, '_split_orders_info'):
             from madgraph.iolibs.export_v4 import split_order_tables
             self._split_orders_info = split_order_tables(self.matrix_elements[0])
+            if self.nlo_real_order_blocks and self._split_orders_info:
+                # NLO libraries supply every local order. Only the FKS caller
+                # selects physical NLO contributions; ordinary LO keeps its mask.
+                self._split_orders_info = dict(self._split_orders_info,
+                    chosen=[True] * len(self._split_orders_info['chosen']))
         return self._split_orders_info
 
     def split_orders_active(self):
@@ -3550,7 +3705,7 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
 
         flavor_line = '  static constexpr short flavors[nmaxflavor][npar] = {\n    '; # (this is tFlavors)
         flavor_line_list = []
-        for flavors in matrix_element.get_external_flavors_with_iden():
+        for flavors in self.runtime_flavor_groups(matrix_element):
             # get only the index 0 one because the other ones have same matrix element.
             # These values are used at runtime as 0-based indices into the per-flavor
             # FLV_COUPLING arrays (partner1/partner2/value, size max_flavor).  A
@@ -3571,19 +3726,42 @@ class OneProcessExporterMadMatrix(export_mg7.OneProcessExporterMG7):
         # Companion table with the true signed PDG ids of each flavor
         # combination (same convention as the PDG lines printed by the
         # Fortran/C++ standalone 'check' drivers); used by CPPProcess::flavorPDG.
-        pdg_line_list = []
-        for flavors in matrix_element.get_external_flavors_with_iden():
-            row = []
-            for j, flv in enumerate(flavors[0]):
-                raw = all_pdgs[j]
-                if abs(raw) in merged:
-                    row.append(flv if raw >= 0 else -flv)
-                else:
-                    row.append(raw)
-            pdg_line_list.append( '{ ' + ', '.join('%d' % v for v in row) + ' }' )
+        pdg_line_list = [
+            '{ ' + ', '.join('%d' % value for value in row) + ' }'
+            for row in self.physical_flavor_rows()]
         out += ('\n  static constexpr int flavorPDGs[nmaxflavor][npar] = {\n    ' +
                 ',\n    '.join(pdg_line_list) + ' };')
         return out
+
+    def physical_flavor_rows(self):
+        """Signed PDG rows in exactly the order of UMAMI flavour indices."""
+        matrix_element = self.matrix_elements[0]
+        model = matrix_element.get('processes')[0].get('model')
+        merged = model.get('merged_particles') or {}
+        all_pdgs = [leg.get('id') for leg in
+                    matrix_element.get('processes')[0].get(
+                        'legs_with_decays')]
+        rows = []
+        for flavors in self.runtime_flavor_groups(matrix_element):
+            row = []
+            for index, flavor in enumerate(flavors[0]):
+                raw = all_pdgs[index]
+                if abs(raw) in merged:
+                    row.append(flavor if raw >= 0 else -flavor)
+                else:
+                    row.append(raw)
+            rows.append(row)
+        return rows
+
+    def runtime_flavor_groups(self, matrix_element=None):
+        """Flavour groups represented by generated zero-based ABI indices."""
+        matrix_element = matrix_element or self.matrix_elements[0]
+        if getattr(self, 'physical_flavor_indices', False):
+            return [[flavor] for flavor in
+                    matrix_element.get_external_flavors()]
+        groups = [list(group) for group in
+                  matrix_element.get_external_flavors_with_iden()]
+        return groups
 
     def get_reset_jamp_lines(self, color_amplitudes):
         """Get lines to reset jamps"""
@@ -3861,6 +4039,27 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
                 self.flv_couplings_map[coupling.name] = coupling
 
         super().__init__(*args,**opts)
+
+    def get_wavefunction_call(self, wavefunction):
+        """Apply FKS's stable-external-particle width convention when asked.
+
+        NLO output materialises external-particle widths as zero in its
+        generated ``param_card.inc``. Internal propagators of the same species
+        therefore also use zero (for example a radiating top in ``tt~g``).
+        MadMatrix normally reads the physical width from the user card; the
+        NLO-real lifecycle sets ``zero_width_parameters`` so its generated
+        HELAS calls reproduce the authoritative FKS convention without
+        changing ordinary LO output.
+        """
+        width = wavefunction.get('width')
+        if width not in getattr(self, 'zero_width_parameters', set()):
+            return super().get_wavefunction_call(wavefunction)
+        particle = wavefunction.get('particle')
+        particle.set('width', 'ZERO')
+        try:
+            return super().get_wavefunction_call(wavefunction)
+        finally:
+            particle.set('width', width)
 
 
     @contextlib.contextmanager
@@ -4704,7 +4903,12 @@ class MadMatrixUFOHelasCallWriter(helas_call_writers.GPUFOHelasCallWriter,
             return {}, {}
         if not allowed or matrix_element.flavor_mask_is_trivial():
             return {}, {}
-        groups = [list(g) for g in matrix_element.get_external_flavors_with_iden()]
+        if getattr(self, 'physical_flavor_indices', False):
+            groups = [[flavor] for flavor in
+                      matrix_element.get_external_flavors()]
+        else:
+            groups = [list(g) for g in
+                      matrix_element.get_external_flavors_with_iden()]
         n_groups = len(groups)
         if n_groups == 0:
             return {}, {}

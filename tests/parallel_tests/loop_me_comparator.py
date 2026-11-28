@@ -204,6 +204,8 @@ class LoopMG5Runner(me_comparator.MG5Runner):
 
         v5_string = "set loop_optimized_output %s\n"%str(self.optimized_output) 
 
+        # Loop references use physical UFO counterterms, before CLI NLO validation.
+        v5_string += "set apply_flavor_grouping False\n"
         v5_string += "import model %s\n" % os.path.join(self.model_dir, model)
         
         # The squared order couplings can be specified via the dictionary
@@ -430,6 +432,8 @@ class LoopMG5Runner_gauge(LoopMG5Runner):
 
         v5_string = "set loop_optimized_output %s\n"%str(self.optimized_output) 
 
+        # Loop references use physical UFO counterterms, before CLI NLO validation.
+        v5_string += "set apply_flavor_grouping False\n"
         v5_string += "import model %s\n" % os.path.join(self.model_dir, model)
         v5_string += "set automatic_html_opening False\n"
         v5_string += 'set complex_mass_scheme %s \n' % self.cms

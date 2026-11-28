@@ -1,0 +1,199 @@
+{
+  "metadata": {
+    "source_commit": "844829d3ef0b13d294045f34dbbeef3a3d743e9b",
+    "source_process": [
+      "g q > z{0} q [QCD]",
+      "q g > z{0} q [QCD]"
+    ],
+    "model": "loop_sm",
+    "complex_mass_scheme": false,
+    "loop_optimized_output": true,
+    "commands": [
+      "set automatic_html_opening False --no_save",
+      "set auto_update 0 --no_save",
+      "set nb_core 1 --no_save",
+      "set low_mem_multicore_nlo_generation False --no_save",
+      "set loop_optimized_output True --no_save",
+      "set ninja /shared/development/MadGraph7_NLO_acceleration/feat-nlo-acceleration/HEPTools/ninja/lib --no_save",
+      "set collier /shared/development/MadGraph7_NLO_acceleration/feat-nlo-acceleration/HEPTools/collier --no_save",
+      "set lhapdf /shared/development/MadGraph7_NLO_acceleration/feat-nlo-acceleration/HEPTools/lhapdf6_py3/bin/lhapdf-config --no_save",
+      "set complex_mass_scheme False --no_save",
+      "import model /scratch/dmassaro/codex/tmp/m4_phase10_recovery/zj_reference/loop_sm",
+      "define q = d u s c d~ u~ s~ c~",
+      "generate g q > z{0} q [QCD]",
+      "add process q g > z{0} q [QCD]",
+      "output /scratch/dmassaro/codex/tmp/m4_phase10_recovery/zj_reference/output"
+    ],
+    "param_card_sha256": "ccbf142ec9dfb368c4a5ea80bc6d7c5dc60951384b470c308896c56da66b70ba",
+    "restriction_sha256": "878a7d1b110faf49824885bd340fb09d6431394d9c7f3d5b86c12d6f4ef54160",
+    "description": "Independent pre-grouping longitudinal Z+jet virtual oracle in the partonic CM frame."
+  },
+  "virtual": {
+    "momenta": [
+      [
+        500.0,
+        0.0,
+        0.0,
+        500.0
+      ],
+      [
+        500.0,
+        0.0,
+        0.0,
+        -500.0
+      ],
+      [
+        504.157625672,
+        297.50542459679997,
+        0.0,
+        396.6738994624
+      ],
+      [
+        495.842374328,
+        -297.50542459679997,
+        0.0,
+        -396.6738994624
+      ]
+    ],
+    "oracles": {
+      "P0_dg_z0d": {
+        "born": 0.000382476528157688,
+        "finite": -6.768770105089087e-05,
+        "1eps": -0.0001081875107216427,
+        "2eps": -4.0703766108761004e-05
+      },
+      "P0_dxg_z0dx": {
+        "born": 0.000382476528157688,
+        "finite": -6.768770105086932e-05,
+        "1eps": -0.00010818751072163947,
+        "2eps": -4.0703766108761004e-05
+      },
+      "P0_gd_z0d": {
+        "born": 4.249739201752107e-05,
+        "finite": -0.0005232726306153822,
+        "1eps": -6.175389081205865e-06,
+        "2eps": -4.52264067875174e-06
+      },
+      "P0_gdx_z0dx": {
+        "born": 4.249739201752176e-05,
+        "finite": -0.0005232726306153913,
+        "1eps": -6.175389081205908e-06,
+        "2eps": -4.522640678751269e-06
+      },
+      "P0_gu_z0u": {
+        "born": 3.3139678887205935e-05,
+        "finite": 0.0005203937919066505,
+        "1eps": -4.8155992977253994e-06,
+        "2eps": -3.526777825666145e-06
+      },
+      "P0_gux_z0ux": {
+        "born": 3.3139678887206484e-05,
+        "finite": 0.0005203937919066592,
+        "1eps": -4.8155992977238265e-06,
+        "2eps": -3.526777825666764e-06
+      },
+      "P0_ug_z0u": {
+        "born": 0.0002982571099848521,
+        "finite": -3.4303480000828556e-06,
+        "1eps": -8.436516206554714e-05,
+        "2eps": -3.174100043099428e-05
+      },
+      "P0_uxg_z0ux": {
+        "born": 0.0002982571099848521,
+        "finite": -3.4303480000704177e-06,
+        "1eps": -8.436516206554535e-05,
+        "2eps": -3.174100043099428e-05
+      }
+    },
+    "diagnostics": {
+      "P0_dg_z0d": {
+        "precision": [
+          1.789970767669923e-13,
+          1.789970767669923e-13
+        ],
+        "returncode": 216,
+        "physical_processes": [
+          "d g > z{0} d [ all = QCD QED ] QCD^2=4 QED^2=2",
+          "s g > z{0} s [ all = QCD QED ] QCD^2=4 QED^2=2"
+        ]
+      },
+      "P0_dxg_z0dx": {
+        "precision": [
+          1.5722081991858752e-13,
+          1.5722081991858752e-13
+        ],
+        "returncode": 216,
+        "physical_processes": [
+          "d~ g > z{0} d~ [ all = QCD QED ] QCD^2=4 QED^2=2",
+          "s~ g > z{0} s~ [ all = QCD QED ] QCD^2=4 QED^2=2"
+        ]
+      },
+      "P0_gd_z0d": {
+        "precision": [
+          1.6955866389432344e-14,
+          1.6955866389432344e-14
+        ],
+        "returncode": 216,
+        "physical_processes": [
+          "g d > z{0} d [ all = QCD QED ] QCD^2=4 QED^2=2",
+          "g s > z{0} s [ all = QCD QED ] QCD^2=4 QED^2=2"
+        ]
+      },
+      "P0_gdx_z0dx": {
+        "precision": [
+          1.5723318145013628e-14,
+          1.5723318145013628e-14
+        ],
+        "returncode": 216,
+        "physical_processes": [
+          "g d~ > z{0} d~ [ all = QCD QED ] QCD^2=4 QED^2=2",
+          "g s~ > z{0} s~ [ all = QCD QED ] QCD^2=4 QED^2=2"
+        ]
+      },
+      "P0_gu_z0u": {
+        "precision": [
+          2.3577242926524675e-14,
+          2.3577242926524675e-14
+        ],
+        "returncode": 216,
+        "physical_processes": [
+          "g u > z{0} u [ all = QCD QED ] QCD^2=4 QED^2=2",
+          "g c > z{0} c [ all = QCD QED ] QCD^2=4 QED^2=2"
+        ]
+      },
+      "P0_gux_z0ux": {
+        "precision": [
+          1.161493097653756e-14,
+          1.161493097653756e-14
+        ],
+        "returncode": 216,
+        "physical_processes": [
+          "g u~ > z{0} u~ [ all = QCD QED ] QCD^2=4 QED^2=2",
+          "g c~ > z{0} c~ [ all = QCD QED ] QCD^2=4 QED^2=2"
+        ]
+      },
+      "P0_ug_z0u": {
+        "precision": [
+          3.6762402246356127e-13,
+          3.6762402246356127e-13
+        ],
+        "returncode": 216,
+        "physical_processes": [
+          "u g > z{0} u [ all = QCD QED ] QCD^2=4 QED^2=2",
+          "c g > z{0} c [ all = QCD QED ] QCD^2=4 QED^2=2"
+        ]
+      },
+      "P0_uxg_z0ux": {
+        "precision": [
+          1.977625281741069e-13,
+          1.977625281741069e-13
+        ],
+        "returncode": 216,
+        "physical_processes": [
+          "u~ g > z{0} u~ [ all = QCD QED ] QCD^2=4 QED^2=2",
+          "c~ g > z{0} c~ [ all = QCD QED ] QCD^2=4 QED^2=2"
+        ]
+      }
+    }
+  }
+}

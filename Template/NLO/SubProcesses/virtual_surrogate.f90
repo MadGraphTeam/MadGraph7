@@ -7,6 +7,16 @@ module virt_surrogate
   public :: vs_reset,vs_value,vs_accumulate,vs_solve,vs_write_grids,vs_read_grids
   public :: vs_single_born_order
   public :: vs_maxfeat
+  public :: surrogate_point, capture_surrogate_point, restore_surrogate_point
+
+  ! Features and residuals belong to one folded draw. The fitted coefficients,
+  ! normal equations and iteration totals below belong to the integration job.
+  type :: surrogate_point
+     logical :: computed=.false., features_valid=.false., ratio_set=.false., linked=.false.
+     integer :: residual_order=0, nfeat=4
+     double precision :: virt=0d0, born=0d0, fraction=1d0, ratio=0d0, reference=0d0
+     double precision :: features(vs_maxfeat)=0d0, dipoles(3)=0d0
+  end type
 
 ! Current-point data shared by the matrix-element and weighted-integrand stages.
   logical, public :: vs_vcomp=.false.,vs_featok=.false.,vs_ratio_set=.false.
@@ -24,6 +34,10 @@ module virt_surrogate
   double precision :: vs_xtx(vs_maxfeat,vs_maxfeat,vs_maxchan)=0d0, &
        vs_xty(vs_maxfeat,vs_maxchan)=0d0, vs_yty(vs_maxchan)=0d0
   double precision :: vs_theta(vs_maxfeat,vs_maxchan)=0d0
+! Feature count of each channel's normal equations and coefficients. The
+! per-point vs_nfeat is restored with every native lane, and a draw that
+! never reached the virtual keeps the default 4, so it cannot size a fit.
+  integer :: vs_fit_nfeat(vs_maxchan)=0
   logical :: vs_fitted(vs_maxchan)=.false., vs_on(vs_maxchan)=.false.
   integer :: vs_npt(vs_maxchan)=0, vs_it_npt(vs_maxchan)=0
 ! The first fit uses its training residual. Later choices compare the two
@@ -34,6 +48,29 @@ module virt_surrogate
        vs_cum_neggrid(vs_maxchan)=0d0, vs_cum_negfit(vs_maxchan)=0d0
 
 contains
+
+  subroutine capture_surrogate_point(point)
+    type(surrogate_point), intent(out) :: point
+    point=surrogate_point(vs_vcomp,vs_featok,vs_ratio_set,have_links,vs_residual_order,vs_nfeat, &
+        vs_virt,vs_born,vs_fvirt,vs_ratio,vs_residual_reference,vs_feat,dipole_features)
+  end subroutine
+
+  subroutine restore_surrogate_point(point)
+    type(surrogate_point), intent(in) :: point
+    vs_vcomp=point%computed
+    vs_featok=point%features_valid
+    vs_ratio_set=point%ratio_set
+    have_links=point%linked
+    vs_residual_order=point%residual_order
+    vs_nfeat=point%nfeat
+    vs_virt=point%virt
+    vs_born=point%born
+    vs_fvirt=point%fraction
+    vs_ratio=point%ratio
+    vs_residual_reference=point%reference
+    vs_feat=point%features
+    dipole_features=point%dipoles
+  end subroutine
 
   subroutine vs_begin_point
     vs_vcomp=.false.
@@ -149,6 +186,7 @@ contains
     vs_xty=0d0
     vs_yty=0d0
     vs_theta=0d0
+    vs_fit_nfeat=0
     vs_fitted=.false.
     vs_on=.false.
     vs_npt=0
@@ -164,7 +202,9 @@ contains
   double precision function vs_value(kchan)
 ! the fitted surrogate at the current point (matrix-element level)
     integer, intent(in) :: kchan
-    vs_value=dot_product(vs_theta(1:vs_nfeat,kchan),vs_feat(1:vs_nfeat))
+    integer :: nf
+    nf=vs_fit_nfeat(kchan)
+    vs_value=dot_product(vs_theta(1:nf,kchan),vs_feat(1:nf))
   end function vs_value
 
   subroutine vs_accumulate(kchan,virt,surr_grid,w)
@@ -175,6 +215,8 @@ contains
     integer :: i
     double precision :: afit
     if (kchan.lt.1 .or. kchan.gt.vs_maxchan) return
+    if (vs_fit_nfeat(kchan).eq.0) vs_fit_nfeat(kchan)=vs_nfeat
+    if (vs_nfeat.ne.vs_fit_nfeat(kchan)) error stop 'Virtual surrogate point has a different feature count than its channel fit'
     do i=1,vs_nfeat
        vs_xtx(1:vs_nfeat,i,kchan)=vs_xtx(1:vs_nfeat,i,kchan)+w*vs_feat(1:vs_nfeat)*vs_feat(i)
     enddo
@@ -202,8 +244,8 @@ contains
     integer :: i,j,k,nf
     double precision :: a(vs_maxfeat,vs_maxfeat),b(vs_maxfeat),ridge,s2fit,piv,fac
     if (kchan.lt.1 .or. kchan.gt.vs_maxchan) return
-    nf=vs_nfeat
-    if (vs_npt(kchan).ge.max(vs_minpts,3*nf)) then
+    nf=vs_fit_nfeat(kchan)
+    if (nf.gt.0 .and. vs_npt(kchan).ge.max(vs_minpts,3*nf)) then
        a(1:nf,1:nf)=vs_xtx(1:nf,1:nf,kchan)
        b(1:nf)=vs_xty(1:nf,kchan)
        ! small ridge for (nearly) degenerate features
@@ -265,10 +307,11 @@ contains
   subroutine vs_write_grids(lun,nchans)
 ! VSU records follow the grid/polynomial fallback in mint_grids.
     integer, intent(in) :: lun,nchans
-    integer :: kchan
+    integer :: kchan,nf
     do kchan=1,nchans
-       write(lun,*) 'VSU',merge(1,0,vs_on(kchan)),merge(1,0,vs_fitted(kchan)),vs_nfeat, &
-            vs_theta(1:vs_nfeat,kchan)
+       nf=max(4,vs_fit_nfeat(kchan))
+       write(lun,*) 'VSU',merge(1,0,vs_on(kchan)),merge(1,0,vs_fitted(kchan)),nf, &
+            vs_theta(1:nf,kchan)
     enddo
   end subroutine vs_write_grids
 
@@ -292,6 +335,7 @@ contains
        if (.not.all(ieee_is_finite(vs_theta(1:nfeat,kchan)))) &
             call grid_error('Nonfinite virtual surrogate in mint_grids.')
        vs_nfeat=nfeat
+       vs_fit_nfeat(kchan)=nfeat
        vs_on(kchan)=enabled.and.ion.eq.1
        vs_fitted(kchan)=ifit.eq.1
     enddo

@@ -19,6 +19,30 @@ from tests.unit_tests.fks.test_momentum_maps import mc_counterterm_test_module
 from tests.unit_tests.iolibs import model_state_checks
 
 
+def write_real_cache_fixture(root, legs, slots):
+    """Use the generated cache representation and lookup in the isolated scalar router."""
+    templates = Path(support.__file__).parent/'template_files'
+    native = Path(support.__file__).resolve().parents[2]/'Template/NLO/SubProcesses'
+    types = (templates/'mc_native_provider_types.inc').read_text()
+    methods = (templates/'mc_native_provider_methods.inc').read_text()
+    lookup = re.search(r'(?ms)^integer function mc_real_cache_lookup\b.*?^end function', methods).group()
+    lookup = re.search(r'(?ms)^subroutine mc_ensure_real_cache\b.*?^end subroutine', methods).group()+'\n'+lookup
+    (root/'mc_native_context.f90').write_text(f"""module mc_native_context
+use mc_born_types
+implicit none
+integer,parameter :: provider_legs={legs},provider_orders={slots}
+logical,save :: shared_real_active=.true.
+integer,save :: shared_real_epoch=1,active_history=0
+real(8),save :: shared_real_point(0:3,provider_legs)=1d0
+integer,save :: history_permutations(provider_legs,1)=0
+{types}
+contains
+{lookup}
+end module
+""")
+    return [str(native/'mc_batch_trace.f90'),str(native/'mc_decision_ledger.f90')]
+
+
 def physical(ids, tags=None):
     tags = tags or [False]*len(ids)
     return ('restrictions', tuple((pdg, i >= 2, (), tag, None)
@@ -43,6 +67,7 @@ class TestStandaloneSudakov(unittest.TestCase):
             for command in (
                     'set automatic_html_opening False --no_save',
                     'set low_mem_multicore_nlo_generation False --no_save',
+                    'set apply_flavor_grouping False --no_save',
                     'import model sm',
                     'generate u u~ > t t~ QED^2=0 QCD^2=4 [LOonly=QCD] --ewsudakov',
                     'add process u~ u > t t~ QED^2=0 QCD^2=4 [LOonly=QCD] --ewsudakov',
@@ -66,6 +91,134 @@ class TestStandaloneSudakov(unittest.TestCase):
 
 
 class TestBornRegistry(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
+    def test_physical_native_real_router_preserves_flavour_and_model_state(self):
+        from madgraph.iolibs import native_histories
+
+        up = physical((2, 21, 23, 2))
+        down = physical((1, 21, 23, 1))
+        outer = dict(context=1, nincoming=2, sectors=[
+            dict(sector=1, real=1, processes=[up]),
+            dict(sector=2, real=1, processes=[down])])
+        native = dict(context=2, nincoming=2, sectors=[
+            dict(sector=1, real=1, processes=[down])])
+        keys = [(1, 1), (1, 2), (2, 1)]
+        # Rendering the borrowed PDF dispatcher needs its source. The real
+        # router test does not link or execute the PDF dispatcher.
+        sources = {2: {'parton_lum_1.f': (
+            '      subroutine dlum_1(ans)\n'
+            '      double precision ans\n'
+            '      ans=0d0\n'
+            '      end\n')}}
+
+        with tempfile.TemporaryDirectory(prefix='mg7_native_router_') as tmp:
+            root = Path(tmp)
+            support.write_fortran(root/'nexternal.inc', [
+                'integer,parameter::nexternal=4'])
+            support.write_fortran(root/'orders.inc', [
+                'integer,parameter::amp_split_size=2',
+                'real(8) amp_split(amp_split_size)',
+                'common/to_amp_split/amp_split'])
+            support.write_fortran(root/'real_matrix_weights.inc', [
+                'real(8) real_amp2(2)',
+                'common/c_real_diagram_weights/real_amp2',
+                'logical get_real_diagram_weights',
+                'common/c_get_real_diagram_weights/get_real_diagram_weights'])
+            support.write_fortran(root/'fks_info.inc', [
+                'integer real_flavor_index_d(3)',
+                'data real_flavor_index_d/1,2,99/'])
+
+            # Supply the original explicit-buffer API so write_dispatchers
+            # takes the production preservation path. No SMATRIX1 fallback
+            # exists: linking would fail if native routing bypassed this API.
+            # The stub deliberately leaves WGT_ME_REAL untouched.
+            support.write_fortran(root/'real_me_chooser.f', [
+                'subroutine smatrix_real(p,ret_amp_split,wgt)',
+                'implicit none', "include 'nexternal.inc'",
+                "include 'orders.inc'", "include 'fks_info.inc'",
+                'real(8) p(0:3,nexternal),ret_amp_split(amp_split_size),wgt',
+                'real(8) model_value', 'common/test_model/model_value',
+                'integer nfksprocess,calls,last_selected',
+                'common/c_nfksprocess/nfksprocess',
+                'common/test_calls/calls',
+                'common/test_selected/last_selected',
+                'calls=calls+1', 'last_selected=nfksprocess',
+                'wgt=100d0*real_flavor_index_d(nfksprocess)+p(0,1)+10d0*model_value',
+                'ret_amp_split=[wgt,2d0*wgt]', 'end',
+                'logical function mg7_nlo_real_is_fortran()',
+                'implicit none', 'mg7_nlo_real_is_fortran=.false.', 'end'])
+            native_histories.write_dispatchers(
+                root, outer, {1: outer, 2: native}, keys, sources)
+            self.assertTrue((root/'native_real_me_chooser.f').is_file())
+            self.assertRegex((root/'real_me_chooser.f').read_text(),
+                             r'(?i)subroutine\s+smatrix_real_local\s*\(')
+
+            trace_modules = write_real_cache_fixture(root,4,2)
+            program = [
+                'program check', 'use mc_native_context', 'implicit none',
+                "include 'orders.inc'", "include 'real_matrix_weights.inc'",
+                'integer nfksprocess,calls,last_selected',
+                'common/c_nfksprocess/nfksprocess',
+                'common/test_calls/calls',
+                'common/test_selected/last_selected',
+                'real(8) model_value', 'common/test_model/model_value',
+                'real(8) p(0:3,4),returned(amp_split_size),wgt',
+                'real(8) wgt_me_born,wgt_me_real',
+                'common/c_wgt_me_tree/wgt_me_born,wgt_me_real',
+                'logical mg7_nlo_real_is_fortran',
+                'external mg7_nlo_real_is_fortran',
+                'if(mg7_nlo_real_is_fortran())stop 1',
+                'calls=0', 'last_selected=0', 'model_value=1d0',
+                'p=1d0', 'get_real_diagram_weights=.false.']
+
+            def step(alias, expected, expected_calls, code):
+                program.extend([
+                    'nfksprocess=%d' % alias,
+                    'wgt_me_real=-999d0', 'amp_split=-999d0',
+                    'returned=-999d0', 'wgt=-999d0',
+                    'call smatrix_real(p,returned,wgt)',
+                    'if(wgt.ne.%dd0.or.calls.ne.%d)stop %d' %
+                    (expected, expected_calls, code),
+                    'if(nfksprocess.ne.%d)stop %d' % (alias, code+1),
+                    'if(wgt_me_real.ne.wgt)stop %d' % (code+2),
+                    'if(any(returned.ne.[wgt,2d0*wgt]))stop %d' % (code+3),
+                    'if(any(amp_split.ne.returned))stop %d' % (code+4)])
+
+            # Distinct physical aliases share the same numerical evaluator.
+            # A -> B -> A must evaluate twice, then restore A from its cache.
+            step(1, 111, 1, 10)
+            step(2, 211, 2, 20)
+            step(1, 111, 2, 30)
+            # Borrowed alias 3 has raw flavour index 99. It must evaluate via
+            # outer sector 2, then restore alias 3 on both miss and cache hit.
+            step(3, 211, 3, 40)
+            program.append('if(last_selected.ne.2)stop 45')
+            step(3, 211, 3, 50)
+            # Preserve the pre-existing model and momentum cache keys too.
+            program.append('model_value=2d0')
+            step(3, 221, 4, 60)
+            program.append('shared_real_point(0,1)=2d0')
+            step(3, 222, 5, 70)
+            program.extend([
+                'end',
+                'subroutine mc_capture_model_state(state)',
+                'use mc_born_types', 'implicit none',
+                'type(BornModelState) state',
+                'real(8) model_value', 'common/test_model/model_value',
+                'state%configuration_epoch=1',
+                'state%real_values=[model_value]',
+                'state%complex_values=[(0d0,0d0)]', 'end'])
+            support.write_fortran(root/'check.f', program)
+            types = (Path(support.__file__).resolve().parents[2]/
+                     'Template/NLO/Source/BornSupport/mc_born_types.f90')
+            TestBornLibrary.run_command([
+                'gfortran', '-fcheck=all', '-ffixed-line-length-none', '-ffunction-sections',
+                '-Wl,-dead_strip' if sys.platform == 'darwin' else '-Wl,--gc-sections',
+                '-ffree-line-length-none', str(types), *trace_modules, 'mc_native_context.f90',
+                'real_me_chooser.f', 'native_real_me_chooser.f', 'check.f',
+                '-o', 'check'], tmp)
+            TestBornLibrary.run_command(['./check'], tmp)
+
     def test_readonly_aloha_records_preserve_the_dependency_proof(self):
         module = ['module aloha_object', 'type aloha', 'sequence',
                   'double complex::w(4)', 'double precision::p(0:3)',
@@ -122,6 +275,55 @@ class TestBornRegistry(unittest.TestCase):
             support.write_fortran(path, [line.replace('mp_aloha2d', 'mp_other')
                                          for line in module]+helper)
             self.assertFalse(support.explicit_helas_dependencies(root))
+
+    def test_flavour_coupling_records_preserve_the_dependency_proof(self):
+        # ALOHA_OBJECT uses MODEL_OBJECT (flavour-coupling record types) and
+        # contains the flavour-coupling accessors. Rejecting them dropped the
+        # G-rescaling helicity predicate for every output, so each real
+        # emission relearned its helicity mask whenever G changed.
+        model_object = ['module model_object', 'type coupptr  ! pointer array',
+                        'sequence', 'double complex, pointer :: p', 'end type coupptr',
+                        'type flv_coupling', 'sequence', 'integer :: partner(0)',
+                        'integer :: partner2(0)', 'type(coupptr) :: val(0)',
+                        'end type flv_coupling', 'end module model_object',
+                        'subroutine init_flv_couplings()', 'use model_object', 'end']
+        module = ['module aloha_object', 'use model_object', 'type aloha', 'sequence',
+                  'double complex::w(4)', 'double complex :: p(0:3)',
+                  'integer :: flv_index', 'end type aloha', 'contains',
+                  'double complex function get_flv_coupling_value(mcoup,k1,k2)',
+                  'type(flv_coupling), intent(in) :: mcoup',
+                  'integer, intent(in) :: k1,k2',
+                  'get_flv_coupling_value=mcoup%val(k1)%p',
+                  'end function get_flv_coupling_value', 'end module aloha_object']
+        helper = ['subroutine helper(w)', 'use aloha_object', 'implicit none',
+                  'type(aloha) w', 'w%w(1)=2d0*w%p(0)', 'end']
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root/'Source/DHELAS').mkdir(parents=True)
+            (root/'Source/MODEL').mkdir(parents=True)
+            path = root/'Source/DHELAS/aloha_functions.f'
+            model = root/'Source/MODEL/flavor_couplings.f'
+            support.write_fortran(path, module+helper)
+            # Without the model module the record types are unproven.
+            self.assertFalse(support.explicit_helas_dependencies(root))
+            support.write_fortran(model, model_object)
+            self.assertTrue(support.model_object_holds_only_types(root))
+            self.assertTrue(support.explicit_helas_dependencies(root))
+            # Module-level state in MODEL_OBJECT is a hidden input.
+            for hidden in ('double complex, target :: gc_1', 'double precision scale'):
+                support.write_fortran(model, model_object[:11]+[hidden]+model_object[11:])
+                self.assertFalse(support.model_object_holds_only_types(root), hidden)
+                self.assertFalse(support.explicit_helas_dependencies(root), hidden)
+            support.write_fortran(model, model_object)
+            # A helper reading a coupling through the accessor is not certified,
+            # nor is one declaring a flavour-coupling record.
+            for body in (['double complex function vertex(m)', 'use aloha_object',
+                          'type(flv_coupling) m', 'vertex=get_flv_coupling_value(m,1,1)',
+                          'end'],
+                         ['subroutine vertex(w,c)', 'use aloha_object', 'type(aloha) w',
+                          'double complex c', 'c=get_flv_coupling_value(w,1,1)', 'end']):
+                support.write_fortran(path, module+helper+body)
+                self.assertFalse(support.explicit_helas_dependencies(root), body)
 
     def test_target_couplings_are_transferred_as_numeric_model_state(self):
         lines = ['double complex, target :: gc_10,gc_11',
@@ -299,6 +501,78 @@ class TestBornRegistry(unittest.TestCase):
             TestBornLibrary.run_command(['./check'],tmp)
 
     @unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
+    def test_born_completed_sectors_relearn_after_model_and_frame_changes(self):
+        # Like the scalar Born, the dispatcher owns DO_TRY while its learning
+        # subroutine owns the per-sector counts and the shared helicity mask.
+        routines = """subroutine evaluate(nfksprocess,expected,weight,calls)
+implicit none
+integer nfksprocess,expected,weight,calls,i
+logical do_try(2),goodhel(2,2)
+data do_try/2*.true./
+common/c_goodhel/goodhel
+weight=0
+calls=0
+if(do_try(nfksprocess)) then
+call learn(nfksprocess,do_try(nfksprocess),expected,weight,calls)
+else
+do i=1,2
+if(.not.goodhel(i,nfksprocess))cycle
+calls=calls+1
+if(i.eq.expected)weight=weight+1
+enddo
+endif
+end
+subroutine learn(nfksprocess,learning,expected,weight,calls)
+implicit none
+integer nfksprocess,expected,weight,calls,ntry(2),i
+logical learning,goodhel(2,2)
+data ntry/2*0/
+common/c_goodhel/goodhel
+ntry(nfksprocess)=ntry(nfksprocess)+1
+do i=1,2
+if(.not.goodhel(i,nfksprocess).and.ntry(nfksprocess).ge.2)cycle
+calls=calls+1
+if(i.eq.expected)then
+weight=weight+1
+goodhel(i,nfksprocess)=.true.
+endif
+enddo
+if(ntry(nfksprocess).ge.2)learning=.false.
+end""".splitlines()
+        program = """program check
+implicit none
+integer epoch,frame(2)
+common/c_born_model_epoch/epoch
+common/c_born_helicity_frame/frame
+epoch=1
+frame=0
+call check_sector(1,1,2)
+call check_sector(1,1,1)
+call check_sector(1,1,1)
+epoch=2
+call check_sector(2,2,2)
+call check_sector(1,2,2)
+call check_sector(1,2,1)
+call check_sector(2,2,1)
+frame=[7,3]
+call check_sector(2,1,2)
+call check_sector(1,1,2)
+call check_sector(1,1,1)
+contains
+subroutine check_sector(sector,expected,count)
+integer sector,expected,count,weight,calls
+call evaluate(sector,expected,weight,calls)
+if(weight.ne.1.or.calls.ne.count)stop 1
+end subroutine
+end""".splitlines()
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp)/'check.f'
+            support.write_fortran(source, program+support.model_aware_helicity_filter(routines))
+            TestBornLibrary.run_command(['gfortran','-fcheck=all','-ffixed-line-length-none',
+                                         'check.f','-o','check'],tmp)
+            TestBornLibrary.run_command(['./check'],tmp)
+
+    @unittest.skipUnless(shutil.which('gfortran'), 'requires gfortran')
     def test_cached_helicities_preserve_the_other_frame_zero_mask(self):
         # Compile the production adapter and mask transformation together.
         # The two bases have disjoint nonzero amplitudes, so an intervening
@@ -400,15 +674,10 @@ class TestBornRegistry(unittest.TestCase):
                 'real(8) real_amp2(2)', 'common/c_real_diagram_weights/real_amp2',
                 'logical get_real_diagram_weights',
                 'common/c_get_real_diagram_weights/get_real_diagram_weights'])
+            support.write_fortran(root/'fks_info.inc', [
+                'integer,parameter::real_flavor_index_d(2)=[1,1]'])
             native_histories.write_dispatchers(root,record,{1:record},[(1,1),(1,2)],{})
-            (root/'mc_native_context.f90').write_text('''module mc_native_context
-implicit none
-logical,save::shared_real_active=.true.
-integer,save::shared_real_epoch=1,active_history=0
-real(8),save::shared_real_point(0:3,3)
-integer,save::history_permutations(3,1)=0
-end module
-''')
+            trace_modules = write_real_cache_fixture(root,3,1)
             program = ['program check', 'use mc_native_context', 'implicit none',
                 "include 'real_matrix_weights.inc'",
                 'integer nfksprocess,calls', 'common/c_nfksprocess/nfksprocess',
@@ -443,7 +712,7 @@ end module
             support.write_fortran(root/'check.f',program)
             types = Path(support.__file__).resolve().parents[2]/'Template/NLO/Source/BornSupport/mc_born_types.f90'
             TestBornLibrary.run_command(['gfortran','-fcheck=all','-ffixed-line-length-none',
-                '-ffree-line-length-none',str(types),'mc_native_context.f90',
+                '-ffree-line-length-none',str(types),*trace_modules,'mc_native_context.f90',
                 'real_me_chooser.f','check.f','-o','check'],tmp)
             TestBornLibrary.run_command(['./check'],tmp)
 
@@ -453,6 +722,7 @@ class TestBornLibrary(unittest.TestCase):
     """Use actual exports and independently compiled pre-wrapper evaluators."""
 
     origin = '@loader_path' if sys.platform == 'darwin' else '$ORIGIN'
+    selected_processes = None
 
     @classmethod
     def setUpClass(cls):
@@ -511,6 +781,8 @@ class TestBornLibrary(unittest.TestCase):
                 ('loonly','u d~ > w+ g QED^2=2 QCD^2=2 [LOonly=QCD]'),
                 ('shared',('u u~ > e+ e- QED^2=4 QCD^2=0 [real=QCD] @1',
                            'u u~ > e+ e- QED^2=4 QCD^2=0 [real=QCD] @2'))):
+            if cls.selected_processes is not None and name not in cls.selected_processes:
+                continue
             processes = (process,) if isinstance(process,str) else process
             command('generate '+processes[0])
             for additional in processes[1:]:
@@ -518,6 +790,17 @@ class TestBornLibrary(unittest.TestCase):
             output = cls.work/name
             with mock.patch.object(support,'finalize',capture):
                 command('output %s -f -nojpeg' % output)
+            # The output dimension counts global squared-order slots. The
+            # number of coupling names can be different for mixed amplitudes.
+            registry = json.loads((output/'Source/BornSupport/registry.json').read_text())
+            for rec in registry['contexts']:
+                directory = output/'SubProcesses'/rec['directory']
+                text = (directory/'mc_native_context.f90').read_text()
+                nslot = int(re.search(r'provider_orders=(\d+)',text)[1])
+                generated = (directory/'orders.inc').read_text()
+                native = int(re.search(r'\bAMP_SPLIT_SIZE\s*=\s*(\d+)',generated,re.I)[1])
+                if nslot != native:
+                    raise AssertionError((rec['directory'],nslot,native))
             cls.instrument_provider_calls(output)
             cls.run_command(['make','-j2','FFLAGS=-O0 -g -fcheck=all -fbacktrace'],
                             output/'Source/BornSupport')
@@ -577,14 +860,21 @@ class TestBornLibrary(unittest.TestCase):
                                  if re.match(r'(?i)data\s*\(nhel\(', line)]
                 support.write_fortran(source/'check.f',self.driver(record,members,sizes,model_lines,
                     registry['contexts'], helicity_data, signature['signature'], layout))
-                paths = [source/n for n in ('born.f','born_hel.f','sborn_sf.f',
-                                           'extra_cnt_wrapper.f','helpers.f','check.f')]
-                paths += sorted(source.glob('b_sf_*.f'))+sorted(source.glob('born_cnt_*.f'))
+                from tests.unit_tests.iolibs.born_reference import write_reference
+                binding = output/'Source/MODEL/flavor_couplings.f'
+                reference = write_reference(source, record, binding.is_file())
+                paths = [binding] if binding.is_file() else []
                 # HELAS is independent here; only the provider implementation
                 # is linked dynamically, with hidden internal symbols.
-                paths += sorted((output/'Source/DHELAS').glob('*.f'))
-                paths += [output/'Source/MODEL/model_functions.f']
+                helas = output/'Source/DHELAS'
+                aloha_module = helas/'aloha_functions.f'
+                if aloha_module.is_file():
+                    paths.append(aloha_module)
+                paths += sorted(p for p in helas.glob('*.f') if p != aloha_module)
+                paths += [output/'Source/MODEL/model_functions.f',reference,
+                          source/'helpers.f',source/'check.f']
                 self.run_command(['gfortran','-O0','-g','-fcheck=all','-ffixed-line-length-none',
+                    '-ffree-line-length-none','-I'+str(output/'Source/MODEL'),
                     '-I'+str(source),'-I'+str(output/'lib'),
                     '-I'+str(output/'Source/BornSupport'),*map(str,paths),
                     '-L'+str(output/'lib'),'-lmc_born_support',
@@ -877,11 +1167,22 @@ class TestBornLibrary(unittest.TestCase):
         self.compare(self.outputs['dy'])
 
     def test_standard_exports_retain_exact_tree_cache(self):
-        for name in ('dy','ttbar','wjet'):
+        for name in (name for name in ('dy','ttbar','wjet') if name in self.outputs):
             with self.subTest(process=name):
                 signature=json.loads((self.outputs[name]/'Source/BornSupport/helicity_signature.json').read_text())
-                self.assertEqual(signature['mode'],'homogeneous_G')
-                self.assertIsNotNone(signature['signature'])
+                self.assertIn(signature['mode'], ('homogeneous_G', 'exact_compact_state'))
+                if signature['mode']=='homogeneous_G':
+                    self.assertIsNotNone(signature['signature'])
+                else:
+                    # FLV_COUPLING graphs keep exact numeric target inputs
+                    # until their G homogeneity has a complete proof.
+                    layout=json.loads((self.outputs[name]/'Source/BornSupport/model_state_layout.json').read_text())
+                    registry=json.loads((self.outputs[name]/'Source/BornSupport/registry.json').read_text())
+                    inputs={coupling for record in registry['contexts']
+                            for matrix in record['helicity_matrices']
+                            for coupling in matrix.get('couplings', {})}
+                    members={name for name,_,_ in layout['fixed_members']+layout['dynamic_members']}
+                    self.assertTrue(inputs & members)
 
     def test_ttbar(self):
         self.compare(self.outputs['ttbar'])
@@ -1001,14 +1302,18 @@ class TestBornLibrary(unittest.TestCase):
                 # Flow setup imports process state; compile its QED support
                 # dependency too, as in the production subprocess build.
                 # The runtime's channel-weight helper imports active point data.
-                paths = ['qed_shower_support.f90','process_module.f90',
+                from tests.unit_tests.fks.mint_fixture import mint_runtime_modules
+                paths = [*mint_runtime_modules(directory),
+                         '-x','f77',output/'Source/MODEL/coupl.f90','-x','none',
+                         'qed_shower_support.f90','process_module.f90',
                          'fks_phase_space_data.f','mc_native_context.f90',
                          'mc_native_runtime.f','mc_native_props.f',
                          'born_support.f','born.f','sborn_sf.f','extra_cnt_wrapper.f',
                          'native_helpers.f','native_flows.f','model_revision.f','check_native.f']
                 self.run_command(['gfortran','-O0','-g','-fcheck=all',
                     '-ffixed-line-length-none','-ffree-line-length-none','-ffunction-sections',
-                    '-I'+str(output/'lib'),str(output/'Source/timing.f'),*paths,
+                    '-I'+str(output/'lib'),'-I'+str(output/'Source/BornSupport'),
+                    str(output/'Source/timing.f'),*paths,
                     '-Wl,-dead_strip' if sys.platform == 'darwin' else '-Wl,--gc-sections',
                     '-L'+str(output/'lib'),'-lmc_born_support','-Wl,-rpath,'+self.origin+'/../../lib',
                     '-o','check_native'],directory)
@@ -1025,7 +1330,9 @@ class TestBornLibrary(unittest.TestCase):
         self.assertEqual(len(list(support_dir.glob('c*/metadata.f'))),2)
         for r in records:
             wrapper = output/'SubProcesses'/r['directory']/'born.f'
-            self.assertNotIn('SBORN_SPLITORDERS',wrapper.read_text().upper())
+            scalar_body = '\n'.join(support.routine(wrapper.read_text(),'sborn')).upper()
+            self.assertIn('CALL MC_BORN_LOCAL(', scalar_body)
+            self.assertNotIn('CALL SBORN_SPLITORDERS(', scalar_body)
         self.compare(output)
 
     def test_parallel_registry(self):

@@ -44,7 +44,8 @@ class TestSampledTiming(unittest.TestCase):
             shutil.which('gfortran'), '-O2', '-std=legacy', '-fcheck=all',
             '-ffixed-line-length-132', '-fbacktrace',
             '-I', str(TEMPLATE), str(work / 'clock.f90'), str(work / 'timing.f'),
-            str(work / 'mint.f90'), str(ROOT / 'tests/input_files/check_sampled_timing.f'),
+            str(TEMPLATE / 'mc_decision_ledger.f90'), str(work / 'mint.f90'),
+            str(ROOT / 'tests/input_files/check_sampled_timing.f'),
             '-o', str(cls.executable)], cwd=work, capture_output=True, text=True)
         if result.returncode:
             raise RuntimeError(result.stdout + result.stderr)
@@ -63,6 +64,9 @@ class TestSampledTiming(unittest.TestCase):
 
     def test_nested_categories_are_exclusive_and_same_category_is_cheap(self):
         self.check_mode('exclusive')
+
+    def test_parked_draw_does_not_accrue_another_draws_time(self):
+        self.check_mode('interleave')
 
     def test_unsampled_jobs_report_only_the_exact_total(self):
         output = self.check_mode('empty')
@@ -86,6 +90,14 @@ class TestSampledTiming(unittest.TestCase):
 
     def test_mint_sampling_covers_the_complete_point(self):
         self.check_mode('mint')
+
+    def test_batched_real_wave_charges_each_sampled_draw_its_share(self):
+        result = self.run_mode('wave')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn('STOP 1', result.stdout + result.stderr)
+        self.assertIn('Real wave inside a timing point', result.stdout + result.stderr)
+        for code in ('STOP 2', 'STOP 3', 'STOP 4'):
+            self.assertNotIn(code, result.stdout + result.stderr)
 
     def test_bad_nesting_is_detected(self):
         for mode, message in [('mismatch', 'Mismatched timing category'),

@@ -7,6 +7,7 @@
 #include "umami.h"
 
 #include "ProcessData.h"
+#include "UmamiOrderMetadata.h"
 #include "ColorData.h" // diagram-to-color configuration map
 #include "ProcessTables.h" // the crossing rows (choose_good_helicities)
 #include "CPPProcess.h" // needed to construct/initProc the process object (umami_initialize)
@@ -402,18 +403,36 @@ extern "C"
           static_cast<double*>( result )[ipar] = g_externalMasses[ipar];
         break;
       }
+      case UMAMI_META_ABI_MAJOR_VERSION:
+        *static_cast<int*>( result ) = UMAMI_MAJOR_VERSION;
+        break;
+      case UMAMI_META_ABI_MINOR_VERSION:
+        *static_cast<int*>( result ) = UMAMI_MINOR_VERSION;
+        break;
+      case UMAMI_META_PROCESS_FINGERPRINT:
+        *static_cast<const char**>( result ) = MADMATRIX_PROCESS_FINGERPRINT;
+        break;
+      case UMAMI_META_SQUARED_ORDER_COUNT:
+        *static_cast<int*>( result ) = ProcessData::nsqampso;
+        break;
       default:
-        return UMAMI_ERROR_UNSUPPORTED_META;
+        return orderMetadata( meta_key, result );
     }
     return UMAMI_SUCCESS;
   }
 
   UmamiStatus umami_supported_inputs( bool const** supported, int* count )
   {
-    // MOMENTA, ALPHA_S, FLAVOR_INDEX, RANDOM_COLOR, RANDOM_HELICITY, RANDOM_DIAGRAM,
-    // HELICITY_INDEX, DIAGRAM_INDEX=true, CHANNEL_INDEX=false
-    static const bool data[UMAMI_INPUT_KEY_COUNT] = { true, true, true, true, true, true, true, true };
-    *supported = data;
+    static const auto data = [] {
+      std::array<bool, UMAMI_INPUT_KEY_COUNT> keys{};
+      for( auto key : { UMAMI_IN_MOMENTA, UMAMI_IN_ALPHA_S, UMAMI_IN_FLAVOR_INDEX,
+                        UMAMI_IN_RANDOM_COLOR, UMAMI_IN_RANDOM_HELICITY, UMAMI_IN_RANDOM_DIAGRAM,
+                        UMAMI_IN_HELICITY_INDEX, UMAMI_IN_DIAGRAM_INDEX, UMAMI_IN_G_STRONG } )
+        keys[key] = true;
+      keys[UMAMI_IN_G_EW] = UmamiOrders::ewResolved;
+      return keys;
+    }();
+    *supported = data.data();
     *count = UMAMI_INPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
   }
@@ -428,9 +447,15 @@ extern "C"
 
   UmamiStatus umami_supported_outputs( bool const** supported, int* count )
   {
-    // MATRIX_ELEMENT, DIAGRAM_AMP2, COLOR_INDEX, HELICITY_INDEX, DIAGRAM_INDEX, GPU_STREAM
-    static const bool data[UMAMI_OUTPUT_KEY_COUNT] = { true, true, true, true, true };
-    *supported = data;
+    static const auto data = [] {
+      std::array<bool, UMAMI_OUTPUT_KEY_COUNT> keys{};
+      for( auto key : { UMAMI_OUT_MATRIX_ELEMENT, UMAMI_OUT_DIAGRAM_AMP2,
+                        UMAMI_OUT_COLOR_INDEX, UMAMI_OUT_HELICITY_INDEX, UMAMI_OUT_DIAGRAM_INDEX } )
+        keys[key] = true;
+      keys[UMAMI_OUT_SQUARED_ORDERS] = true;
+      return keys;
+    }();
+    *supported = data.data();
     *count = UMAMI_OUTPUT_KEY_COUNT;
     return UMAMI_SUCCESS;
   }
@@ -530,6 +555,8 @@ extern "C"
   {
     const double* momenta_in = nullptr;
     const double* alpha_s_in = nullptr;
+    const double* g_strong_in = nullptr;
+    const double* g_ew_in = nullptr;
     const unsigned int* flavor_indices_in = nullptr;
     const double* random_color_in = nullptr;
     const double* random_helicity_in = nullptr;
@@ -547,6 +574,13 @@ extern "C"
           break;
         case UMAMI_IN_ALPHA_S:
           alpha_s_in = static_cast<const double*>( input );
+          break;
+        case UMAMI_IN_G_EW:
+          if( !UmamiOrders::ewResolved ) return UMAMI_ERROR_UNSUPPORTED_INPUT;
+          g_ew_in = static_cast<const double*>( input );
+          break;
+        case UMAMI_IN_G_STRONG:
+          g_strong_in = static_cast<const double*>( input );
           break;
         case UMAMI_IN_FLAVOR_INDEX:
           flavor_indices_in = static_cast<const unsigned int*>( input );
@@ -571,6 +605,7 @@ extern "C"
       }
     }
     if( !momenta_in ) return UMAMI_ERROR_MISSING_INPUT;
+    if( alpha_s_in && g_strong_in ) return UMAMI_ERROR;
     if( diagram_in )
     {
       for( std::size_t i_event = 0; i_event < count; ++i_event )
@@ -597,6 +632,7 @@ extern "C"
     }
 
     double* m2_out = nullptr;
+    double* squared_orders_out = nullptr;
     double* amp2_out = nullptr;
     int* diagram_out = nullptr;
     int* color_out = nullptr;
@@ -608,6 +644,9 @@ extern "C"
       {
         case UMAMI_OUT_MATRIX_ELEMENT:
           m2_out = static_cast<double*>( output );
+          break;
+        case UMAMI_OUT_SQUARED_ORDERS:
+          squared_orders_out = static_cast<double*>( output );
           break;
         case UMAMI_OUT_DIAGRAM_AMP2:
           amp2_out = static_cast<double*>( output );
@@ -626,6 +665,23 @@ extern "C"
       }
     }
 
+    const double reference_ew = g_ew_in && UmamiOrders::hasQED ? static_cast<UmamiInstance*>( handle )->process.modelParameters().ewReference() : 1.;
+    if( g_ew_in && !( reference_ew > 0. ) ) return UMAMI_ERROR_UNSUPPORTED_INPUT;
+    if( count == 0 ) return UMAMI_SUCCESS;
+    // The component API rejects invalid rows. Ordinary matrix-element calls
+    // keep the kernel's per-event sentinel for IDs outside the crossing table.
+    if( squared_orders_out && flavor_indices_in )
+      for( std::size_t event = 0; event < count; ++event )
+        if( flavor_indices_in[event + offset] >= ProcessTables::ncross * ProcessData::nmaxflavor ) return UMAMI_ERROR;
+    // Components retain their physical helicity sum; the separate signed
+    // interference-helicity estimator has no all-component output contract.
+    // A change of relative order weights also changes sampling probabilities.
+    if( g_ew_in && ProcessData::nampso > 1 &&
+        ( amp2_out || diagram_out || color_out || ( helicity_out && !helicity_in ) ) )
+      return UMAMI_ERROR_UNSUPPORTED_OUTPUT;
+    if( ( squared_orders_out || g_ew_in ) && ProcessData::nampso > 1 && random_helicity_in &&
+        !helicity_in && !static_cast<UmamiInstance*>( handle )->summed_helicity )
+      return UMAMI_ERROR_UNSUPPORTED_OUTPUT;
     constexpr std::size_t vector_size = MemoryAccessMomentaBase::neppM;
     // The kernels run on one SIMD page of events at a time (neppM == neppV events,
     // a single event for the scalar backend), and on two pages at a time in mixed
@@ -684,6 +740,9 @@ extern "C"
     HostBufferBase<fptype, false> color_random( rounded_count );
     HostBufferBase<fptype, false> diagram_random( rounded_count );
     HostBufferBase<fptype, false> matrix_elements( rounded_count );
+    const bool capture_squared_orders = ( squared_orders_out || g_ew_in ) && ProcessData::nampso > 1;
+    HostBufferBase<fptype, false> squared_orders(
+      capture_squared_orders ? rounded_count * ProcessData::nsqampso : 0 );
     HostBufferBase<unsigned int, false> diagram_index( rounded_count );
     HostBufferBase<unsigned int, false> diagram_given( rounded_count );
     HostBufferBase<fptype_amp, false> numerators( rounded_count * ProcessData::ndiagrams );
@@ -718,7 +777,8 @@ extern "C"
       // UMAMI uses zero-based diagram indices; the kernels use one-based indices,
       // with zero requesting the usual sampling for this event.
       if( diagram_in ) diagram_given[lane] = diagram_in[i_event + offset] + 1;
-      g_s[lane] = alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195;
+      g_s[lane] = g_strong_in ? g_strong_in[i_event + offset]
+        : ( alpha_s_in ? sqrt( 4 * M_PI * alpha_s_in[i_event + offset] ) : 1.2177157847767195 );
       flavor_indices[lane] = flavor_indices_in ? flavor_indices_in[i_event + offset] : 0;
       if( helicity_in ) helicity_given[lane] = helicity_in[i_event + offset];
     }
@@ -726,6 +786,18 @@ extern "C"
     ProcessParameters& params = instance->process.parameters();
     computeDependentCouplings( params, g_s.data(), couplings.data(), rounded_count );
 
+    // A selected total can vanish while individual orders remain nonzero.
+    // Component requests (including EW reweighting) need the complete sum.
+    if( capture_squared_orders && count > 0 )
+    {
+      // A recycling table can have omitted amplitudes at helicities that
+      // vanished in its selected total. Component evaluations already use the
+      // plain code; keep it for later total-only requests on this instance too.
+      params.hrStale = true;
+      instance->keep_every_helicity = true;
+      // A cached helicity choice may have been installed since the last call.
+      keep_all_helicities( instance );
+    }
     if( instance->learned < nlearn && count > 0 )
     {
       if( instance->keep_every_helicity )
@@ -746,6 +818,9 @@ extern "C"
           if( lane % page_size2 == 0 || source[lane] != source[lane - lane % page_size2] ) ++instance->learned;
       }
     }
+
+    if( capture_squared_orders )
+      std::fill( squared_orders.data(), squared_orders.data() + rounded_count * ProcessData::nsqampso, fptype( 0 ) );
 
     sigmaKin(
       params,
@@ -769,7 +844,28 @@ extern "C"
       // to keep the helicity sum (interference_helicity_summed); without the random number
       // the |M|^2 stays the helicity sum (systematics re-evaluation, standalone checks)
       random_helicity_in != nullptr && !instance->summed_helicity,
-      helicity_in ? helicity_given.data() : nullptr );
+      helicity_in ? helicity_given.data() : nullptr,
+      capture_squared_orders ? squared_orders.data() : nullptr,
+      rounded_count );
+
+    if( squared_orders_out || g_ew_in )
+    {
+      for( std::size_t event = 0; event < count; ++event )
+      {
+        const std::size_t lane = sort_flavors ? permutation[event] : event;
+        double selected_total = 0.;
+        for( int iso = 0; iso < ProcessData::nsqampso; ++iso )
+        {
+          double component = capture_squared_orders ? squared_orders[iso * rounded_count + lane]
+                                                    : matrix_elements[lane];
+          if( g_ew_in && UmamiOrders::qed[iso] )
+            component *= std::pow( g_ew_in[offset + event] / reference_ew, UmamiOrders::qed[iso] );
+          if( squared_orders_out ) squared_orders_out[iso * stride + offset + event] = component;
+          if( UmamiOrders::selected[iso] ) selected_total += component;
+        }
+        if( g_ew_in && m2_out ) m2_out[event + offset] = selected_total;
+      }
+    }
 
     if ( sort_flavors )
     {
@@ -781,7 +877,7 @@ extern "C"
         std::size_t i_vector = i_sorted % page_size; // vector lane
 
         double denominator = denominators[i_sorted];
-        if( m2_out != nullptr )
+        if( m2_out && !g_ew_in )
         {
           m2_out[i_event + offset] = matrix_elements[i_sorted];
         }
@@ -813,7 +909,7 @@ extern "C"
         std::size_t i_vector = i_event % page_size;
 
         double denominator = denominators[i_event];
-        if( m2_out != nullptr )
+        if( m2_out && !g_ew_in )
         {
           m2_out[i_event + offset] = matrix_elements[i_event];
         }

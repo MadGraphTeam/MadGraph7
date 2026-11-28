@@ -2039,6 +2039,8 @@ C
         ln(model_path + '/coupl.inc', self.dir_path + '/Source')
         ln(model_path + '/coupl.inc', self.dir_path + '/SubProcesses')
         ln(model_path + 'ldme.inc', self.dir_path + '/Source')
+        ln(model_path + '/coupl.f90', self.dir_path + '/Source')
+        ln(model_path + '/coupl.f90', self.dir_path + '/SubProcesses')
         self.make_source_links()
         
     def make_source_links(self):
@@ -8812,9 +8814,9 @@ C     fixed points first, so only the legs that must move do
                          matrix_element.get('processes')[0].nice_string())
             plot.draw()
 
-        linkfiles = ['check_sa.f', 'coupl.inc']
+        linkfiles = ['check_sa.f', 'coupl.inc', 'coupl.f90']
         if self.format == 'standalone_fortran':
-            linkfiles = ['coupl.inc']
+            linkfiles = ['coupl.inc', 'coupl.f90']
 
 
         filename = pjoin(dirpath, 'check_sa.f')
@@ -8823,7 +8825,7 @@ C     fixed points first, so only the legs that must move do
                            proc_prefix=driver_prefix)
 
 
-        linkfiles = ['coupl.inc']
+        linkfiles = ['coupl.inc', 'coupl.f90']
         if matrix_element.get_nonia()>0:
             linkfiles += ['ldme.inc']
         for file in linkfiles:
@@ -10983,7 +10985,10 @@ class ProcessExporterFortranMW(ProcessExporterFortran):
         ln(self.dir_path + '/Source/genps.inc', self.dir_path + '/SubProcesses', log=False)
         #ln(self.dir_path + '/Source/maxconfigs.inc', self.dir_path + '/SubProcesses', log=False)
 
-        linkfiles = ['driver.f', 'cuts.f', 'initialization.f','gen_ps.f', 'makefile', 'coupl.inc','madweight_param.inc', 'run.inc', 'setscales.f', 'genps.inc']
+        linkfiles = ['driver.f', 'cuts.f', 'initialization.f','gen_ps.f',
+                     'makefile', 'coupl.inc', 'coupl.f90',
+                     'madweight_param.inc', 'run.inc', 'setscales.f',
+                     'genps.inc']
         if matrix_element.get_nonia()>0:
             linkfiles += ['ldme.inc']
 
@@ -16441,6 +16446,7 @@ class UFO_model_to_mg4(object):
         self.create_couplings_flavor_merged()
         self.create_actualize_mp_ext_param_inc()
         self.create_coupl_inc()
+        self.create_mod_coupl()
         self.create_write_couplings()
         self.create_couplings()
         self.create_printout()
@@ -16695,11 +16701,6 @@ C
             if c_list:
                 fsock.writelines('double complex, target :: '+', '.join(c_list)+'\n') 
 
-        # Write the flavor couplings 
-        if self.coups_flv_indep:
-            c_list = [coupl.name for coupl in self.coups_flv_indep]
-            fsock.writelines('type(flv_coupling) '+', '.join(c_list)+'\n')
-
         # Write the dependent coupling 
         if self.vector_size and not self.opt['loop_induced']:
             c_list = ['%s(%s)' %(coupl.name, "VECSIZE_MEMMAX") for coupl in self.coups_dep]
@@ -16709,19 +16710,18 @@ C
         if c_list:
             fsock.writelines('double complex, target :: '+', '.join(c_list)+'\n')  
 
-        # Write the flavor dependent couplings
-        if self.vector_size and not self.opt['loop_induced']:
-            c_list = ['%s(%s)' %(coupl.name, "VECSIZE_MEMMAX") for coupl in self.coups_flv_dep]
-        else:
-            c_list = [coupl.name for coupl in self.coups_flv_dep] 
-        
-        if c_list:
-            fsock.writelines('type(flv_coupling) '+', '.join(c_list)+'\n')
-            if self.opt['loop_induced']:
-                raise Exception('Flavor coupling are not supported for loop induced process for the moment')  
+        if self.coups_flv_dep and self.opt['loop_induced']:
+            raise Exception(
+                'Flavor coupling are not supported for loop induced process '
+                'for the moment')
 
-
-        coupling_list = [coupl.name for coupl in self.coups_dep + self.coups_indep_noloop + self.coups_indep_loop + self.coups_flv_dep + self.coups_flv_indep]       
+        # FLV_COUPLING instances are module variables owned by MODEL_OBJECT.
+        # Keeping them out of coupl.inc prevents every generic source routine
+        # that merely needs masses or scalar couplings from having to USE the
+        # derived-type module.  Matrix/ALOHA routines already USE MODEL_OBJECT.
+        coupling_list = [coupl.name for coupl in
+                         self.coups_dep + self.coups_indep_noloop +
+                         self.coups_indep_loop]
 
         fsock.writelines('common/couplings/ '+', '.join(coupling_list)+'\n')
         if self.opt['mp']:
@@ -16759,6 +16759,85 @@ C
                                 self.mp_prefix+cm for cm in complex_mass])+'\n')
                 mp_fsock.writelines('common/MP_complex_mass/ '+\
                     ','.join([self.mp_prefix+cm for cm in complex_mass])+'\n\n')                       
+        
+    def create_mod_coupl(self):
+        """ write coupling.f90 """
+        
+        fsock = self.open('coupl.f90', comment='!', format='fortran')
+
+        # Write header
+        header = """module couplings
+                implicit none
+                logical, public :: couplings_is_allocated = .false.
+                double precision, allocatable :: G_vec(:)
+                double precision, allocatable :: MU_R_vec(:)
+                """
+            # contains
+            #     subroutine allocate_couplings(vector_size)
+            #         implicit none
+            #         integer, intent(in) :: vector_size
+            #         allocate(G(vector_size))
+            #         allocate(MU_R(vector_size))
+            #     """
+            #     end subroutine allocate_couplings
+            #     subroutine reset_strong()
+            #         implicit none
+            #         G(:) = 0.d0
+            #     end subroutine reset_strong
+            #     subroutine deallocate_strong()
+            #         implicit none
+            #         if(allocated(G)) deallocate(G)
+            #     end subroutine deallocate_strong
+            # contains
+            #     subroutine allocate_rscale(vector_size)
+            #         implicit none
+            #         integer, intent(in) :: vector_size
+            #     end subroutine allocate_rscale
+            #     subroutine reset_rscale()
+            #         implicit none
+            #         MU_R(:) = 0.d0
+            #     end subroutine reset_rscale
+            #     subroutine deallocate_rscale()
+            #         implicit none
+            #         if(allocated(MU_R)) deallocate(MU_R)
+            #     end subroutine deallocate_rscale
+            #     """        
+        fsock.writelines(header)
+        
+        # Write the Couplings (for now all of them and not just running ones)
+        coupling_list1 = [coupl.name+'_vec(:)' for coupl in self.coups_dep]
+        coupling_list2 = [coupl.name+'_vec' for coupl in self.coups_dep]
+        # A process without running couplings (e+ e- > e+ e-, t > w+ b, ...)
+        # has none to declare, and an empty entity list after '::' does not
+        # compile.
+        if coupling_list1:
+            fsock.writelines('double complex, allocatable :: '+', '.join(coupling_list1)+'')
+        fsock.writelines('contains')
+        fsock.writelines('subroutine allocate_couplings(vector_size)')
+        fsock.writelines('implicit none')
+        fsock.writelines('integer, intent(in) :: vector_size')
+        fsock.writelines('allocate(G_vec(vector_size))')
+        fsock.writelines('allocate(MU_R_vec(vector_size))')
+        for coupl in coupling_list2:
+            fsock.writelines('allocate(%s(vector_size))' % coupl)
+        fsock.writelines('couplings_is_allocated = .true.')
+        fsock.writelines('end subroutine allocate_couplings')
+        fsock.writelines('subroutine reset_couplings()')
+        fsock.writelines('implicit none')
+        fsock.writelines('G_vec(:) = 0.d0')
+        fsock.writelines('MU_R_vec(:) = 0.d0')
+        for coupl in coupling_list1:
+            fsock.writelines('%s = (0.d0,0.d0)' % coupl)
+        fsock.writelines('end subroutine reset_couplings')
+        fsock.writelines('subroutine deallocate_couplings()')
+        fsock.writelines('implicit none')
+        fsock.writelines('couplings_is_allocated = .false.')
+        fsock.writelines('if(allocated(G_vec)) deallocate(G_vec)')
+        fsock.writelines('if(allocated(MU_R_vec)) deallocate(MU_R_vec)')
+        for coupl in coupling_list2:
+            fsock.writelines('if(allocated(%s)) deallocate(%s)' % (coupl, coupl))
+        fsock.writelines('end subroutine deallocate_couplings')
+        fsock.writelines('end module couplings\n')
         
     def create_write_couplings(self):
         """ write the file coupl_write.inc """
@@ -16891,9 +16970,21 @@ C
         self.allCTparameters=list(\
                             set(itertools.chain.from_iterable(allCTparameters)))
 
-        # All used CT couplings
-        w_coupls = [coupl.lower() for coupl in wanted_couplings if isinstance(coupl,str)]
-        logger.debug('wanted_couplings: CTparan not supporting merging -> will be problematic for NLO')
+        # All used CT couplings. Flavor-indexed couplings carry concrete UFO
+        # coupling names for each physical row; expand those names before
+        # applying the ordinary CT-parameter filter.
+        w_coupls = []
+        for coupl in wanted_couplings:
+            if isinstance(coupl, str):
+                w_coupls.append(coupl.lower())
+            elif hasattr(coupl, 'get_all_couplings'):
+                w_coupls.extend(
+                    name.lower() for name in coupl.get_all_couplings()
+                    if isinstance(name, str))
+            else:
+                logger.warning(
+                    'Cannot identify counterterm parameters for coupling %r; '
+                    'ignoring that coupling in the CT filter.', coupl)
         allUsedCTCouplings = [coupl for coupl in 
               self.model.map_CTcoup_CTparam.keys() if coupl.lower() in w_coupls]
         
@@ -17098,6 +17189,7 @@ C
             data = self.coups_indep_noloop[nb_def_by_file * i: 
                              min(len(self.coups_indep_noloop), nb_def_by_file * (i+1))]
             self.create_couplings_part(i + 1, data, dp=True, mp=False)
+            # self.create_couplings_part_vec(i + 1, data, dp=True, mp=False)
 
             if self.opt['mp']:
                 self.create_couplings_part( i + 1, data, dp=False,mp=True)
@@ -17110,6 +17202,7 @@ C
             data = self.coups_indep_loop[nb_def_by_file * i: 
                              min(len(self.coups_indep_loop), nb_def_by_file * (i+1))]
             self.create_couplings_part(i + 1 + nb_coup_indep_noloop, data, dp=True, mp=False)
+            # self.create_couplings_part_vec(i + 1 + nb_coup_indep_noloop, data, dp=True, mp=False)
 
             if self.opt['mp']:
                 self.create_couplings_part( i + 1 + nb_coup_indep_noloop, data, dp=False,mp=True)
@@ -17122,6 +17215,8 @@ C
                                min(len(self.coups_dep), nb_def_by_file * (i+1))]
             self.create_couplings_part( i + 1 + nb_coup_indep , data, 
                                         dp=True, mp=False, vec=self.vector_size*self.nb_warp)
+            self.create_couplings_part_vec( i + 1 + nb_coup_indep , data, 
+                                        dp=True, mp=False)
             if self.opt['mp']:
                 self.create_couplings_part( i + 1 + nb_coup_indep , data, 
                                            dp=False, mp=True, vec=self.vector_size*self.nb_warp)
@@ -17143,6 +17238,8 @@ C
          INTEGER :: PARTNER2(%(max_flavor)i)
          TYPE(COUPPTR) :: VAL(%(max_flavor)i)
          END TYPE FLV_COUPLING
+         %(module_include_vector)s
+         %(flv_decl)s
          END MODULE MODEL_OBJECT
 
 
@@ -17198,14 +17295,36 @@ C
         # max size needed for the couplings
         max_flavor = max([len(ids) for ids in self.model['merged_particles'].values()], default=0)
 
+        flv_decl = []
+        if self.coups_flv_indep:
+            flv_decl.append('TYPE(FLV_COUPLING) :: %s' % ', '.join(
+                coupl.name for coupl in self.coups_flv_indep))
+        if self.coups_flv_dep:
+            if self.vector_size:
+                flv_decl.append('TYPE(FLV_COUPLING) :: %s' % ', '.join(
+                    '%s(VECSIZE_MEMMAX)' % coupl.name
+                    for coupl in self.coups_flv_dep))
+            else:
+                flv_decl.append('TYPE(FLV_COUPLING) :: %s' % ', '.join(
+                    coupl.name for coupl in self.coups_flv_dep))
+
         if self.vector_size:
             include_vector = "include \'../vector.inc\'\n"
+            # The public flavour arrays need these extents, but callers already
+            # include vector.inc themselves. Do not export its constants into
+            # those scopes through USE MODEL_OBJECT.
+            module_include_vector = (include_vector +
+                'private :: WARP_SIZE,NB_WARP,VECSIZE_MEMMAX\n') \
+                if self.coups_flv_dep else ''
             loop_decl = 'integer j_flv_init' if self.coups_flv_dep else ''
         else:
             include_vector = ''
+            module_include_vector = ''
             loop_decl = ''
         replace = {'max_flavor': max_flavor,
                    'include_vector': include_vector,
+                   'module_include_vector': module_include_vector,
+                   'flv_decl': '\n'.join(flv_decl),
                    'loop_decl': loop_decl,
                    'def_flv': '\n'.join(def_flv)}
         fsock = self.open('flavor_couplings.f', format='fortran')
@@ -17428,6 +17547,117 @@ C
                     ['call coup%(i)s(%(args)s)' %  {"i": nb_coup_indep + i + 1, "args": 'vecid' if self.vector_size  else ''} \
                       for i in range(nb_coup_dep)]))
         fsock.writelines('''\n return \n end\n''')
+
+
+
+        fsock.writelines("""subroutine update_as_param_vec(%(args)s)
+
+                            implicit none
+                            %(args_dep)s
+                            double precision PI, ZERO
+                            logical READLHA, FIRST
+                            data first /.true./
+                            save first
+                            parameter  (PI=3.141592653589793d0)            
+                            parameter  (ZERO=0d0)
+                            logical updateloop
+                            common /to_updateloop/updateloop
+                            include \'model_functions.inc\'
+                            double precision Gother
+                            
+                            double precision model_scale
+                            common /model_scale/model_scale
+                            """ % \
+                            {'args': 'vecid' ,
+                            'args_dep': ' integer vecid'}
+                         )
+
+
+        if self.opt['export_format'] in ['madevent']:
+            fsock.writelines("""
+                            include \'../maxparticles.inc\'
+                            include \'../cuts.inc\'
+                             """)
+            if self.vector_size:
+                fsock.writelines("""
+                            include \'../vector.inc\'
+                                 """)
+            fsock.writelines("""            
+                            include \'../run.inc\'""")        
+        elif self.opt['export_format'] in  ['madloop_optimized']:
+            if self.vector_size:
+                fsock.writelines("""
+                            include \'../vector.inc\'
+                                 """)
+            fsock.writelines("""
+                            include \'../maxparticles.inc\'
+                            include \'../cuts.inc\'
+                            include \'../run.inc\'""")
+        else:
+            fsock.writelines("""
+                            include \'../cuts.inc\'
+                            data maxjetflavor,fixed_extra_scale,mue_over_ref,mue_ref_fixed /5,.false.,1d0,91.188/
+                            include \'../run.inc\'""")
+        fsock.writelines("""
+                            double precision alphas 
+                            external alphas
+                            """)
+
+        fsock.writelines("""include \'input.inc\'
+                            include \'coupl.inc\'
+                            READLHA = .false.""")
+        fsock.writelines("""    
+                            include \'intparam_definition.inc\'\n
+                            
+                         """)
+        
+        if self.model['running_elements']:
+            running_block = self.model.get_running(self.used_running_key) 
+            if running_block:
+                MUE = [p for p in self.model.get('parameters')[('external',)] if p.lhablock.lower() == 'loop' and tuple(p.lhacode) == (2,)]
+
+                
+                
+                fsock.write_comments('calculate the running parameter')
+                fsock.writelines(' if(fixed_extra_scale.and.first) then')
+                if self.MUE:
+                    fsock.writelines(' %s = mue_ref_fixed' % self.MUE.name)
+                fsock.writelines(' Gother = SQRT(4.0D0*PI*ALPHAS(mue_ref_fixed))') 
+                fsock.writelines(' first = .false.') 
+                for i in range(len(running_block)):
+                    fsock.writelines(" call C_RUNNING_%s(Gother) ! %s \n" % (i+1,list(running_block[i])))   
+                fsock.writelines(' elseif(.not.fixed_extra_scale) then')
+                fsock.writelines(' Gother = G')
+                
+                if self.MUE:
+                    fsock.writelines(' %s = mue_over_ref*model_scale' % self.MUE.name)
+                else:
+                    misc.sprint('NO MUE')
+                    #raise Exception
+                
+                fsock.writelines(' if(mue_over_ref.ne.1d0)then')
+                fsock.writelines('  Gother = SQRT(4.0D0*PI*ALPHAS(mue_over_ref*model_scale))')
+                fsock.writelines(' endif')
+                
+                for i in range(len(running_block)):
+                    fsock.writelines(" call C_RUNNING_%s(Gother) ! %s \n" % (i+1,list(running_block[i])))   
+                fsock.writelines('endif')
+
+        nb_coup_indep_noloop = 1 + len(self.coups_indep_noloop) // nb_def_by_file 
+        nb_coup_indep_loop = 1 + len(self.coups_indep_loop) // nb_def_by_file 
+        nb_coup_indep = nb_coup_indep_noloop + nb_coup_indep_loop
+        nb_coup_dep = 1 + len(self.coups_dep) // nb_def_by_file 
+                
+        fsock.write_comments('\ncouplings needed to be evaluated points by points\n')
+
+        if self.vector_size:
+            fsock.writelines("""     ALL_G(VECID) = G   """)
+
+        fsock.writelines('\n'.join(\
+                    ['call coup_vec%(i)s(%(args)s)' %  {"i": nb_coup_indep + i + 1, "args": 'vecid'} \
+                      for i in range(nb_coup_dep)]))
+        fsock.writelines('''\n return \n end\n''')
+
 
         fsock.writelines("""subroutine update_as_param2(mu_r2,as2 %(args)s)
 
@@ -17939,6 +18169,56 @@ C
 
                 fsock.writelines('%(name)s%(index)s = %(expr)s' % {'name': coupling.name,
                                           'index': '(vecid)' if vec else '',
+                                          'expr': self.p_to_f.parse(coupling.expr)})
+            if mp:
+                fsock.writelines('%(mp)s%(name)s%(index)s = %(expr)s' % {'mp': self.mp_prefix,
+                                          'name': coupling.name,
+                                          'index': '', #no vectorization in quadruple
+                                          'expr': self.mp_p_to_f.parse(coupling.expr)})
+        fsock.writelines('end')
+        
+        
+    def create_couplings_part_vec(self, nb_file, data, dp=True, mp=False, vec=True):
+        """ create couplings[nb_file].f containing information coming from data.
+        Outputs the computation of the double precision and/or the multiple
+        precision couplings depending on the parameters dp and mp.
+        If mp is True and dp is False, then the prefix 'MP_' is appended to the
+        filename and subroutine name.
+        """
+        
+        fsock = self.open('%scouplings_vec%s.f' %('mp_' if mp and not dp else '',
+                                                     nb_file), format='fortran')
+        fsock.writelines("""subroutine %(mp)scoup_vec%(nb_file)s( %(args)s)
+          use couplings        
+          implicit none
+          %(def_args)s
+          include \'model_functions.inc\'"""% {'mp': 'mp_' if mp and not dp else '',
+                                               'nb_file': nb_file,
+                                               'args': 'vecid' ,
+                                               'def_args': '  integer vecid'})
+
+        if self.vector_size:
+            fsock.writelines("""include '../vector.inc'\n""")
+
+        if dp:
+            fsock.writelines("""
+              double precision PI, ZERO
+              parameter  (PI=3.141592653589793d0)
+              parameter  (ZERO=0d0)
+              include 'input.inc'""")
+            fsock.writelines("""include 'coupl.inc'""")
+        if mp:
+            fsock.writelines("""%s MP__PI, MP__ZERO
+                                parameter (MP__PI=3.1415926535897932384626433832795e0_16)
+                                parameter (MP__ZERO=0e0_16)
+                                include \'mp_input.inc\'
+                                include \'mp_coupl.inc\'
+                        """%self.mp_real_format) 
+
+        for coupling in data:
+            if dp:  
+                fsock.writelines('%(name)s%(index)s = %(expr)s' % {'name': coupling.name+'_vec',
+                                          'index': '(vecid)',
                                           'expr': self.p_to_f.parse(coupling.expr)})
             if mp:
                 fsock.writelines('%(mp)s%(name)s%(index)s = %(expr)s' % {'mp': self.mp_prefix,
@@ -19112,7 +19392,7 @@ c         segments from -DABS(tiny*Ga) to Ga
         text = 'MODEL = flavor_couplings.o couplings.o lha_read.o printout.o rw_para.o'
         if self.opt['onia']:
             text += ' rw_onia.o'
-        text += ' model_functions.o get_color.o '
+        text += ' coupl.o model_functions.o get_color.o '
         
         if self.opt['export_format'].startswith('standalone') or \
                                                 self.running_in_model_library():
@@ -19126,6 +19406,8 @@ c         segments from -DABS(tiny*Ga) to Ga
         nb_coup_dep = 1 + len(self.coups_dep) // self.nb_def_by_file
         couplings_files=['couplings%s.o' % (i+1) \
                                 for i in range(nb_coup_dep + nb_coup_indep) ]
+        for i in range(nb_coup_indep + 1, nb_coup_indep + nb_coup_dep + 1):
+            couplings_files.append('couplings_vec%s.o' % i)
         if self.opt['mp']:
             # this part changed to include also the couplings which do not 
             # depend on the PSP
@@ -19576,7 +19858,7 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
             amcatnlo_options['export_format']='FKS5_optimized'
         return ExporterClass(cmd._export_dir, amcatnlo_options)
 
-    # Then the FKS Born building-block standalone output (output standalone_fortran --fks)
+    # FKS Born building-block output (output standalone_fortran --fks)
     elif output_type=='amcatnlo_sa':
         import madgraph.iolibs.export_fks as export_fks
         amcatnlo_options = dict(opt)
@@ -19585,8 +19867,13 @@ def ExportV4Factory(cmd, noclean, output_type='default', group_subprocesses=True
         amcatnlo_options['mp'] = len(cmd._fks_multi_proc.get_virt_amplitudes()) > 0
         amcatnlo_options['fks_limits'] = getattr(cmd, '_fks_limits', False)
         logger.info("Writing out the FKS Born building blocks in a standalone format")
-        amcatnlo_options['export_format']='FKS5_optimized'
-        return export_fks.ProcessExporterFortranFKS_SA(cmd._export_dir, amcatnlo_options)
+        if cmd.options['loop_optimized_output']:
+            ExporterClass = export_fks.ProcessExporterFortranFKS_SA
+            amcatnlo_options['export_format'] = 'FKS5_optimized'
+        else:
+            ExporterClass = export_fks.ProcessExporterFortranFKS_SA_Default
+            amcatnlo_options['export_format'] = 'FKS5_default'
+        return ExporterClass(cmd._export_dir, amcatnlo_options)
 
     # Then treat the EW sudakov Standalone output
     elif output_type=='ewsudsa':

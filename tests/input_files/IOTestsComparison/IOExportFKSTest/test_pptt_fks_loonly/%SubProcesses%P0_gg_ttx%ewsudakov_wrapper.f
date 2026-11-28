@@ -2,6 +2,17 @@
       IMPLICIT NONE
       INCLUDE 'nexternal.inc'
       INCLUDE 'born_nhel.inc'
+      INCLUDE 'genps.inc'
+      DOUBLE PRECISION P(0:3,NEXTERNAL-1)
+      DOUBLE COMPLEX SAVED(NGRAPHS,MAX_BHEL)
+      COMMON/TO_SAVEAMP/SAVED
+      CALL SUDAKOV_WRAPPER_AMP(P,SAVED)
+      END
+
+      SUBROUTINE SUDAKOV_WRAPPER_AMP(P,RET_SAVEAMP)
+      IMPLICIT NONE
+      INCLUDE 'nexternal.inc'
+      INCLUDE 'born_nhel.inc'
       DOUBLE PRECISION P(0:3, NEXTERNAL-1)
 
       INTEGER I
@@ -28,6 +39,7 @@
       DOUBLE COMPLEX ANS_SUMMED
 
       INCLUDE 'orders.inc'
+      INCLUDE 'genps.inc'
       DOUBLE COMPLEX AMP_SPLIT_EWSUD(AMP_SPLIT_SIZE)
       COMMON /TO_AMP_SPLIT_EWSUD/ AMP_SPLIT_EWSUD
       DOUBLE COMPLEX AMP_SPLIT_EWSUD_LO2(AMP_SPLIT_SIZE)
@@ -88,6 +100,8 @@ C     stuff for the MC over helicities
       DATA FIRSTTIME /.TRUE./
       INTEGER HEL_MIN, HEL_MAX, HEL_PICK
       DOUBLE PRECISION VOLH
+      DOUBLE COMPLEX RET_SAVEAMP(NGRAPHS,MAX_BHEL)
+
 
       INCLUDE 'ewsudakov_haslo.inc'
 
@@ -112,7 +126,7 @@ C     stuff for the MC over helicities
         VOLH=1D0
         FIRSTTIME=.FALSE.
       ELSE
-        CALL PICKHELICITYMC(P,IGOOD_HEL,HEL,HEL_PICK,VOLH)
+        CALL PICKHELICITYMC(P,IGOOD_HEL,HEL,HEL_PICK,VOLH,RET_SAVEAMP)
         HEL_MIN = HEL(HEL_PICK)
         HEL_MAX = HEL_MIN
       ENDIF
@@ -127,7 +141,7 @@ C       if an helicity is selected, then filter it
         IF (.NOT.GOOD_HEL(IHEL).AND.SUD_FILTER_HEL) CYCLE
 
 C       call the born amplitude and store the result
-        CALL SBORN_ONEHEL(P,NHEL(1,IHEL),IHEL,ANS_SUMMED)
+        call sborn_onehel_amp(P,NHEL(1,IHEL),IHEL,ANS_SUMMED,RET_SAVEAMP)
         AMP_SPLIT_BORN_ONEHEL(:) = AMP_SPLIT_EWSUD(:)
 
         IF (FIRSTTIME_HEL(IHEL)) THEN

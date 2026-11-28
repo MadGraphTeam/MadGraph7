@@ -481,3 +481,21 @@ end subroutine
 subroutine include_multichannel_enhance(i)
   integer :: i
 end subroutine
+
+! This fixture supplies controlled, already regulated real and analytic
+! terms. The native request/limit classifier has its own boundary test.
+subroutine sreal_prepare(p,xi,y,ans,request)
+  use mc_point_state, only: native_real_request,real_idle
+  implicit none
+  type(native_real_request) request
+  real(8) p(0:3,5),xi,y,ans
+  if(request%status/=real_idle) error stop 'Outstanding controlled amplitude'
+  call sreal(p,xi,y,ans)
+end subroutine
+
+subroutine resolve_native_real_scalar(request)
+  use mc_point_state, only: native_real_request
+  implicit none
+  type(native_real_request) request
+  error stop 'Controlled history kernel has already supplied its amplitude'
+end subroutine
