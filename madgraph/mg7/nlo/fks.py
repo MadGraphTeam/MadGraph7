@@ -301,6 +301,17 @@ class SubprocessIntegrand:
     def matrix_element_calls(self):
         return self.provider.statistics
 
+    def libraries(self, context):
+        """The MatrixElementApi of the matrix elements of the provider as
+        UMAMI libraries in the context (ProviderLibraries of
+        nlo/libraries.py, added once)."""
+        from madgraph.mg7.nlo.libraries import ProviderLibraries
+
+        if getattr(self, "_libraries", None) is None:
+            self._libraries = ProviderLibraries(self.provider, self.name)
+            self._apis = self._libraries.add_to(context)
+        return self._apis
+
     def channel_integrand(self, channel, context):
         """The C++ integrand of a channel (FKSChannelIntegrand of madspace)
         at given random numbers, configurations and points with the virtual,
@@ -310,14 +321,9 @@ class SubprocessIntegrand:
         the Sudakov approximation of the EW corrections. The libraries
         evaluate at the e of the model, so that the blocks are those of the
         provider."""
-        from madgraph.mg7.nlo.libraries import ProviderLibraries
-
         ms = madspace()
         element = ms.MatrixElement
-        if getattr(self, "_libraries", None) is None:
-            self._libraries = ProviderLibraries(self.provider, self.name)
-            self._apis = self._libraries.add_to(context)
-        apis = self._apis
+        apis = self.libraries(context)
         born_outputs = [
             element.squared_orders_out,
             element.diagram_amp2_out,

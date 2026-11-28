@@ -5,5 +5,7 @@ run through the event generator of madspace, histograms, info.json).
 fks: the FKS subtraction, cs: the Catani-Seymour subtraction.
 provider: the matrix-element blocks of the Fortran of the output.
 libraries: the blocks of the provider as UMAMI libraries of madspace.
+functions: the integrands and matrix elements of a run as functions of
+Python, for machine learning.
 grids: the PDFs and alpha_s as madspace grids.
 """
