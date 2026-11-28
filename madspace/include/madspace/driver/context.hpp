@@ -131,6 +131,18 @@ public:
         );
         return colored * (colored - 1) / 2;
     }
+    /// Number of interference amplitudes of the Sudakov approximation of the EW
+    /// corrections, zero for a library without them.
+    std::size_t ew_sudakov_interference_count() const {
+        int count;
+        auto status =
+            _functions.get_meta(UMAMI_META_EW_SUDAKOV_INTERFERENCE_COUNT, &count);
+        if (status == UMAMI_ERROR_UNSUPPORTED_META) {
+            return 0;
+        }
+        check_umami_status(status);
+        return count;
+    }
     /// Number of helicity configurations.
     std::size_t helicity_count() const {
         int count;

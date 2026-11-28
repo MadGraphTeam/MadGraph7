@@ -423,6 +423,11 @@ PYBIND11_MODULE(_madspace_py, m) {
             pydoc::doc("MatrixElementApi::color_pair_count")
         )
         .def(
+            "ew_sudakov_interference_count",
+            &MatrixElementApi::ew_sudakov_interference_count,
+            pydoc::doc("MatrixElementApi::ew_sudakov_interference_count")
+        )
+        .def(
             "helicity_count",
             &MatrixElementApi::helicity_count,
             pydoc::doc("MatrixElementApi::helicity_count")
@@ -635,6 +640,10 @@ PYBIND11_MODULE(_madspace_py, m) {
              {"color_correlated", UMAMI_OUT_COLOR_CORRELATED},
              {"spin_correlated", UMAMI_OUT_SPIN_CORRELATED},
              {"loop", UMAMI_OUT_LOOP},
+             {"ew_sudakov_diagonal", UMAMI_OUT_EW_SUDAKOV_DIAGONAL},
+             {"ew_sudakov_lo2", UMAMI_OUT_EW_SUDAKOV_LO2},
+             {"ew_sudakov_derivatives", UMAMI_OUT_EW_SUDAKOV_DERIVATIVES},
+             {"ew_sudakov_interference", UMAMI_OUT_EW_SUDAKOV_INTERFERENCE},
          }) {
         umami_output_keys[name] = key;
     }
@@ -646,6 +655,9 @@ PYBIND11_MODULE(_madspace_py, m) {
              {"diagram_count", UMAMI_META_DIAGRAM_COUNT},
              {"squared_order_count", UMAMI_META_SQUARED_ORDER_COUNT},
              {"color_representations", UMAMI_META_COLOR_REPRESENTATIONS},
+             {"helicity_count", UMAMI_META_HELICITY_COUNT},
+             {"ew_sudakov_interference_count",
+              UMAMI_META_EW_SUDAKOV_INTERFERENCE_COUNT},
          }) {
         umami_meta_keys[name] = key;
     }
@@ -3503,6 +3515,10 @@ PYBIND11_MODULE(_madspace_py, m) {
             {"color_correlated_out", MatrixElement::color_correlated_out},
             {"spin_correlated_out", MatrixElement::spin_correlated_out},
             {"loop_out", MatrixElement::loop_out},
+            {"ew_sudakov_diagonal_out", MatrixElement::ew_sudakov_diagonal_out},
+            {"ew_sudakov_lo2_out", MatrixElement::ew_sudakov_lo2_out},
+            {"ew_sudakov_derivatives_out", MatrixElement::ew_sudakov_derivatives_out},
+            {"ew_sudakov_interference_out", MatrixElement::ew_sudakov_interference_out},
         }
     );
     matrix_element
@@ -3518,6 +3534,8 @@ PYBIND11_MODULE(_madspace_py, m) {
                 std::size_t,
                 me_int_t,
                 std::size_t,
+                std::size_t,
+                std::size_t,
                 std::size_t>(),
             py::arg("matrix_element_index"),
             py::arg("particle_count"),
@@ -3532,6 +3550,8 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("channel") = -1,
             py::arg("squared_order_count") = 1,
             py::arg("color_pair_count") = 0,
+            py::arg("helicity_count") = 0,
+            py::arg("interference_count") = 0,
             pydoc::doc("MatrixElement::MatrixElement")
         )
         .def(
@@ -3576,6 +3596,16 @@ PYBIND11_MODULE(_madspace_py, m) {
             "color_pair_count",
             &MatrixElement::color_pair_count,
             pydoc::doc("MatrixElement::color_pair_count")
+        )
+        .def(
+            "helicity_count",
+            &MatrixElement::helicity_count,
+            pydoc::doc("MatrixElement::helicity_count")
+        )
+        .def(
+            "interference_count",
+            &MatrixElement::interference_count,
+            pydoc::doc("MatrixElement::interference_count")
         )
         .def("inputs", &MatrixElement::inputs, pydoc::doc("MatrixElement::inputs"))
         .def("outputs", &MatrixElement::outputs, pydoc::doc("MatrixElement::outputs"))
@@ -4757,7 +4787,10 @@ PYBIND11_MODULE(_madspace_py, m) {
                 const std::optional<CustomFunction>&,
                 const std::vector<MatrixElement>&,
                 const std::vector<me_int_t>&,
-                const std::vector<me_int_t>&>(),
+                const std::vector<me_int_t>&,
+                const std::optional<EWSudakov>&,
+                const std::optional<MatrixElement>&,
+                double>(),
             py::arg("kinematics"),
             py::arg("kernels"),
             py::arg("cuts"),
@@ -4779,6 +4812,9 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("extras") = std::vector<MatrixElement>{},
             py::arg("extra_indices") = std::vector<me_int_t>{},
             py::arg("extra_spin_legs") = std::vector<me_int_t>{},
+            py::arg("ew_sudakov") = std::nullopt,
+            py::arg("ew_sudakov_blocks") = std::nullopt,
+            py::arg("ew_sudakov_factor") = 1.,
             pydoc::doc("FKSChannelIntegrand::FKSChannelIntegrand")
         )
         .def(

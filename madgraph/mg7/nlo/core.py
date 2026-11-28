@@ -1503,12 +1503,6 @@ class NLORun:
                         f"the event generator of madspace does not run the "
                         f"{self.scheme} integrands yet"
                     )
-                if getattr(integrand, "ew_sudakov", None) is not None:
-                    # its blocks have no UMAMI outputs yet, so that the C++
-                    # integrand cannot ask for them
-                    raise NotImplementedError(
-                        "nlo.core: EW Sudakov runs without the generator"
-                    )
             self.write_status("survey")
             config = ms.GeneratorConfig()
             config.cpu_batch_size = self.batch

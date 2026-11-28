@@ -43,7 +43,9 @@ MatrixElement::MatrixElement(
     std::size_t incoming_count,
     me_int_t channel,
     std::size_t squared_order_count,
-    std::size_t color_pair_count
+    std::size_t color_pair_count,
+    std::size_t helicity_count,
+    std::size_t interference_count
 ) :
     FunctionGenerator(
         "MatrixElement",
@@ -210,6 +212,38 @@ MatrixElement::MatrixElement(
                         )
                     );
                     break;
+                case ew_sudakov_diagonal_out:
+                    ret_types.push_back(
+                        "ew_sudakov_diagonal", batch_float_array(helicity_count)
+                    );
+                    break;
+                case ew_sudakov_lo2_out:
+                    ret_types.push_back(
+                        "ew_sudakov_lo2", batch_float_array(helicity_count)
+                    );
+                    break;
+                case ew_sudakov_derivatives_out:
+                    ret_types.push_back(
+                        "ew_sudakov_derivatives",
+                        Type(
+                            DataType::dt_float64,
+                            batch_size,
+                            {static_cast<int>(helicity_count), 6}
+                        )
+                    );
+                    break;
+                case ew_sudakov_interference_out:
+                    ret_types.push_back(
+                        "ew_sudakov_interference",
+                        Type(
+                            DataType::dt_float64,
+                            batch_size,
+                            {static_cast<int>(helicity_count),
+                             static_cast<int>(interference_count),
+                             2}
+                        )
+                    );
+                    break;
                 default:
                     throw std::invalid_argument("unknown output type");
                 }
@@ -224,6 +258,8 @@ MatrixElement::MatrixElement(
     _diagram_count(diagram_count),
     _squared_order_count(squared_order_count),
     _color_pair_count(color_pair_count),
+    _helicity_count(helicity_count),
+    _interference_count(interference_count),
     _sample_random_inputs(sample_random_inputs),
     _channel(channel),
     _frame_mask(
@@ -270,6 +306,17 @@ MatrixElement::MatrixElement(
     if (has_output(color_correlated_out) && color_pair_count == 0) {
         throw std::invalid_argument(
             "the colour-correlated output needs at least two coloured legs"
+        );
+    }
+    if (has_ew_sudakov_output(outputs) && helicity_count == 0) {
+        throw std::invalid_argument(
+            "the outputs of the EW Sudakov approximation need helicity combinations"
+        );
+    }
+    if (has_output(ew_sudakov_interference_out) && interference_count == 0) {
+        throw std::invalid_argument(
+            "the interferences of the EW Sudakov approximation need interference "
+            "amplitudes"
         );
     }
     if (!_frame_mask.empty() &&
@@ -457,14 +504,35 @@ NamedVector<Value> MatrixElement::build_function_impl(
             output_key = UMAMI_OUT_LOOP;
             size_arg = _squared_order_count;
             break;
+        case ew_sudakov_diagonal_out:
+            output_key = UMAMI_OUT_EW_SUDAKOV_DIAGONAL;
+            size_arg = _helicity_count;
+            break;
+        case ew_sudakov_lo2_out:
+            output_key = UMAMI_OUT_EW_SUDAKOV_LO2;
+            size_arg = _helicity_count;
+            break;
+        case ew_sudakov_derivatives_out:
+            output_key = UMAMI_OUT_EW_SUDAKOV_DERIVATIVES;
+            size_arg = _helicity_count;
+            break;
+        case ew_sudakov_interference_out:
+            output_key = UMAMI_OUT_EW_SUDAKOV_INTERFERENCE;
+            size_arg = _helicity_count;
+            break;
         }
         matrix_args.push_back(static_cast<me_int_t>(output_key));
         matrix_args.push_back(size_arg);
     }
-    // the number of colour pairs, after all other arguments
+    // the number of colour pairs, then that of the interferences, after all
+    // other arguments
     if (std::find(_outputs.begin(), _outputs.end(), color_correlated_out) !=
         _outputs.end()) {
         matrix_args.push_back(static_cast<me_int_t>(_color_pair_count));
+    }
+    if (std::find(_outputs.begin(), _outputs.end(), ew_sudakov_interference_out) !=
+        _outputs.end()) {
+        matrix_args.push_back(static_cast<me_int_t>(_interference_count));
     }
     return {return_types().keys(), fb.matrix_element(matrix_args)};
 }

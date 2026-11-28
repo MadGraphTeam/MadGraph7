@@ -2,8 +2,9 @@
 PythonFunction: the outputs per squared coupling order (squared_orders,
 color_correlated over the pairs of coloured legs, spin_correlated, loop), the
 inputs of the spin correlation (spin_legs, spin_vectors) and the electroweak
-coupling (g_ew), and the counts and colour representations a PythonFunction
-reports as metadata.
+coupling (g_ew), the outputs of the Sudakov approximation of the EW
+corrections per helicity combination, and the counts and colour
+representations a PythonFunction reports as metadata.
 The function of the tests returns known arrays of its inputs, on several
 threads, so that the strides and offsets of the batch are those of the
 runtime."""
@@ -256,3 +257,116 @@ def test_wrong_shape(context, inputs):
     element = ms.MatrixElement(api, ME_INPUTS, ME_OUTPUTS)
     with pytest.raises(RuntimeError, match="spin_correlated"):
         ms.FunctionRuntime(element.function(), context)(*inputs)
+
+
+# the helicity combinations and interference amplitudes of the outputs of the
+# Sudakov approximation of the EW corrections
+HELICITIES = 3
+INTERFERENCES = 2
+SUDAKOV_OUTPUTS = [
+    "ew_sudakov_diagonal",
+    "ew_sudakov_lo2",
+    "ew_sudakov_derivatives",
+    "ew_sudakov_interference",
+]
+
+
+def sudakov_expected(momenta, alpha_s, g_ew):
+    h = np.arange(HELICITIES)
+    base = (momenta[:, 0, 0] * alpha_s * g_ew)[:, None]
+    diagonal = (h + 1) * base
+    lo2 = (h + 2) * base
+    derivatives = diagonal[:, :, None] * np.arange(1, 7)
+    interference = (
+        diagonal[:, :, None, None]
+        + 10.0 * np.arange(INTERFERENCES)[None, None, :, None]
+        + 100.0 * np.arange(2)
+    )
+    return dict(
+        ew_sudakov_diagonal=diagonal,
+        ew_sudakov_lo2=lo2,
+        ew_sudakov_derivatives=derivatives,
+        ew_sudakov_interference=interference,
+    )
+
+
+def test_ew_sudakov_outputs(context, inputs):
+    """The outputs of the Sudakov approximation per helicity combination,
+    with the helicity and interference counts of the metadata, also through
+    the constructor with the counts as arguments, and their errors."""
+    momenta, alpha_s, *_, g_ew = inputs
+
+    def blocks(p, a, g):
+        values = sudakov_expected(np.asarray(p), np.asarray(a), np.asarray(g))
+        return tuple(np.ascontiguousarray(values[key]) for key in SUDAKOV_OUTPUTS)
+
+    api = context.add_matrix_element(
+        ms.PythonFunction(
+            blocks,
+            ["momenta", "alpha_s", "g_ew"],
+            SUDAKOV_OUTPUTS,
+            particle_count=PARTICLES,
+            helicity_count=HELICITIES,
+            interference_count=INTERFERENCES,
+        )
+    )
+    assert api.helicity_count() == HELICITIES
+    assert api.ew_sudakov_interference_count() == INTERFERENCES
+    element_inputs = [
+        ms.MatrixElement.momenta_in,
+        ms.MatrixElement.alpha_s_in,
+        ms.MatrixElement.g_ew_in,
+    ]
+    element_outputs = [
+        ms.MatrixElement.ew_sudakov_diagonal_out,
+        ms.MatrixElement.ew_sudakov_lo2_out,
+        ms.MatrixElement.ew_sudakov_derivatives_out,
+        ms.MatrixElement.ew_sudakov_interference_out,
+    ]
+    reference = sudakov_expected(momenta, alpha_s, g_ew)
+    for element in (
+        ms.MatrixElement(api, element_inputs, element_outputs),
+        ms.MatrixElement(
+            api.index(),
+            PARTICLES,
+            element_inputs,
+            element_outputs,
+            helicity_count=HELICITIES,
+            interference_count=INTERFERENCES,
+        ),
+    ):
+        assert element.helicity_count() == HELICITIES
+        assert element.interference_count() == INTERFERENCES
+        assert list(element.return_types().keys()) == SUDAKOV_OUTPUTS
+        outputs = ms.FunctionRuntime(element.function(), context)(
+            momenta, alpha_s, g_ew
+        )
+        for key, value in zip(SUDAKOV_OUTPUTS, outputs):
+            value = np.asarray(value)
+            assert value.shape == reference[key].shape, key
+            np.testing.assert_array_equal(value, reference[key], err_msg=key)
+    # the counts of a library without them
+    plain = context.add_matrix_element(toy_function())
+    assert plain.ew_sudakov_interference_count() == 0
+    with pytest.raises(ValueError, match="needs helicity_count"):
+        ms.PythonFunction(
+            blocks, ["momenta"], ["ew_sudakov_diagonal"], particle_count=PARTICLES
+        )
+    with pytest.raises(ValueError, match="needs interference_count"):
+        ms.PythonFunction(
+            blocks,
+            ["momenta"],
+            ["ew_sudakov_interference"],
+            particle_count=PARTICLES,
+            helicity_count=HELICITIES,
+        )
+    with pytest.raises(ValueError, match="need helicity combinations"):
+        ms.MatrixElement(api.index(), PARTICLES, element_inputs, element_outputs[:1])
+    with pytest.raises(ValueError, match="need interference amplitudes"):
+        ms.MatrixElement(
+            api.index(),
+            PARTICLES,
+            element_inputs,
+            element_outputs[3:],
+            helicity_count=HELICITIES,
+        )

@@ -83,6 +83,10 @@ typedef enum {
      * representation other than 1 are the coloured legs of
      * `UMAMI_OUT_COLOR_CORRELATED` (provisional) */
     UMAMI_META_COLOR_REPRESENTATIONS,
+    /** `int` specifying the number of interference amplitudes of the Sudakov
+     * approximation of the EW corrections, of `UMAMI_OUT_EW_SUDAKOV_INTERFERENCE`
+     * (provisional) */
+    UMAMI_META_EW_SUDAKOV_INTERFERENCE_COUNT,
 } UmamiMetaKey;
 
 typedef enum {
@@ -208,10 +212,38 @@ typedef enum {
      * the renormalization scale `UMAMI_IN_SCALE`, type: `double`, shape:
      * `(squared-order count, 3)` */
     UMAMI_OUT_LOOP,
+    /* Provisional keys of the Sudakov approximation of the EW corrections
+     * (Denner and Pozzorini, as ewsudakov_wrapper.f of MadGraph), the blocks of
+     * the Born it takes per helicity combination of `UMAMI_META_HELICITY_COUNT`,
+     * averaged and with the identical-particle factor of the Born, at the
+     * couplings of `UMAMI_IN_ALPHA_S` and `UMAMI_IN_G_EW`, in the
+     * center-of-mass frame of the incoming particles. The base amplitude of a
+     * helicity combination is the Born, or the Goldstone amplitude where its
+     * longitudinal W and Z bosons are replaced by their Goldstone bosons. LO1
+     * and LO2 are the coupling orders of the Born that the approximation takes
+     * (the leading one and that with two powers of the strong coupling more). */
+    /** |M_h|^2 of the base amplitude of each helicity combination at the LO1,
+     * type: `double`, shape: `(helicity count)` */
+    UMAMI_OUT_EW_SUDAKOV_DIAGONAL,
+    /** the same at the LO2, type: `double`, shape: `(helicity count)` */
+    UMAMI_OUT_EW_SUDAKOV_LO2,
+    /** the derivatives of `UMAMI_OUT_EW_SUDAKOV_DIAGONAL` with respect to the
+     * parameters of its parameter renormalization: 1/alpha or the Fermi
+     * constant (by the scheme of the EW input parameters), M_Z, M_W, m_t with
+     * the Yukawa coupling, M_H and the tadpole switch, type: `double`, shape:
+     * `(helicity count, 6)` */
+    UMAMI_OUT_EW_SUDAKOV_DERIVATIVES,
+    /** the interferences M'_t M_h^* of the base amplitude of each helicity
+     * combination with the interference amplitudes t of its base, at momenta
+     * reshuffled to the masses of the replaced particles, at the LO1, zero for
+     * the interferences of another base amplitude, real and imaginary part,
+     * type: `double`, shape: `(helicity count, interference count, 2)` with the
+     * interference count of `UMAMI_META_EW_SUDAKOV_INTERFERENCE_COUNT` */
+    UMAMI_OUT_EW_SUDAKOV_INTERFERENCE,
 } UmamiOutputKey;
 
 /** Number of values in `UmamiOutputKey` */
-#define UMAMI_OUTPUT_KEY_COUNT (UMAMI_OUT_LOOP + 1)
+#define UMAMI_OUTPUT_KEY_COUNT (UMAMI_OUT_EW_SUDAKOV_INTERFERENCE + 1)
 
 /** Implementation-defined pointer to a matrix element instance */
 typedef void* UmamiHandle;

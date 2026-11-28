@@ -7,6 +7,7 @@
 
 #include "madspace/nlo/common.hpp"
 #include "madspace/nlo/cuts.hpp"
+#include "madspace/nlo/ew_sudakov.hpp"
 #include "madspace/nlo/fks_histograms.hpp"
 #include "madspace/nlo/fks_limits.hpp"
 #include "madspace/nlo/fks_mapping.hpp"
@@ -85,7 +86,13 @@ namespace madspace {
  * Born and its correlated versions per Born input and the QED coupling of the
  * counterterms (tagged_factors of madgraph/mg7/nlo/provider.py).
  *
- * The Sudakov approximation of the EW corrections is not covered yet.
+ * With the Sudakov approximation of the EW corrections (@ref EWSudakov),
+ * its blocks per helicity combination of the Born (the outputs
+ * `ew_sudakov_diagonal`, `ew_sudakov_lo2`, `ew_sudakov_derivatives` and
+ * `ew_sudakov_interference` of their library) at the Born where it is
+ * evaluated, which @ref EWSudakov turns into the correction of each mode at
+ * the renormalization scale of the Born, times a factor (that of tagged
+ * photons), the input `ew_sudakov` of @ref FKSCrossSection.
  *
  * `batch` is the leading batch dimension, `b` the number of Born orders and
  * `o` the number of NLO orders.
@@ -176,8 +183,17 @@ public:
      * @param extra_spin_legs Per FKS configuration with an extra counterterm
      *                        the Born leg of its mother, from 0, -1 for the
      *                        others. Empty for none.
+     * @param ew_sudakov      The Sudakov approximation of the EW corrections
+     *                        of the Born, for a cross section that takes it.
+     * @param ew_sudakov_blocks Its library: inputs `momenta_in`, `alpha_s_in`,
+     *                        `g_ew_in`, outputs `ew_sudakov_diagonal_out`,
+     *                        `ew_sudakov_lo2_out`, `ew_sudakov_derivatives_out`
+     *                        and `ew_sudakov_interference_out`.
+     * @param ew_sudakov_factor The factor of its correction (of the couplings of
+     *                        tagged photons at its order).
      * @throws std::invalid_argument if the pieces do not fit together, the
-     *         cross section takes the Sudakov approximation, the scales take
+     *         cross section takes the Sudakov approximation without it or the
+     *         library of its blocks, the scales take
      *         the scale of the user without @p reference_scale, the extra
      *         counterterms do not give the Born inputs of the cross section, a
      *         table has another length than the configurations or the Born
@@ -205,7 +221,10 @@ public:
         const std::optional<CustomFunction>& reference_scale = std::nullopt,
         const std::vector<MatrixElement>& extras = {},
         const std::vector<me_int_t>& extra_indices = {},
-        const std::vector<me_int_t>& extra_spin_legs = {}
+        const std::vector<me_int_t>& extra_spin_legs = {},
+        const std::optional<EWSudakov>& ew_sudakov = std::nullopt,
+        const std::optional<MatrixElement>& ew_sudakov_blocks = std::nullopt,
+        double ew_sudakov_factor = 1.
     );
     /// Number of FKS configurations.
     std::size_t configuration_count() const { return _real_indices.size(); }
@@ -246,6 +265,9 @@ private:
     // per extra counterterm one where a configuration has it, zero elsewhere
     std::vector<std::vector<double>> _extra_tables;
     std::vector<me_int_t> _extra_spin_legs;
+    std::optional<EWSudakov> _ew_sudakov;
+    std::optional<MatrixElement> _ew_sudakov_blocks;
+    double _ew_sudakov_factor;
     std::size_t _born_orders, _nlo_orders, _born_particles, _born_inputs;
 };
 

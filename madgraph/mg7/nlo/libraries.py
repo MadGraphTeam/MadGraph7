@@ -31,6 +31,13 @@ on the side of the caller.
   for a CustomFunction of type scale.
 - born_plain and born_scale: the Born without the spin inputs and output and
   the reference scale at the Born, for the n-body stream of Catani-Seymour.
+- ew_sudakov: with --ewsudakov, the blocks of the Sudakov approximation of
+  the EW corrections per helicity combination of the Born (the provisional
+  ew_sudakov outputs of umami.h): the base amplitude squared at the LO1 and
+  the LO2, its derivatives with respect to the six parameters of its
+  parameter renormalization and its interferences with the interference
+  amplitudes, as FortranProvider.ew_sudakov gives them. None without
+  --ewsudakov. Its blocks carry e of the model, so it takes g_ew = e only.
 
 The provider gives its blocks at g_s = 1, so the libraries take alpha_s =
 1 / (4 pi) and refuse other strong couplings. Its blocks carry e of the model,
@@ -228,6 +235,24 @@ class ProviderLibraries:
             particle_count=n,
             name=f"reference scale at the Born of {self.name}",
         )
+        # the blocks of the Sudakov approximation of the EW corrections
+        self.ew_sudakov = None
+        info = provider.ew_sudakov_info()
+        if info is not None:
+            self.ew_sudakov = PythonFunction(
+                self._ew_sudakov,
+                ["momenta", "alpha_s", "g_ew"],
+                [
+                    "ew_sudakov_diagonal",
+                    "ew_sudakov_lo2",
+                    "ew_sudakov_derivatives",
+                    "ew_sudakov_interference",
+                ],
+                particle_count=n,
+                helicity_count=info["helicity_count"],
+                interference_count=max(info["interference_count"], 1),
+                name=f"EW Sudakov blocks of {self.name}",
+            )
 
     def real_indices(self):
         """Per FKS configuration its real matrix element, an index of
@@ -265,7 +290,8 @@ class ProviderLibraries:
         """The MatrixElementApi of the libraries in context: born, reals (a
         list by real matrix element), loop, extras (a list by extra
         counterterm), scale, born_plain (the Born without the spin inputs and
-        output) and born_scale (the reference scale at the Born)."""
+        output), born_scale (the reference scale at the Born) and ew_sudakov
+        (None without --ewsudakov)."""
         return dict(
             born=context.add_matrix_element(self.born),
             reals=[context.add_matrix_element(real) for real in self.reals],
@@ -274,6 +300,11 @@ class ProviderLibraries:
             scale=context.add_matrix_element(self.scale),
             born_plain=context.add_matrix_element(self.born_plain),
             born_scale=context.add_matrix_element(self.born_scale),
+            ew_sudakov=(
+                None
+                if self.ew_sudakov is None
+                else context.add_matrix_element(self.ew_sudakov)
+            ),
         )
 
     def _e_factors(self, g_ew, kind, name):
@@ -420,6 +451,29 @@ class ProviderLibraries:
             scale = self.provider.reference_scales(np.asarray(momenta))
         scale = np.ascontiguousarray(scale)
         return scale, scale, scale
+
+    def _ew_sudakov(self, momenta, alpha_s, g_ew):
+        provider = self.provider
+        name = self.ew_sudakov.name
+        check_coupling(alpha_s, name)
+        if not np.all(np.asarray(g_ew) == self.e):
+            raise ValueError(f"{name}: the blocks take g_ew = e of the model only")
+        momenta, _ = partonic_frame(np.asarray(momenta), provider.incoming)
+        # the blocks of the Born, at configuration 0 (their identical-particle
+        # factor is that of their base amplitude)
+        with self.lock:
+            blocks = provider.ew_sudakov(momenta, np.zeros(len(momenta), dtype=int))
+        count, h = blocks["diagonal"].shape
+        interference = np.zeros((count, h, self.ew_sudakov.interference_count, 2))
+        t = blocks["interference"].shape[2]
+        interference[:, :, :t, 0] = blocks["interference"].real
+        interference[:, :, :t, 1] = blocks["interference"].imag
+        return (
+            np.ascontiguousarray(blocks["diagonal"]),
+            np.ascontiguousarray(blocks["lo2"]),
+            np.ascontiguousarray(blocks["derivatives"]),
+            interference,
+        )
 
     def _loop(self, momenta, alpha_s, g_ew, scale):
         provider = self.provider

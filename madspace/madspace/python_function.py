@@ -35,8 +35,9 @@ _INPUT_SHAPES = {
     "g_ew": (DataType.float64, ()),
 }
 # output name: (data type, shape after the batch dimension); "n" is the particle
-# count, "d" the diagram count, "o" the squared-order count and "p" the number of
-# pairs of coloured legs
+# count, "d" the diagram count, "o" the squared-order count, "p" the number of
+# pairs of coloured legs, "h" the helicity count and "t" the number of
+# interference amplitudes of the Sudakov approximation of the EW corrections
 _OUTPUT_SHAPES = {
     "matrix_element": (DataType.float64, ()),
     "diagram_amp2": (DataType.float64, ("d",)),
@@ -55,6 +56,10 @@ _OUTPUT_SHAPES = {
     "color_correlated": (DataType.float64, ("o", "p")),
     "spin_correlated": (DataType.float64, ("o",)),
     "loop": (DataType.float64, ("o", 3)),
+    "ew_sudakov_diagonal": (DataType.float64, ("h",)),
+    "ew_sudakov_lo2": (DataType.float64, ("h",)),
+    "ew_sudakov_derivatives": (DataType.float64, ("h", 6)),
+    "ew_sudakov_interference": (DataType.float64, ("h", "t", 2)),
 }
 
 
@@ -76,7 +81,11 @@ class PythonFunction:
     ``squared_orders`` and ``spin_correlated`` ``(batch, o)``,
     ``color_correlated`` ``(batch, o, p)`` and ``loop`` ``(batch, o, 3)``, with
     ``o`` the ``squared_order_count`` and ``p`` the number of pairs i < j of the
-    coloured legs, flattened as in umami.h.
+    coloured legs, flattened as in umami.h, and for the provisional outputs of
+    the Sudakov approximation of the EW corrections ``ew_sudakov_diagonal`` and
+    ``ew_sudakov_lo2`` ``(batch, h)``, ``ew_sudakov_derivatives`` ``(batch, h,
+    6)`` and ``ew_sudakov_interference`` ``(batch, h, t, 2)``, with ``h`` the
+    ``helicity_count`` and ``t`` the ``interference_count``.
 
     The arrays are views of madspace's buffers on the device of the context, so they
     must not be kept after the call. numpy functions only run on the CPU, torch
@@ -100,6 +109,10 @@ class PythonFunction:
             -3 or 8, all taken as outgoing), whose legs other than 1 are the
             coloured legs of ``color_correlated``. Needs ``particle_count`` and
             is reported as metadata.
+        helicity_count: The number of helicity combinations of the outputs of
+            the EW Sudakov approximation, also reported as metadata.
+        interference_count: The number of interference amplitudes of
+            ``ew_sudakov_interference``, also reported as metadata.
         parameters: Names and default values of parameters set through
             ``umami_set_parameter``, e.g. the ``parameters`` argument of
             ``Context.add_matrix_element``. With parameters, ``function`` gets a
@@ -118,6 +131,8 @@ class PythonFunction:
         diagram_count=None,
         squared_order_count=None,
         color_representations=None,
+        helicity_count=None,
+        interference_count=None,
     ):
         if framework not in ("numpy", "torch"):
             raise ValueError(f"framework must be 'numpy' or 'torch', not {framework!r}")
@@ -142,9 +157,19 @@ class PythonFunction:
             color_pairs = colored * (colored - 1) // 2
         else:
             color_pairs = None
-        sizes = dict(d=diagram_count, o=squared_order_count, p=color_pairs)
+        sizes = dict(
+            d=diagram_count,
+            o=squared_order_count,
+            p=color_pairs,
+            h=helicity_count,
+            t=interference_count,
+        )
         names = dict(
-            d="diagram_count", o="squared_order_count", p="color_representations"
+            d="diagram_count",
+            o="squared_order_count",
+            p="color_representations",
+            h="helicity_count",
+            t="interference_count",
         )
         for key in outputs:
             for size in _OUTPUT_SHAPES[key][1]:
@@ -161,6 +186,8 @@ class PythonFunction:
         self.squared_order_count = squared_order_count
         self.color_representations = color_representations
         self.color_pair_count = color_pairs
+        self.helicity_count = helicity_count
+        self.interference_count = interference_count
         self.name = name or getattr(function, "__name__", "python_function")
         self.parameters = (
             None
@@ -178,6 +205,8 @@ class PythonFunction:
                 ("particle_count", particle_count),
                 ("diagram_count", diagram_count),
                 ("squared_order_count", squared_order_count),
+                ("helicity_count", helicity_count),
+                ("ew_sudakov_interference_count", interference_count),
             )
             if value is not None
         }
@@ -218,6 +247,8 @@ class PythonFunction:
             d=self.diagram_count,
             o=self.squared_order_count,
             p=self.color_pair_count,
+            h=self.helicity_count,
+            t=self.interference_count,
         )
         return [sizes.get(size, size) for size in _OUTPUT_SHAPES[key][1]]
 

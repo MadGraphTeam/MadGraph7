@@ -902,18 +902,23 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
     std::size_t output_count = int_literal_arg(args, 2);
     std::size_t expected_arg_count = 3 + 2 * input_count + 2 * output_count;
     // the colour-correlated output takes the number of its colour pairs as one
-    // more argument, after all the others
-    std::optional<std::size_t> color_pairs_index;
+    // more argument after all the others, and then the interference output of
+    // the Sudakov approximation the number of its interferences
+    std::optional<std::size_t> color_pairs_index, interference_count_index;
+    bool color_output = false, interference_output = false;
     if (arg_count >= expected_arg_count) {
         for (std::size_t i = 0; i < output_count; ++i) {
             std::size_t key_index = 3 + 2 * input_count + 2 * i;
-            if (int_literal_arg(args, key_index) == UMAMI_OUT_COLOR_CORRELATED) {
-                color_pairs_index = expected_arg_count;
-            }
+            auto key = int_literal_arg(args, key_index);
+            color_output |= key == UMAMI_OUT_COLOR_CORRELATED;
+            interference_output |= key == UMAMI_OUT_EW_SUDAKOV_INTERFERENCE;
         }
     }
-    if (color_pairs_index) {
-        ++expected_arg_count;
+    if (color_output) {
+        color_pairs_index = expected_arg_count++;
+    }
+    if (interference_output) {
+        interference_count_index = expected_arg_count++;
     }
     if (arg_count != expected_arg_count) {
         throw std::invalid_argument(
@@ -1072,6 +1077,25 @@ TypeVec MatrixElementInstruction::signature(const ValueVec& args) const {
         case UMAMI_OUT_LOOP:
             dtype = DataType::dt_float64;
             shape = {output_size, 3};
+            break;
+        case UMAMI_OUT_EW_SUDAKOV_DIAGONAL:
+        case UMAMI_OUT_EW_SUDAKOV_LO2:
+            dtype = DataType::dt_float64;
+            shape = {output_size};
+            break;
+        case UMAMI_OUT_EW_SUDAKOV_DERIVATIVES:
+            dtype = DataType::dt_float64;
+            shape = {output_size, 6};
+            break;
+        case UMAMI_OUT_EW_SUDAKOV_INTERFERENCE:
+            dtype = DataType::dt_float64;
+            shape = {
+                output_size,
+                static_cast<int>(
+                    int_literal_arg(args, *interference_count_index, true)
+                ),
+                2
+            };
             break;
         case UMAMI_OUT_COLOR_INDEX:
         case UMAMI_OUT_HELICITY_INDEX:

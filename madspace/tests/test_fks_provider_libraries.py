@@ -12,7 +12,8 @@ correlation of a gluon or photon mother with k_perp also to that of the
 square of the transverse part of k_perp (one), and the virtual, which takes
 no configuration, bit for bit. The colour correlations come as the pairs of
 coloured Born legs, and the coupling g_ew = e of the model gives the blocks as
-the provider has them, g_ew = 1 without e.
+the provider has them, g_ew = 1 without e. The blocks of the Sudakov
+approximation of the EW corrections agree bit for bit.
 
 The runs are those of test_fks_cross_section.py, set up and not run, on the
 aMC@NLO outputs of MADSPACE_FKS_OUTPUTS.
@@ -306,6 +307,68 @@ def test_extra_counterterm_library(context):
         assert np.abs(plain[:, b:]).max() > 0
         assert_close(ours[0], plain[:, b:], RTOL)
         assert_close(ours[1], perp[:, b:], RTOL)
+
+
+def test_ew_sudakov_library(context):
+    """With --ewsudakov the library of the blocks of the Sudakov
+    approximation gives those of the provider per helicity combination at the
+    Born, the interferences as real and imaginary parts, at g_ew = e only, and
+    without --ewsudakov there is none."""
+    with fks_setup("epem_ttx_sdk") as run:
+        integrand = run.integrands[0]
+        provider = integrand.provider
+        libraries = ProviderLibraries(provider, integrand.name)
+        apis = libraries.add_to(context)
+        info = provider.ew_sudakov_info()
+        assert apis["ew_sudakov"].helicity_count() == info["helicity_count"]
+        assert apis["ew_sudakov"].ew_sudakov_interference_count() == max(
+            info["interference_count"], 1
+        )
+        rng = np.random.default_rng(9)
+        out, _, _, _ = kinematics(integrand, rng)
+        valid = np.flatnonzero(np.asarray(out["born_weight"]) != 0)
+        born = np.asarray(out["born_momenta"])[valid]
+        count = len(valid)
+        outputs = [
+            ME.ew_sudakov_diagonal_out,
+            ME.ew_sudakov_lo2_out,
+            ME.ew_sudakov_derivatives_out,
+            ME.ew_sudakov_interference_out,
+        ]
+        inputs = [ME.momenta_in, ME.alpha_s_in, ME.g_ew_in]
+        ours = call(
+            context,
+            apis["ew_sudakov"],
+            inputs,
+            outputs,
+            born,
+            np.full(count, ALPHA_S),
+            np.full(count, libraries.e),
+        )
+        partonic, _ = partonic_frame(born, provider.incoming)
+        theirs = provider.ew_sudakov(partonic, np.zeros(count, dtype=int))
+        assert np.abs(theirs["diagonal"]).max() > 0
+        assert_close(ours[0], theirs["diagonal"])
+        assert_close(ours[1], theirs["lo2"])
+        assert_close(ours[2], theirs["derivatives"])
+        t = theirs["interference"].shape[2]
+        assert_close(ours[3][:, :, :t, 0], theirs["interference"].real)
+        assert_close(ours[3][:, :, :t, 1], theirs["interference"].imag)
+        with pytest.raises(RuntimeError, match="g_ew = e"):
+            call(
+                context,
+                apis["ew_sudakov"],
+                inputs,
+                outputs,
+                born,
+                np.full(count, ALPHA_S),
+                np.ones(count),
+            )
+    with fks_setup("pp_epem") as run:
+        integrand = run.integrands[0]
+        libraries = ProviderLibraries(integrand.provider, integrand.name)
+        assert libraries.ew_sudakov is None
+        assert libraries.add_to(context)["ew_sudakov"] is None
 
 
 def test_scale_library(context):

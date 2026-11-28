@@ -12,8 +12,8 @@ takes C_m B on the diagonal of the colour matrix where the driver takes
 minus the sum of the row (colour conservation). So the weights agree to the
 rounding of their parts: per point to RTOL of the sum of the absolute
 weights of the event, its counter-events and the n-body part (at most
-1.3e-15 of it on these references). The scale and PDF variations agree in
-the same way.
+1.3e-15 of it on these references). The scale and PDF variations and the
+Sudakov approximation of the EW corrections agree in the same way.
 
 The runs are those of test_fks_cross_section.py, set up and not run, on the
 aMC@NLO outputs of MADSPACE_FKS_OUTPUTS.
@@ -38,7 +38,8 @@ DATA = os.path.join(os.path.dirname(__file__), "test_data", "fks_cross_section")
 # initial- and final-state gluons, QED corrections, tagged photons, a 2 > 1
 # process, decays with a massive and a massless b, dressed leptons with ISR
 # and beamstrahlung, elastic photons, a jet against the incoming partons,
-# isolated photons, scale and PDF variations
+# isolated photons, scale and PDF variations, the Sudakov approximation of
+# the EW corrections
 NAMES = [
     "pp_ttx",
     "epem_jjj",
@@ -54,6 +55,7 @@ NAMES = [
     "pp_epemj",
     "pp_aa",
     "pp_epem_rw",
+    "epem_ttx_sdk",
 ]
 POINTS = 160
 FRACTION = 0.6
@@ -106,8 +108,6 @@ def compare_with_driver(run):
     of a run."""
     checked = 0
     for integrand in run.integrands:
-        if integrand.ew_sudakov is not None:
-            pytest.skip("no Sudakov approximation yet")
         rng = np.random.default_rng(23)
         for channel in range(min(integrand.channel_count, 2)):
             function = integrand.channel_integrand(channel, run.context)
@@ -159,9 +159,11 @@ def compare_with_driver(run):
                 ours["virtual_residual"], theirs["residual"], scale, "residual"
             )
             outputs = theirs["outputs"]
-            for name in ("scale_variations", "pdf_variations"):
+            for name in ("scale_variations", "pdf_variations", "ew_sudakov_weights"):
                 if name in outputs:
                     assert_weights(ours[name], outputs[name], scale, name)
+            if integrand.ew_sudakov is not None:
+                assert np.abs(outputs["ew_sudakov_weights"]).max() > 0
             born_scale = np.abs(theirs["born"]).max(axis=1) + 1e-300
             assert_weights(ours["born"], theirs["born"], born_scale, "born")
             np.testing.assert_array_equal(ours["virtual"], theirs["virtual"])

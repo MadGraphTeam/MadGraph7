@@ -51,6 +51,15 @@ namespace madspace {
  *   replaced by `spin_vectors`; `loop` – `float`, shape `(batch, o, 3)` – the
  *   finite part and the coefficients of 1/eps and 1/eps^2 of the one-loop
  *   matrix element at the scale `scale`.
+ * - the blocks of the Sudakov approximation of the EW corrections per
+ *   helicity combination `h` of the Born (provisional UMAMI keys, see
+ *   umami.h): `ew_sudakov_diagonal` and `ew_sudakov_lo2` – `float`, shape
+ *   `(batch, h)` – the base amplitude squared at the LO1 and the LO2;
+ *   `ew_sudakov_derivatives` – `float`, shape `(batch, h, 6)` – the
+ *   derivatives of the first with respect to the parameters of its parameter
+ *   renormalization; `ew_sudakov_interference` – `float`, shape
+ *   `(batch, h, interference_count, 2)` – the interferences with the
+ *   interference amplitudes, real and imaginary part.
  *
  * **References**
  * - [1] S. Hageböck et al., "Data-parallel leading-order event generation in
@@ -101,11 +110,22 @@ public:
         /// Ratio of the matrix element to a reference matrix element, for a
         /// @ref WeightingStep.
         matrix_element_ratio_out,
-        flavor_index_out, ///< Selected flavour, -1 if unchanged.
+        flavor_index_out,     ///< Selected flavour, -1 if unchanged.
         squared_orders_out,   ///< Matrix element per squared order (provisional).
         color_correlated_out, ///< Colour-correlated matrix element (provisional).
         spin_correlated_out,  ///< Spin-correlated matrix element (provisional).
-        loop_out              ///< One-loop matrix element (provisional).
+        loop_out,             ///< One-loop matrix element (provisional).
+        /// Base amplitudes squared of the EW Sudakov approximation at the LO1
+        /// per helicity combination (provisional).
+        ew_sudakov_diagonal_out,
+        /// The same at the LO2 (provisional).
+        ew_sudakov_lo2_out,
+        /// Their derivatives with respect to the six parameters of the
+        /// parameter renormalization (provisional).
+        ew_sudakov_derivatives_out,
+        /// Their interferences with the interference amplitudes
+        /// (provisional).
+        ew_sudakov_interference_out
     };
 
     /**
@@ -134,9 +154,15 @@ public:
      * @param color_pair_count       Number of pairs i < j of the coloured legs,
      *                               n_c (n_c - 1) / 2, the size of
      *                               `color_correlated_out` per order.
+     * @param helicity_count         Number of helicity combinations of the
+     *                               outputs of the EW Sudakov approximation.
+     * @param interference_count     Number of interference amplitudes of
+     *                               `ew_sudakov_interference_out`.
      * @throws std::invalid_argument for `spin_vectors_in` with @p me_frame, as
-     *         the vectors would need the boost of the momenta, and for
-     *         `color_correlated_out` without colour pairs.
+     *         the vectors would need the boost of the momenta, for
+     *         `color_correlated_out` without colour pairs, and for the outputs
+     *         of the EW Sudakov approximation without helicity combinations
+     *         or `ew_sudakov_interference_out` without interferences.
      */
     MatrixElement(
         std::size_t matrix_element_index,
@@ -149,13 +175,17 @@ public:
         std::size_t incoming_count = 2,
         me_int_t channel = -1,
         std::size_t squared_order_count = 1,
-        std::size_t color_pair_count = 0
+        std::size_t color_pair_count = 0,
+        std::size_t helicity_count = 0,
+        std::size_t interference_count = 0
     );
     /**
      * Take @p matrix_element_index, @p particle_count, @p diagram_count (only
-     * with `diagram_amp2_out`, one otherwise), @p squared_order_count and
+     * with `diagram_amp2_out`, one otherwise), @p squared_order_count,
      * @p color_pair_count (only with `color_correlated_out`, from the colour
-     * representations of the legs) from an already-loaded matrix element.
+     * representations of the legs), @p helicity_count (only with the outputs
+     * of the EW Sudakov approximation) and @p interference_count (only with
+     * `ew_sudakov_interference_out`) from an already-loaded matrix element.
      * @param matrix_element_api    The loaded matrix element.
      * @param inputs                Quantities to pass in.
      * @param outputs               Quantities to return.
@@ -178,8 +208,7 @@ public:
             matrix_element_api.particle_count(),
             inputs,
             outputs,
-            std::find(outputs.begin(), outputs.end(), diagram_amp2_out) !=
-                    outputs.end()
+            std::find(outputs.begin(), outputs.end(), diagram_amp2_out) != outputs.end()
                 ? matrix_element_api.diagram_count()
                 : 1,
             sample_random_inputs,
@@ -190,8 +219,21 @@ public:
             std::find(outputs.begin(), outputs.end(), color_correlated_out) !=
                     outputs.end()
                 ? matrix_element_api.color_pair_count()
+                : 0,
+            has_ew_sudakov_output(outputs) ? matrix_element_api.helicity_count() : 0,
+            std::find(outputs.begin(), outputs.end(), ew_sudakov_interference_out) !=
+                    outputs.end()
+                ? matrix_element_api.ew_sudakov_interference_count()
                 : 0
         ) {};
+    /// Whether the outputs ask for a block of the EW Sudakov approximation.
+    static bool has_ew_sudakov_output(const std::vector<MatrixElementOutput>& outputs) {
+        return std::any_of(outputs.begin(), outputs.end(), [](auto output) {
+            return output == ew_sudakov_diagonal_out || output == ew_sudakov_lo2_out ||
+                output == ew_sudakov_derivatives_out ||
+                output == ew_sudakov_interference_out;
+        });
+    }
     /// Index of the matrix element in the plugin.
     std::size_t matrix_element_index() const { return _matrix_element_index; }
     /// Number of Feynman diagrams.
@@ -202,6 +244,10 @@ public:
     std::size_t squared_order_count() const { return _squared_order_count; }
     /// Number of pairs of coloured legs of the colour-correlated output.
     std::size_t color_pair_count() const { return _color_pair_count; }
+    /// Number of helicity combinations of the EW Sudakov outputs.
+    std::size_t helicity_count() const { return _helicity_count; }
+    /// Number of interference amplitudes of `ew_sudakov_interference_out`.
+    std::size_t interference_count() const { return _interference_count; }
     /// The configured input quantities.
     const std::vector<MatrixElementInput>& inputs() const { return _inputs; }
     /// The configured output quantities.
@@ -243,6 +289,8 @@ private:
     std::size_t _diagram_count;
     std::size_t _squared_order_count;
     std::size_t _color_pair_count;
+    std::size_t _helicity_count;
+    std::size_t _interference_count;
     std::vector<MatrixElementInput> _inputs;
     std::vector<MatrixElementOutput> _outputs;
     bool _sample_random_inputs;

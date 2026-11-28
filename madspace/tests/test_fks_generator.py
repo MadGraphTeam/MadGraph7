@@ -10,8 +10,9 @@ NLOIterationState, EventGenerator.integrate):
 - the results of the state against the sums of the points;
 - runs of FKSRun through the generator against the cross sections of MG5aMC
   per subprocess, with their histograms;
-- the refusal of the survey and the generation of a fixed-order channel,
-  and of EW Sudakov through the generator.
+- the Sudakov approximation of the EW corrections through the generator
+  against MG5aMC;
+- the refusal of the survey and the generation of a fixed-order channel.
 
 The runs are those of test_fks_cross_section.py on the aMC@NLO outputs of
 MADSPACE_FKS_OUTPUTS.
@@ -220,6 +221,32 @@ def test_against_mg5amc(name):
     assert total == pytest.approx(result["nlo"]["sigma"], rel=1e-9)
 
 
+def test_ew_sudakov():
+    """The Sudakov approximation of the EW corrections (--ewsudakov, sud_mod
+    0 and 1) through the event generator, with its blocks from their library,
+    agrees with MG5aMC, which sums it with the NLO."""
+    data, run = run_of(
+        "epem_ttx_sdk",
+        accuracy=0.0,
+        grid_points=2000,
+        grid_iterations=3,
+        points=4000,
+        max_iterations=3,
+        generator=True,
+        threads=2,
+    )
+    result = run.run()
+    assert abs(pull(result["lo"], data["lo"])) < SIGMAS
+    assert abs(pull(result["nlo_with_ew_sudakov"], data["nlo"])) < SIGMAS
+    theirs = data["nlo"]["ew_sudakov"]
+    assert [e["sud_mod"] for e in result["ew_sudakov"]] == [
+        e["sud_mod"] for e in theirs
+    ]
+    for ours, other in zip(result["ew_sudakov"], theirs):
+        assert ours["sigma"] < 0
+        assert abs(pull(ours, other)) < SIGMAS, (ours, other)
+
+
 def test_user_scale():
     """With the scale of the user (dynamical_scale_choice 10, the fixed scale
     of user_dynamical_scale of the output) a run through the event generator
@@ -264,8 +291,7 @@ def test_discrete_choice():
 
 
 def test_refusals():
-    """The survey refuses a fixed-order channel, and a run through the
-    generator EW Sudakov, whose blocks the C++ integrand cannot ask for."""
+    """The survey refuses a fixed-order channel."""
     with fks_setup("epem_jj_fixed") as run:
         integrand = run.integrands[0]
         generator = integrand.generator_integrand(
@@ -288,6 +314,3 @@ def test_refusals():
             event_generator.survey()
         with pytest.raises(ValueError, match="fixed order"):
             event_generator.generate()
-    _, run = run_of("epem_ttx_sdk", generator=True)
-    with pytest.raises(NotImplementedError, match="EW Sudakov"):
-        run.run()

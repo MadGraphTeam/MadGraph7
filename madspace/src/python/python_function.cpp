@@ -88,7 +88,8 @@ const MatrixElementApi& add_python_function(
     for (auto [key, value] : integer_meta) {
         if (key != UMAMI_META_PARTICLE_COUNT && key != UMAMI_META_DIAGRAM_COUNT &&
             key != UMAMI_META_HELICITY_COUNT && key != UMAMI_META_COLOR_COUNT &&
-            key != UMAMI_META_SQUARED_ORDER_COUNT) {
+            key != UMAMI_META_SQUARED_ORDER_COUNT &&
+            key != UMAMI_META_EW_SUDAKOV_INTERFERENCE_COUNT) {
             throw std::invalid_argument("not an integer UMAMI metadata key");
         }
     }

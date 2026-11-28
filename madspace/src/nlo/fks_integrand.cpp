@@ -113,7 +113,10 @@ FKSChannelIntegrand::FKSChannelIntegrand(
     const std::optional<CustomFunction>& reference_scale,
     const std::vector<MatrixElement>& extras,
     const std::vector<me_int_t>& extra_indices,
-    const std::vector<me_int_t>& extra_spin_legs
+    const std::vector<me_int_t>& extra_spin_legs,
+    const std::optional<EWSudakov>& ew_sudakov,
+    const std::optional<MatrixElement>& ew_sudakov_blocks,
+    double ew_sudakov_factor
 ) :
     FunctionGenerator(
         "FKSChannelIntegrand",
@@ -165,6 +168,9 @@ FKSChannelIntegrand::FKSChannelIntegrand(
     _reference_scale(reference_scale),
     _extras(extras),
     _extra_spin_legs(extra_spin_legs),
+    _ew_sudakov(ew_sudakov),
+    _ew_sudakov_blocks(ew_sudakov_blocks),
+    _ew_sudakov_factor(ew_sudakov_factor),
     _born_orders(born.squared_order_count()),
     _nlo_orders(reals.empty() ? 0 : reals.at(0).squared_order_count()),
     _born_particles(born.particle_count()),
@@ -337,10 +343,55 @@ FKSChannelIntegrand::FKSChannelIntegrand(
             );
         }
     }
+    // the Sudakov approximation of the EW corrections with the library of its
+    // blocks, for a cross section that takes it
+    bool takes_sudakov = has_key(cross_section.arg_types(), "ew_sudakov");
+    if (takes_sudakov != ew_sudakov.has_value() ||
+        ew_sudakov.has_value() != ew_sudakov_blocks.has_value()) {
+        throw std::invalid_argument(
+            "FKSChannelIntegrand: the Sudakov approximation and the library of its "
+            "blocks for a cross section that takes it, and only then"
+        );
+    }
+    if (ew_sudakov) {
+        check_library(
+            *ew_sudakov_blocks,
+            {MatrixElement::momenta_in,
+             MatrixElement::alpha_s_in,
+             MatrixElement::g_ew_in},
+            {MatrixElement::ew_sudakov_diagonal_out,
+             MatrixElement::ew_sudakov_lo2_out,
+             MatrixElement::ew_sudakov_derivatives_out,
+             MatrixElement::ew_sudakov_interference_out},
+            "EW Sudakov"
+        );
+        if (ew_sudakov->particle_count() != _born_particles ||
+            ew_sudakov_blocks->helicity_count() != ew_sudakov->helicity_count() ||
+            ew_sudakov->mode_count() !=
+                static_cast<std::size_t>(
+                    cross_section.arg_types().at("ew_sudakov").shape.at(0)
+                )) {
+            throw std::invalid_argument(
+                "FKSChannelIntegrand: the Sudakov approximation and its blocks do "
+                "not fit the Born and the modes of the cross section"
+            );
+        }
+        for (auto [h, t] : ew_sudakov->interference_terms()) {
+            if (t >= ew_sudakov_blocks->interference_count()) {
+                throw std::invalid_argument(
+                    "FKSChannelIntegrand: the blocks of the Sudakov approximation "
+                    "lack its interferences"
+                );
+            }
+        }
+    }
     // every argument of the cross section from the kinematics, the blocks or
     // the reference scales
     auto kinematic_types = kinematics.return_types();
     for (auto& name : cross_section.arg_types().keys()) {
+        if (name == "ew_sudakov") {
+            continue;
+        }
         bool reference =
             std::find(reference_names.begin(), reference_names.end(), name) !=
             reference_names.end();
@@ -544,12 +595,18 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
     Value loop_batch = fb.batch_size({loop_momenta});
     Value evaluated = scatter(evaluated_points, fb.full({1., loop_batch}), {});
     Value virtual_value = fb.full({0., batch_size, static_cast<me_int_t>(o)});
-    if (_loop) {
+    // the renormalization scale of the Born, of the virtual and of the
+    // Sudakov approximation
+    std::optional<Value> born_ren_scale;
+    if (_loop || _ew_sudakov) {
         ValueVec scale_args{values.at("born_momenta")};
         if (_born_scale.user()) {
             scale_args.push_back(values.at("soft_reference_scale"));
         }
-        Value ren_scale = _born_scale.build_function(fb, scale_args).at("ren_scale");
+        born_ren_scale = _born_scale.build_function(fb, scale_args).at("ren_scale");
+    }
+    if (_loop) {
+        Value ren_scale = *born_ren_scale;
         auto loop = _loop->build_function(
             fb,
             {loop_momenta,
@@ -562,6 +619,46 @@ NamedVector<Value> FKSChannelIntegrand::build_function_impl(
             finite.push_back(fb.unstack(parts).at(0));
         }
         virtual_value = scatter(evaluated_points, fb.stack(finite), {o});
+    }
+
+    // the Sudakov approximation of the EW corrections at the Born points,
+    // with its interference terms out of the interferences of the blocks
+    if (_ew_sudakov) {
+        auto blocks = _ew_sudakov_blocks->build_function(
+            fb,
+            {born_momenta,
+             fb.full({NLO_UNIT_ALPHA_S, born_batch}),
+             fb.full({_g_ew, born_batch})}
+        );
+        ValueVec per_helicity = fb.unstack(blocks.at("ew_sudakov_interference"));
+        ValueVec terms;
+        for (auto [h, t] : _ew_sudakov->interference_terms()) {
+            terms.push_back(fb.unstack(per_helicity.at(h)).at(t));
+        }
+        Value interference = terms.empty()
+            ? fb.full(
+                  {0., born_batch, static_cast<me_int_t>(1), static_cast<me_int_t>(2)}
+              )
+            : fb.stack(terms);
+        std::map<std::string, Value> sudakov_inputs{
+            {"momenta", born_momenta},
+            {"diagonal", blocks.at("ew_sudakov_diagonal")},
+            {"lo2", blocks.at("ew_sudakov_lo2")},
+            {"derivatives", blocks.at("ew_sudakov_derivatives")},
+            {"interference", interference},
+            {"alpha_s", fb.full({NLO_UNIT_ALPHA_S, born_batch})},
+            {"ren_scale", fb.batch_gather(born_points, *born_ren_scale)},
+        };
+        ValueVec sudakov_args;
+        for (auto& name : _ew_sudakov->arg_types().keys()) {
+            sudakov_args.push_back(sudakov_inputs.at(name));
+        }
+        Value correction = _ew_sudakov->build_function(fb, sudakov_args).at("sudakov");
+        int modes = static_cast<int>(_ew_sudakov->mode_count());
+        values["ew_sudakov"] = fb.mul(
+            scatter(born_points, correction, {modes}),
+            fb.full({_ew_sudakov_factor, batch_size, static_cast<me_int_t>(modes)})
+        );
     }
 
     // the factors of tagged photons, of the Born orders the first ones of

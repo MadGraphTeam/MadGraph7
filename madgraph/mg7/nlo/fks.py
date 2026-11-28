@@ -84,7 +84,7 @@ Not covered yet: PDF schemes other than MSbar, densities of eMELA, photons
 of gamma-UPC and FxFx. The run refuses settings of MadFKS it would
 otherwise ignore: cuts by PDG code, functions of the user other than the
 scale (custom_fcts), more than one dynamical scale choice or PDF set, and
-beams of different energies. EW Sudakov runs only without the generator.
+beams of different energies.
 """
 
 import argparse
@@ -324,9 +324,10 @@ class SubprocessIntegrand:
         with the matrix elements of the provider as UMAMI libraries in the
         context (ProviderLibraries of nlo/libraries.py, added once), the same
         integrand as evaluate at the same random numbers, configurations and
-        points with the virtual, with the Borns of the extra counterterms and
-        the reference scale of the user. The libraries evaluate at the e of
-        the model, so that the blocks are those of the provider."""
+        points with the virtual, with the Borns of the extra counterterms, the
+        reference scale of the user and the Sudakov approximation of the EW
+        corrections. The libraries evaluate at the e of the model, so that
+        the blocks are those of the provider."""
         from madgraph.mg7.nlo.libraries import ProviderLibraries
 
         ms = madspace()
@@ -393,6 +394,20 @@ class SubprocessIntegrand:
                 self.provider.particle_count,
             )
         tagged = self.tagged or {}
+        # the Sudakov approximation of the EW corrections on its blocks
+        ew_sudakov = blocks = None
+        if self.ew_sudakov is not None:
+            ew_sudakov = self.ew_sudakov.function
+            blocks = element(
+                apis["ew_sudakov"],
+                [element.momenta_in, element.alpha_s_in, element.g_ew_in],
+                [
+                    element.ew_sudakov_diagonal_out,
+                    element.ew_sudakov_lo2_out,
+                    element.ew_sudakov_derivatives_out,
+                    element.ew_sudakov_interference_out,
+                ],
+            )
         return ms.FKSChannelIntegrand(
             self.kinematics[channel].function,
             self.kernels.function,
@@ -415,6 +430,9 @@ class SubprocessIntegrand:
             extras=extras,
             extra_indices=self._libraries.extra_indices() if extras else [],
             extra_spin_legs=self._libraries.extra_spin_legs() if extras else [],
+            ew_sudakov=ew_sudakov,
+            ew_sudakov_blocks=blocks,
+            ew_sudakov_factor=getattr(self, "ew_sudakov_factor", 1.0),
         )
 
     def generator_integrand(
