@@ -266,6 +266,9 @@ C     JAMPs contributing to orders QCD=2 QED=0
       DOUBLE PRECISION BORN_WGT_RECOMP_DIRECT
 
       DOUBLE PRECISION RAN2
+      INTEGER NGOOD, NWARN_FLAT
+      SAVE NWARN_FLAT
+      DATA NWARN_FLAT /0/
 
       CALL SBORN_HEL(P,BORN_WGT_RECOMP_DIRECT)
 
@@ -291,6 +294,42 @@ C      compute for each order the sum
 
 
       TARGET=RAN2()
+
+C     The Born vanishes in every kept helicity at this point: the
+C      sampling
+C     below would never reach target (an endless loop). Pick a kept
+C      helicity
+C     flat instead, with probability goodhel/ngood, which stays
+C      unbiased.
+      IF (N_NONZERO_ORD.EQ.0) THEN
+        IF (NWARN_FLAT.LT.5) THEN
+          NWARN_FLAT=NWARN_FLAT+1
+          WRITE(*,*) 'PickHelicityMC: zero Born in every kept helicity'
+     $     //','
+          WRITE(*,*) 'helicity picked flat. Born momenta:'
+          DO I = 1, NEXTERNAL-1
+            WRITE(*,*) I, P(0,I), P(1,I), P(2,I), P(3,I)
+          ENDDO
+        ENDIF
+        NGOOD=0
+        DO IHEL = 1, HEL(0)
+          NGOOD=NGOOD+GOODHEL(IHEL)
+        ENDDO
+        IF (NGOOD.LE.0) THEN
+          WRITE(*,*) 'PickHelicityMC: no kept helicity'
+          STOP 1
+        ENDIF
+        IHEL=1
+        ACCUM=DBLE(GOODHEL(IHEL))/DBLE(NGOOD)
+        DO WHILE (ACCUM.LT.TARGET.AND.IHEL.LT.HEL(0))
+          IHEL=IHEL+1
+          ACCUM=ACCUM+DBLE(GOODHEL(IHEL))/DBLE(NGOOD)
+        ENDDO
+        VOL=DBLE(GOODHEL(IHEL))/DBLE(NGOOD)
+        IHEL_OUT=IHEL
+        RETURN
+      ENDIF
+
       IHEL=1
       ACCUM=0D0
 
@@ -300,7 +339,10 @@ C      compute for each order the sum
      $   /N_NONZERO_ORD
       ENDDO
 
-      DO WHILE (ACCUM.LT.TARGET)
+C     The bound on ihel stops rounding (accum just below target after
+C      the last
+C     helicity) from running past the kept helicities.
+      DO WHILE (ACCUM.LT.TARGET.AND.IHEL.LT.HEL(0))
         IHEL=IHEL+1
         DO I = 1, NSQAMPSO
           IF (SUM_HEL(I).EQ.0D0) CYCLE
@@ -309,11 +351,17 @@ C      compute for each order the sum
         ENDDO
       ENDDO
 
+C     If that bound stopped on a helicity without weight, step back to
+C      the
+C     last one that has weight (one exists, since n_nonzero_ord > 0).
       VOL=0D0
-      DO I = 1, NSQAMPSO
-        IF (SUM_HEL(I).EQ.0D0) CYCLE
-        VOL=VOL+WGT_HEL(I,HEL(IHEL))/SUM_HEL(I)*DBLE(GOODHEL(IHEL))
-     $   /N_NONZERO_ORD
+      DO WHILE (VOL.EQ.0D0.AND.IHEL.GE.1)
+        DO I = 1, NSQAMPSO
+          IF (SUM_HEL(I).EQ.0D0) CYCLE
+          VOL=VOL+WGT_HEL(I,HEL(IHEL))/SUM_HEL(I)*DBLE(GOODHEL(IHEL))
+     $     /N_NONZERO_ORD
+        ENDDO
+        IF (VOL.EQ.0D0) IHEL=IHEL-1
       ENDDO
 
 

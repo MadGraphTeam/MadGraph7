@@ -246,6 +246,9 @@ double precision accum, target
 double precision born_wgt_recomp_direct
 
 double precision ran2
+integer ngood, nwarn_flat
+save nwarn_flat
+data nwarn_flat /0/
 
 call sborn_hel(p,born_wgt_recomp_direct)
 
@@ -269,6 +272,38 @@ enddo
 
 
 target=ran2()
+
+C The Born vanishes in every kept helicity at this point: the sampling
+C below would never reach target (an endless loop). Pick a kept helicity
+C flat instead, with probability goodhel/ngood, which stays unbiased.
+if (n_nonzero_ord.eq.0) then
+  if (nwarn_flat.lt.5) then
+    nwarn_flat=nwarn_flat+1
+    write(*,*) 'PickHelicityMC: zero Born in every kept helicity,'
+    write(*,*) 'helicity picked flat. Born momenta:'
+    do i = 1, nexternal-1
+      write(*,*) i, p(0,i), p(1,i), p(2,i), p(3,i)
+    enddo
+  endif
+  ngood=0
+  do ihel = 1, hel(0)
+    ngood=ngood+goodhel(ihel)
+  enddo
+  if (ngood.le.0) then
+    write(*,*) 'PickHelicityMC: no kept helicity'
+    stop 1
+  endif
+  ihel=1
+  accum=dble(goodhel(ihel))/dble(ngood)
+  do while (accum.lt.target.and.ihel.lt.hel(0))
+    ihel=ihel+1
+    accum=accum+dble(goodhel(ihel))/dble(ngood)
+  enddo
+  vol=dble(goodhel(ihel))/dble(ngood)
+  ihel_out=ihel
+  return
+endif
+
 ihel=1
 accum=0d0
 
@@ -277,7 +312,9 @@ if (sum_hel(i).eq.0d0) cycle
 accum=accum+wgt_hel(i,hel(ihel))/sum_hel(i)*dble(goodhel(ihel))/n_nonzero_ord
 enddo
 
-do while (accum.lt.target) 
+C The bound on ihel stops rounding (accum just below target after the last
+C helicity) from running past the kept helicities.
+do while (accum.lt.target.and.ihel.lt.hel(0))
 ihel=ihel+1
 do i = 1, nsqampso
 if (sum_hel(i).eq.0d0) cycle
@@ -285,10 +322,15 @@ accum=accum+wgt_hel(i,hel(ihel))/sum_hel(i)*dble(goodhel(ihel))/n_nonzero_ord
 enddo
 enddo
 
+C If that bound stopped on a helicity without weight, step back to the
+C last one that has weight (one exists, since n_nonzero_ord > 0).
 vol=0d0
+do while (vol.eq.0d0.and.ihel.ge.1)
 do i = 1, nsqampso
 if (sum_hel(i).eq.0d0) cycle
 vol=vol+wgt_hel(i,hel(ihel))/sum_hel(i)*dble(goodhel(ihel))/n_nonzero_ord
+enddo
+if (vol.eq.0d0) ihel=ihel-1
 enddo
 
 

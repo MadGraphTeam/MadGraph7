@@ -35,6 +35,9 @@
       DOUBLE PRECISION ACCUM, TARGET
       DOUBLE PRECISION BORN_WGT_RECOMP_DIRECT
       DOUBLE PRECISION RAN2
+      INTEGER NGOOD, NWARN_FLAT
+      SAVE NWARN_FLAT
+      DATA NWARN_FLAT /0/
       CALL SBORN_HEL(P,BORN_WGT_RECOMP_DIRECT)
       N_NONZERO_ORD = 0
       SUM_ALL = 0D0
@@ -53,13 +56,40 @@
         ENDIF
       ENDDO
       TARGET=RAN2()
+      IF (N_NONZERO_ORD.EQ.0) THEN
+        IF (NWARN_FLAT.LT.5) THEN
+          NWARN_FLAT=NWARN_FLAT+1
+          WRITE(*,*) 'PickHelicityMC: zero Born in every kept helicity'      //','
+          WRITE(*,*) 'helicity picked flat. Born momenta:'
+          DO I = 1, NEXTERNAL-1
+            WRITE(*,*) I, P(0,I), P(1,I), P(2,I), P(3,I)
+          ENDDO
+        ENDIF
+        NGOOD=0
+        DO IHEL = 1, HEL(0)
+          NGOOD=NGOOD+GOODHEL(IHEL)
+        ENDDO
+        IF (NGOOD.LE.0) THEN
+          WRITE(*,*) 'PickHelicityMC: no kept helicity'
+          STOP 1
+        ENDIF
+        IHEL=1
+        ACCUM=DBLE(GOODHEL(IHEL))/DBLE(NGOOD)
+        DO WHILE (ACCUM.LT.TARGET.AND.IHEL.LT.HEL(0))
+          IHEL=IHEL+1
+          ACCUM=ACCUM+DBLE(GOODHEL(IHEL))/DBLE(NGOOD)
+        ENDDO
+        VOL=DBLE(GOODHEL(IHEL))/DBLE(NGOOD)
+        IHEL_OUT=IHEL
+        RETURN
+      ENDIF
       IHEL=1
       ACCUM=0D0
       DO I = 1, NSQAMPSO
         IF (SUM_HEL(I).EQ.0D0) CYCLE
         ACCUM=ACCUM+WGT_HEL(I,HEL(IHEL))/SUM_HEL(I)*DBLE(GOODHEL(IHEL))    /N_NONZERO_ORD
       ENDDO
-      DO WHILE (ACCUM.LT.TARGET)
+      DO WHILE (ACCUM.LT.TARGET.AND.IHEL.LT.HEL(0))
         IHEL=IHEL+1
         DO I = 1, NSQAMPSO
           IF (SUM_HEL(I).EQ.0D0) CYCLE
@@ -67,9 +97,12 @@
         ENDDO
       ENDDO
       VOL=0D0
-      DO I = 1, NSQAMPSO
-        IF (SUM_HEL(I).EQ.0D0) CYCLE
-        VOL=VOL+WGT_HEL(I,HEL(IHEL))/SUM_HEL(I)*DBLE(GOODHEL(IHEL))    /N_NONZERO_ORD
+      DO WHILE (VOL.EQ.0D0.AND.IHEL.GE.1)
+        DO I = 1, NSQAMPSO
+          IF (SUM_HEL(I).EQ.0D0) CYCLE
+          VOL=VOL+WGT_HEL(I,HEL(IHEL))/SUM_HEL(I)*DBLE(GOODHEL(IHEL))      /N_NONZERO_ORD
+        ENDDO
+        IF (VOL.EQ.0D0) IHEL=IHEL-1
       ENDDO
       IHEL_OUT=IHEL
       RETURN
