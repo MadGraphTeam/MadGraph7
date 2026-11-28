@@ -72,6 +72,7 @@ import math
 from madgraph import MG5DIR, MadGraph5Error
 import madgraph.various.misc as misc
 import madmatrix.density as madmatrix_density
+import MadSpin.onia_madspin as onia_madspin
 #import time
 
 MAX_COMPAT_FLAVS = 500
@@ -1899,6 +1900,7 @@ class width_estimate(object):
         ff = open(pjoin(path_me, 'width_calculator', 'Cards', 'param_card.dat'),'w')
         ff.write(self.banner['slha'])
         ff.close()
+        onia_madspin.OniaRegistry.write_onia_card(self.banner, pjoin(path_me, 'width_calculator', 'Cards'))
         
         lhapdf = False
         if 'lhapdf' in os.environ:
@@ -3449,13 +3451,19 @@ class decay_all_events(object):
         # collapses get_external_flavors() to a single trivial entry and breaks
         # merged-particle handling in MadSpin.  Re-enable it before reloading
         # the model so the production MEs share the LO multi-flavor treatment.
-        mgcmd.exec_cmd('set apply_flavor_grouping True')
+        # Bound states are written without flavour grouping (onia_madspin).
+        onia = getattr(self.mscmd, 'onia', None)
+        mgcmd.exec_cmd('set apply_flavor_grouping %s' % (not onia))
 
         commandline="import model %s" % modelpath
         if not self.model.mg5_name:
             commandline += ' --modelname'
 
         mgcmd.exec_cmd(commandline)
+        if onia:
+            # the import reloads the Fock states and resets the bound-state
+            # labels: the aliases of MadSpin are labels again
+            onia.register_aliases(mgcmd)
         # Handle the multiparticle of the banner        
         #for name, definition in self.mscmd.multiparticles:
         if hasattr(self.mscmd, 'multiparticles_ms'):
@@ -5615,10 +5623,19 @@ class decay_all_events_onshell(decay_all_events):
         # 6. generate decay only part ------------------------------------------
         def leg_order(process):
             """((initial ids), (final ids)) in the leg order of process, and
-            the same sorted: the tag an event is looked up by."""
-            initial = []
-            final = [l.get('id') for l in process.get_legs_with_decays()\
-                        if l.get('state') or initial.append(l.get('id'))]
+            the same sorted: the tag an event is looked up by. The two
+            constituents of a bound state are one leg, the bound state, as in
+            the event record."""
+            initial, final, open_onium = [], [], False
+            for l in process.get_legs_with_decays():
+                if l.get('onium'):
+                    open_onium = not open_onium
+                    if not open_onium:
+                        continue
+                    pdg = l.get('onium').get('id')
+                else:
+                    pdg = l.get('id')
+                (final if l.get('state') else initial).append(pdg)
             order = (tuple(initial), tuple(final))
             initial.sort(), final.sort()
             return order, (tuple(initial), tuple(final))
@@ -5691,6 +5708,16 @@ class decay_all_events_onshell(decay_all_events):
                                    '--zerowidth_tchannel=True --zerowidth_decay=%s'
                                    % zero_width,
                                    generation=commandline_production)
+            onia = getattr(self.mscmd, 'onia', None)
+            if onia and onia.production_needs_uncoupled(
+                    self.mscmd, [proc for amp in mgcmd._curr_amps for proc in [amp.get('process')]]):
+                # a hadron produced as a 3P colour octet: the production with
+                # its P waves in L_z x S_z as well (onia_madspin.spin_transfer)
+                commandline = ('output standalone_fortran %s --prefix=int --density=1 '
+                               '--onia_uncoupled=True --zerowidth_tchannel=True -f'
+                               % pjoin(path_me, ms_me_subdir + '_unc'))
+                logger.info(commandline)
+                mgcmd.exec_cmd(commandline, precmd=True)
 
             # store information about the production matrix elements
             fill_all_me(self, "production")
@@ -5700,13 +5727,19 @@ class decay_all_events_onshell(decay_all_events):
             # a 1 -> N decay has no beam: the polarisation never reaches it
             commandline_decay = generate_line(commandline_decay, 'decay')
 
-            logger.info(commandline_decay)
-            mgcmd.exec_cmd(commandline_decay, precmd=True)
-            self.output_density_me(pjoin(path_me, ms_me_decay_subdir), backend,
-                                   'd', '--zerowidth_decay=%s' % bool(zero_width))
+            # radiative transitions of bound states only: no decay for the
+            # generator (onia_radiative evaluates them)
+            if commandline_decay.strip():
+                logger.info(commandline_decay)
+                mgcmd.exec_cmd(commandline_decay, precmd=True)
+                self.output_density_me(pjoin(path_me, ms_me_decay_subdir), backend,
+                                       'd', '--zerowidth_decay=%s' % bool(zero_width))
 
-            # store information about the decay matrix elements
-            fill_all_me(self, "decay")
+                # store information about the decay matrix elements
+                fill_all_me(self, "decay")
+            if onia and onia.radiative:
+                # the decay events of the radiative chains
+                self.all_me.update(onia.radiative_tags(self.mscmd))
 
         logger.info('Done %.4g' % (time.time()-start))
 
@@ -5820,13 +5853,19 @@ class decay_all_events_onshell(decay_all_events):
         # collapses get_external_flavors() to a single trivial entry and breaks
         # merged-particle handling in MadSpin.  Re-enable it before reloading
         # the model so the production MEs share the LO multi-flavor treatment.
-        mgcmd.exec_cmd('set apply_flavor_grouping True')
+        # Bound states are written without flavour grouping (onia_madspin).
+        onia = getattr(self.mscmd, 'onia', None)
+        mgcmd.exec_cmd('set apply_flavor_grouping %s' % (not onia))
 
         commandline="import model %s" % modelpath
         if not self.model.mg5_name:
             commandline += ' --modelname'
 
         mgcmd.exec_cmd(commandline)
+        if onia:
+            # the import reloads the Fock states and resets the bound-state
+            # labels: the aliases of MadSpin are labels again
+            onia.register_aliases(mgcmd)
         # Handle the multiparticle of the banner        
         #for name, definition in self.mscmd.multiparticles:
         if hasattr(self.mscmd, 'multiparticles_ms'):
@@ -5925,6 +5964,10 @@ class decay_all_events_onshell(decay_all_events):
                 # reaching MG5. (madspin_v1 strips it the same way, decay.py
                 # get_all_ME step 6.)
                 proc = self.mscmd._split_group_tag(proc)[0]
+                onia = getattr(self.mscmd, 'onia', None)
+                if onia and proc in onia.radiative:
+                    # a radiative transition of a bound state (onia_radiative)
+                    continue
                 newproc = "add process %s @%i --no_warning=duplicate --standalone;" % (proc,i)
                 commandline += self.adapt_decay(newproc)
                 #commandline+="add process %s @%i --no_warning=duplicate --standalone;" % (proc,i)
@@ -5978,11 +6021,12 @@ class decay_all_events_onshell(decay_all_events):
             return
         ms_me_subdir = getattr(self.mscmd, 'ms_me_subdir', 'madspin_me')
         ms_me_decay_subdir = getattr(self.mscmd, 'ms_me_decay_subdir', 'madspin_decay')
-        for subdir in (ms_me_subdir, ms_me_decay_subdir):
+        for subdir in (ms_me_subdir, ms_me_decay_subdir, ms_me_subdir + '_unc'):
             cards = pjoin(self.path_me, subdir, 'Cards')
             if not os.path.isdir(cards):
                 continue
             shutil.copyfile(source, pjoin(cards, 'param_card.dat'))
+            onia_madspin.OniaRegistry.write_onia_card(getattr(self, 'banner', None), cards)
 
     def compile(self):
         logger.info('Compiling code')
@@ -6029,6 +6073,12 @@ class decay_all_events_onshell(decay_all_events):
         #Valentin: not sure the decay_folder exists in all cases, so I check
         if os.path.exists(pjoin(self.path_me, ms_me_decay_subdir)):
             trees.append((ms_me_decay_subdir, decay_args, 'd'))
+        if os.path.exists(pjoin(self.path_me, ms_me_subdir + '_unc')):
+            # the uncoupled production of colour octets (MENUM 3)
+            unc_args = ['MENUM=3', 'all_matrix3py.so']
+            if ms_run_id > 1:
+                unc_args.insert(0, 'PROCNAME=_ms%d' % ms_run_id)
+            trees.append((ms_me_subdir + '_unc', unc_args, 'u'))
         for subdir, fortran_args, side in trees:
             tree = pjoin(self.path_me, subdir)
             if madmatrix_density.is_output(tree):
@@ -6141,6 +6191,11 @@ class decay_all_events_density(decay_all_events_onshell):
                 continue
             init, final = oneline.split('>',maxsplit=1)
             end = len(init)
+            onia = getattr(getattr(self, 'mscmd', None), 'onia', None)
+            if onia and init.split()[-1] in onia.by_alias:
+                # a bound state decays on shell, at its onium_mass
+                out.append("%s > %s;" % (init.strip(), final))
+                continue
             out.append("%s* > %s;" % (init.strip(), final))
 
         return ' '.join(out)

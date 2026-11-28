@@ -4600,8 +4600,8 @@ class MadGraphCmd(HelpToCmd, CheckValidForCmd, CompleteForCmd, CmdExtended):
                 "[%s] supports 2 -> n processes without decay chains, coupling "
                 "orders, s-channel or particle restrictions and polarizations."
                 % backend)
-        initial = [amp.get_ninitial() for amp in self._curr_amps]
-        if initial and initial[0] != procdef.get_ninitial():
+        initial = [amp.get_ninitial_physical() for amp in self._curr_amps]
+        if initial and initial[0] != procdef.get_ninitial_physical():
             raise self.InvalidCmd(
                 "Can not mix processes with different number of initial states.")
         if warning_duplicate:
@@ -4802,8 +4802,8 @@ This implies that with decay chains:
                 raise self.InvalidCmd("Empty or wrong format process, please try again.")
             # Check that we have the same number of initial states as
             # existing processes
-            if self._curr_amps and self._curr_amps[0].get_ninitial() != \
-               myprocdef.get_ninitial() and not standalone_only:
+            if self._curr_amps and self._curr_amps[0].get_ninitial_physical() != \
+               myprocdef.get_ninitial_physical() and not standalone_only:
                 raise self.InvalidCmd("Can not mix processes with different number of initial states.")
             # [amplicol] processes are always 2 -> n
             if self._curr_amplicol_defs and myprocdef.get_ninitial() != 2 \
@@ -4854,7 +4854,7 @@ This implies that with decay chains:
                       " can only be given on one type of coupling and either on"+\
                                    " squared orders or amplitude orders, not both.")
     
-                if myprocdef.get_ninitial() ==1 and  myprocdef.get('squared_orders'):
+                if myprocdef.get_ninitial_physical() ==1 and  myprocdef.get('squared_orders'):
                     logger.warning('''Computation of interference term with decay is not 100% validated.  
                     Please check carefully your result.
                     One suggestion is also to compare the generation of your process with and without
@@ -8028,11 +8028,14 @@ This implies that with decay chains:
                     all_combinations = [[(key,b)] for b in boundstates[key]]
                 else:
                     all_combinations = [c+[(key,b)] for c in all_combinations for b in boundstates[key]]
-            # filter symmetric final states
+            # filter symmetric final states (an initial-state onium keeps its
+            # place: only the final-state Fock states may be permuted)
+            nini = args.index('>') if '>' in args else len(args)
             already_generated = []
             unique_combinations = []
             for fockstates in all_combinations:
-                state = sorted([fockstate[1] for fockstate in fockstates])
+                state = (sorted([f[1] for f in fockstates if f[0] < nini]),
+                         sorted([f[1] for f in fockstates if f[0] > nini]))
                 if state not in already_generated:
                     unique_combinations.append(fockstates)
                     already_generated.append(state)
@@ -8100,9 +8103,9 @@ This implies that with decay chains:
                     onium_info = fockstate
                     break
 
-            # check that only final-state particles are ONIA
-            if is_onium and not state:
-                raise self.InvalidCmd("initial particles cannot be onia")
+            # an onium in the initial state is a decaying onium (1 -> N); with
+            # a second incoming particle it is only a matrix element (checked
+            # at output time, where only standalone_fortran accepts it)
 
             # check if the particle is tagged (!PART!)
             if part_name.startswith('!') and part_name.endswith('!'):
@@ -8723,8 +8726,8 @@ This implies that with decay chains:
 
         # Check that we have the same number of initial states as
         # existing processes
-        if self._curr_amps and self._curr_amps[0].get_ninitial() != \
-               myprocdef.get_ninitial():
+        if self._curr_amps and self._curr_amps[0].get_ninitial_physical() != \
+               myprocdef.get_ninitial_physical():
             raise self.InvalidCmd("Can not mix processes with different number of initial states.")               
       
         if self._curr_amps and (not isinstance(self._curr_amps[0], loop_diagram_generation.LoopAmplitude) or \
@@ -9574,6 +9577,16 @@ This implies that with decay chains:
                 self._boundstates[boundstate_label] = fock_states
 
                 logger.info(f"Defined boundstate {boundstate_label} = {bound_state}")
+
+    def generated_processes(self):
+        """The processes of the generated amplitudes, decay chains unrolled: a
+        DecayChainAmplitude has no 'process' of its own."""
+
+        for amp in self._curr_amps or []:
+            amps = amp.get_amplitudes() if hasattr(amp, 'get_amplitudes') else [amp]
+            for one_amp in amps:
+                if isinstance(one_amp, dict) and 'process' in one_amp:
+                    yield one_amp.get('process')
 
     def has_onium_amplitude(self, amplitudes=None):
         """True if one of the generated processes (or of `amplitudes`) has a
@@ -14198,6 +14211,20 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     "with 'output %s', not with 'output %s'."
                     % ("' or 'output ".join(self._onia_formats), self._export_format))
 
+        # An incoming onium is a decay (1 -> N). With a second incoming
+        # particle there is no physical cross section (no onium beam), only
+        # the matrix element, which serves the time-reversal checks.
+        if self._export_format != 'standalone_fortran' and any(
+                proc.get_ninitial_physical() > 1 and any(
+                    leg.get('onium') and leg.get('state') == False
+                    for leg in proc.get('legs'))
+                for proc in self.generated_processes()):
+            raise self.InvalidCmd("An incoming onium with a second incoming "
+                    "particle can only be written out with 'output "
+                    "standalone_fortran' (a matrix element without a cross "
+                    "section); 'output %s' supports onium decays (1 > N)."
+                    % self._export_format)
+
         if self._export_format not in self._v4_export_formats + ['aloha']:
             self.warn_rge_not_supported()
 
@@ -14439,8 +14466,12 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
             # have been defined with multiparticle labels, because then
             # branching ratios necessitates to keep subprocesses independent.
             # That applies only if there is more than one subprocess of course.
-            if self._curr_amps and self._curr_amps[0].get_ninitial() == 1 and \
-                                                     len(self._curr_amps)>1:
+            # Bound states are the exception: the Fock states of one physical
+            # onium share the process id by construction (they add up to its
+            # width), and only the grouped exporter writes onium output.
+            has_onia = self.has_onium_amplitude()
+            if self._curr_amps and self._curr_amps[0].get_ninitial_physical() == 1 and \
+                                  len(self._curr_amps)>1 and not has_onia:
                 
                 processes = [amp.get('process') for amp in self._curr_amps if 'process' in  list(amp.keys())]
                 if len(set(proc.get('id') for proc in processes))!=len(processes):
@@ -14461,6 +14492,13 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
                     group_processes = False
         else:
             group_processes = True
+
+        # Only the grouped madevent exporter writes the onium files (onia.inc,
+        # the onia card, the onium channels): refuse the plain one.
+        if not group_processes and self._export_format == 'madevent' and \
+           self.has_onium_amplitude():
+            raise self.InvalidCmd("Bound states (onia) need grouped subprocesses "
+                "with 'output madevent': set group_subprocesses to Auto or True.")
     
         #Exporter + Template
         if options['exporter'] == 'v4':
@@ -14895,7 +14933,7 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
         # generated propagator routines carry the runtime sign check. A 1->N decay
         # has no t-channel, so keep every width there (as the legacy code did).
         zerowidth_tchannel = self.options['zerowidth_tchannel']
-        if self._curr_amps and self._curr_amps[0].get_ninitial() == 1:
+        if self._curr_amps and self._curr_amps[0].get_ninitial_physical() == 1:
             zerowidth_tchannel = False
         # The output option --zerowidth_tchannel=True|False of the standalone
         # Fortran outputs overrides it for that output (MadSpin passes True).
@@ -14912,7 +14950,8 @@ in the MadGraph7 option 'samurai' (instead of leaving it to its default 'auto').
            and not isinstance(self._curr_exporter,
                               loop_exporters.LoopExporterFortran) \
            and 'zerowidth_tchannel' in output_options \
-           and not (self._curr_amps and self._curr_amps[0].get_ninitial() == 1):
+           and not (self._curr_amps and
+                    self._curr_amps[0].get_ninitial_physical() == 1):
             zerowidth_tchannel = banner_module.ConfigFile.format_variable(
                 output_options['zerowidth_tchannel'], bool, 'zerowidth_tchannel')
         aloha.t_channel_width = not zerowidth_tchannel
