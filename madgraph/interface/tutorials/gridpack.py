@@ -1107,8 +1107,8 @@ example with `pip install madspace`. Then set `include_madspace = false`, and
 the gridpack uses the installed copy. It must be the same madspace version
 that created the gridpack. Otherwise the gridpack stops with an error.
 
-A gridpack can also **decay its events**. Launch the same output again, with
-MadSpin on: the card question explains it and lists the lines to type.
+Next, the gridpack will also **decay its events**, with MadSpin. Launch the
+same output again. The card question explains what to type.
 
 %(p)s %(launch)s
 """ % {'p': P, 'half': _half_cores(), 'job1': _job_events(1),
