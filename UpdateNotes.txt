@@ -524,6 +524,10 @@ ANNOUNCEMENT:
          colour amplitudes are below 1e-28 of the summed squares of the terms that make them
          (rounding noise is ~1e-32, genuine amplitudes stay above 1e-23) is now zero, so that
          such a subprocess is exactly zero (test_onia_vanishing_subprocess).
+       - The onia standalone matrix elements (S and P waves) define GET_NHEL, GET_VALUE,
+         GET_VALUE_IDX and GET_VALUE_INTERNAL, as the other standalone ones: the f2py
+         interface of newer versions calls them for every matrix element, so that the f2py
+         library of an onia output (MadSpin, density matrices) did not link or load there.
        - Bug fix (DiscreteSampler, all processes): a grid of grouped subprocesses whose bins
          were all filtered out as zero at the end of an iteration counted as initialized,
          and madevent picked a point from the empty grid (IEEE_INVALID_FLAG, "no point could

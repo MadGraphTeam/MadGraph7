@@ -481,6 +481,83 @@ C
       END
 
 
+      SUBROUTINE %(proc_prefix)sGET_NHEL(IDEN_STAR,NHEL_STAR)
+C     The helicity table of SMATRIX (PROCESS_NHEL, set by DATA) and its
+C     averaging factor IDEN, for the GET_NHEL_ENTRY of the f2py
+C     dispatcher all_matrix.f
+CF2PY INTENT(OUT) :: NHEL_STAR
+CF2PY INTENT(OUT) :: IDEN_STAR
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      INTEGER                 NCOMB
+      PARAMETER (             NCOMB=%(ncomb)d)
+      INTEGER NHEL(NEXTERNAL,NCOMB)
+      COMMON/%(proc_prefix)sPROCESS_NHEL/NHEL
+      INTEGER NHEL_STAR(NEXTERNAL,NCOMB)
+      INTEGER IDEN,IDEN_STAR
+%(den_factor_line)s
+      IDEN_STAR = IDEN
+      NHEL_STAR = NHEL
+      END
+
+      SUBROUTINE %(proc_prefix)sGET_VALUE(P, ALPHAS, NHEL, FLAVOR ,ANS)
+C     f2py interface with the full FLAVOR(NEXTERNAL) array: resolved to
+C     FLAV_IDX, then GET_VALUE_INTERNAL
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      REAL*8 P(0:3,NEXTERNAL),ANS
+      INTEGER NHEL
+      DOUBLE PRECISION ALPHAS
+      INTEGER FLAVOR(NEXTERNAL)
+      INTEGER FLAV_IDX
+      INTEGER %(proc_prefix)sGET_FLAVOR_INDEX
+CF2PY INTENT(OUT) :: ANS
+CF2PY INTENT(IN) :: NHEL
+CF2PY INTENT(IN) :: P(0:3,NEXTERNAL)
+CF2PY INTENT(IN) :: ALPHAS
+CF2PY INTENT(IN) :: FLAVOR(NEXTERNAL)
+      FLAV_IDX = %(proc_prefix)sGET_FLAVOR_INDEX(FLAVOR)
+      CALL %(proc_prefix)sGET_VALUE_INTERNAL(P, ALPHAS, NHEL, FLAV_IDX, ANS)
+      END
+
+      SUBROUTINE %(proc_prefix)sGET_VALUE_IDX(P, ALPHAS, NHEL, FLAV_IDX ,ANS)
+C     f2py interface with the flavor index
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      REAL*8 P(0:3,NEXTERNAL),ANS
+      INTEGER NHEL
+      DOUBLE PRECISION ALPHAS
+      INTEGER FLAV_IDX
+CF2PY INTENT(OUT) :: ANS
+CF2PY INTENT(IN) :: NHEL
+CF2PY INTENT(IN) :: P(0:3,NEXTERNAL)
+CF2PY INTENT(IN) :: ALPHAS
+CF2PY INTENT(IN) :: FLAV_IDX
+      CALL %(proc_prefix)sGET_VALUE_INTERNAL(P, ALPHAS, NHEL, FLAV_IDX, ANS)
+      END
+
+      SUBROUTINE %(proc_prefix)sGET_VALUE_INTERNAL(P, ALPHAS, NHEL, FLAV_IDX ,ANS)
+C     |M|^2 at alpha_s ALPHAS, of the helicity configuration NHEL (0: summed)
+      use model_object
+      IMPLICIT NONE
+      INTEGER    NEXTERNAL
+      PARAMETER (NEXTERNAL=%(nexternal)d)
+      REAL*8 P(0:3,NEXTERNAL),ANS
+      INTEGER NHEL
+      DOUBLE PRECISION ALPHAS
+      INTEGER FLAV_IDX
+      include 'coupl.inc'
+      G = 2*DSQRT(ALPHAS*3.141592653589793D0)
+      CALL UPDATE_AS_PARAM()
+      IF (NHEL.NE.0) THEN
+        CALL %(proc_prefix)sSMATRIXHEL(P, NHEL, FLAV_IDX, ANS)
+      ELSE
+        CALL %(proc_prefix)sSMATRIX(P, FLAV_IDX, ANS)
+      ENDIF
+      END
+
       SUBROUTINE %(proc_prefix)sGET_DENSITY(P, POS, N_CHANGING, ALLOW_HEL, N_COMB, FLAVOR, ALPHAS, SCALE2, INTER)
 C     Spin-density matrix of the legs POS, summed over the helicities of
 C     the other legs, as in matrix_standalone_v4.inc. A bound state is one
