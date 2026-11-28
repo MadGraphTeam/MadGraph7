@@ -3253,8 +3253,10 @@ c     quadruple precision (MP_Dual).
             # No onium template reads these tables; they only have to encode.
             constituents = []
             for pair in matrix_element.get_onia_pairs():
-                j = ext[pair[0] - 1].get('onium').get('J')
-                states[pair[0] - 1] = list(range(-j, j + 1))
+                # the list get_helicity_matrix enumerates: J_z, or the
+                # (L_z, S_z) codes of a P wave in the uncoupled mode
+                states[pair[0] - 1] = list(matrix_element.get_onium_helicities(
+                    ext[pair[0] - 1].get('onium')))
                 constituents.append(pair[1])
             for i in sorted(constituents, reverse=True):
                 del states[i - 1]
