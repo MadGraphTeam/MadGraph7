@@ -68,3 +68,21 @@ HH_CUT_MODE=mH-m12 python3 -I hh.py run etac e 24   # m12 < m_H - E_cut
 ```
 
 `generate` uses `loop_sm_onia-full` and sets the masses, alpha and the LDME in the cards. A P-wave output takes a few minutes to build. A run takes about 10 s per channel.
+
+## Colour-octet decays
+
+`octet.py` (results in `data/octet_results.json`) checks the one-loop virtual of colour-octet decays.
+
+**1 -> 2 decays at rest and boosted, against the time-reversed 2 -> 1 productions.** The virtuals are equal (to 1e-12), the poles equal ONIA_IR_POLES, and the Born equals the tree-level decay output (to 1e-16). Finite parts in units of Born * alpha_s/(2 pi), mu = M = 3.1 GeV:
+
+| Decay | Production | Finite part |
+|---|---|---|
+| 1S0[8] > g g | g g > 1S0[8] | 12.648606234876 |
+| 3S1[8] > u u~ | u u~ > 3S1[8] | 7.955603598241 |
+| 3P0[8] > g g | g g > 3P0[8] | 11.759717345988 |
+| 3P2[8] > g g | g g > 3P2[8] | 15.182917379447 |
+
+**1 -> 3 decays, boosted: the poles against ONIA_IR_POLES.**
+- 1S0[8] > u u~ g agrees to 1e-12.
+- 3S1[8] > g g g agrees to 1e-11.
+- 3P1[8] > u u~ g agrees to 1e-11. This includes the P -> S terms of a decaying octet, to the S-wave singlet and octet states.

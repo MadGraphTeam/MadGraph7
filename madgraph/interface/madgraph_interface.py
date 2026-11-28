@@ -7708,8 +7708,8 @@ This implies that with decay chains:
         """Refuse the perturbed processes with bound states that MadLoop does
         not support: it computes the one-loop QCD virtual ([virt=QCD]) of
         processes with S-wave bound states, and at most two P-wave bound
-        states, in the final state, and of the decay of a colour-singlet bound
-        state (alone in the initial state), as the interference with the Born
+        states, in the final state, and of the decay of a bound state (alone in
+        the initial state), as the interference with the Born
         of the projected amplitudes (colour, spin, orbital and total angular
         momentum projectors of arXiv:2510.26773, at zero relative momentum of
         the constituents)."""
@@ -7759,11 +7759,6 @@ This implies that with decay chains:
                         "The one-loop virtual of the decay of a P-wave bound state into "
                         "another P-wave bound state is not supported (%s)."
                         % onium.get('name'))
-            if not leg.get('state') and onium.get('C') != 1:
-                raise self.InvalidCmd(
-                    "The one-loop virtual of the decay of a colour-octet bound state "
-                    "(%s) is not supported: only colour-singlet bound states decay at "
-                    "one loop." % onium.get('name'))
             if leg.get('polarization'):
                 raise self.InvalidCmd(
                     "Polarised bound states (%s) are not supported at one loop."
