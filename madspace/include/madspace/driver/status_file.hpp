@@ -29,12 +29,15 @@ public:
      * Top-level keys of @p content overwrite the corresponding accumulated
      * ones; the `"run_times"` key is merged one level deeper instead. The
      * file is rewritten if @p force_write is set, if this is the first call,
-     * or if @p min_interval_sec has passed since the last rewrite.
+     * or if @p min_interval_sec has passed since the last rewrite. A file
+     * that cannot be written (its directory is gone, the disk is full) is
+     * skipped: the status file never stops the run.
      */
     void write(const nlohmann::json& content, bool force_write = false);
 
     /// If a status was written and its `"status"` field is not `"done"`,
-    /// sets it to `"done"` and writes the file out one last time.
+    /// sets it to `"done"` and writes the file out one last time. Never
+    /// throws.
     ~StatusFile();
 
 private:

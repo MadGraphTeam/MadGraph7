@@ -3324,6 +3324,15 @@ PYBIND11_MODULE(_madspace_py, m) {
             py::arg("file_name"),
             py::arg("min_interval_sec") = 10.0,
             pydoc::doc("StatusFile::StatusFile")
+        )
+        .def(
+            "write",
+            [](StatusFile& status_file, const std::string& content, bool force_write) {
+                status_file.write(nlohmann::json::parse(content), force_write);
+            },
+            py::arg("content"),
+            py::arg("force_write") = false,
+            pydoc::doc("StatusFile::write")
         );
 
     py::classh<MultiMadnisTraining::TrainingArgs>(

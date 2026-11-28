@@ -130,9 +130,15 @@ def _release_channel_generators(process) -> None:
     owning Python objects are collected, and process.event_generator /
     process.phasespaces sit in a reference cycle that plain refcounting
     never breaks -- only an explicit gc.collect() does, promptly, instead of
-    leaving it to whenever the cyclic GC next runs on its own."""
+    leaving it to whenever the cyclic GC next runs on its own.
+
+    The run's StatusFile goes too: it finishes info.json from its destructor,
+    which has to run while the run directory is still there. Left to the
+    cyclic GC, it can run after an 'output' in the same session has removed
+    the process directory, or at interpreter exit."""
     process.event_generator = None
     process.phasespaces = None
+    process.status_file = None
     gc.collect()
     if getattr(process, "auto_temp_path", False):
         shutil.rmtree(process.temp_path, ignore_errors=True)
@@ -594,6 +600,15 @@ def run_single(switch=None, reweight=None) -> "MadgraphProcess":
     (systematics) and before the post-processing tools."""
     compute_auto_widths()
     process = MadgraphProcess()
+    try:
+        return _run_single(process, switch, reweight)
+    except BaseException:
+        # the traceback keeps the process alive: finish its info.json now
+        _release_channel_generators(process)
+        raise
+
+
+def _run_single(process, switch, reweight) -> "MadgraphProcess":
     process.store_matrix_elements = getattr(reweight, "backend", None) == "madtrex"
     if switch:
         process.madspin_switch = not _off(switch.get("madspin"))

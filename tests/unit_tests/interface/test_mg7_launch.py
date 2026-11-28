@@ -1213,6 +1213,57 @@ class TestPostProcessingIsQuiet(unittest.TestCase):
 
 @unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
                      'madspace is not installed')
+class MG7StatusFileTest(unittest.TestCase):
+    """info.json is finished by the StatusFile destructor. It must run while
+    the run directory exists, and must never abort the process when the
+    directory is gone (an 'output' of the same session removed it)."""
+
+    def test_write_into_a_removed_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run = os.path.join(tmp, 'run_02')
+            os.mkdir(run)
+            code = (
+                "import gc, json, os, shutil, sys\n"
+                "from madgraph.mg7.bootstrap import ensure_madspace\n"
+                "ensure_madspace(interactive=False)\n"
+                "import madspace as ms\n"
+                "run = sys.argv[1]\n"
+                "status = ms.StatusFile(os.path.join(run, 'info.json'))\n"
+                "status.write(json.dumps({'status': 'running'}), True)\n"
+                "assert os.path.exists(os.path.join(run, 'info.json'))\n"
+                "shutil.rmtree(run)\n"
+                "status.write(json.dumps({'step': 2}), True)\n"
+                "del status\n"
+                "gc.collect()\n"
+                "print('survived')\n")
+            result = subprocess.run(
+                [sys.executable, '-c', code, run], capture_output=True,
+                text=True, cwd=os.path.dirname(os.path.dirname(madgraph.__file__)))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('survived', result.stdout)
+
+    def test_a_failed_run_releases_its_status_file(self):
+        from madgraph.mg7 import driver
+        process = mock.Mock(status_file='STATUS', event_generator='GEN',
+                            auto_temp_path=False)
+        process.survey.side_effect = RuntimeError('survey failed')
+        with mock.patch.object(driver, 'compute_auto_widths'), \
+                mock.patch.object(driver, 'MadgraphProcess', lambda: process):
+            with self.assertRaisesRegex(RuntimeError, 'survey failed'):
+                driver.run_single()
+        self.assertIsNone(process.status_file)
+        self.assertIsNone(process.event_generator)
+
+    def test_release_drops_the_status_file(self):
+        from madgraph.mg7 import driver
+        process = types.SimpleNamespace(status_file='STATUS', event_generator='GEN',
+                                        phasespaces=[], auto_temp_path=False)
+        driver._release_channel_generators(process)
+        self.assertIsNone(process.status_file)
+
+
+@unittest.skipUnless(mg7_bootstrap.madspace_is_installed(),
+                     'madspace is not installed')
 class MG7ReweightingTest(unittest.TestCase):
     """Reweighting runs once per generation, after the systematics, by the
     backend prepare_reweighting() chose."""
