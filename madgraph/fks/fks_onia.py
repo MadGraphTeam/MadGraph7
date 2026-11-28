@@ -905,19 +905,22 @@ def madloop_virtual(process):
     else (False, why). The virtual then comes from the built-in 2 -> 1
     expressions (builtin_virtual) or the user hook (BinothLHA_user.f).
     MadLoop needs a model with QCD loops (loop_sm_onia, written by
-    tools/make_onia_model.py). Its P-wave bound states need a HELAS library in
-    dual numbers for every process of the output (export_v4, loop_dual),
-    which the Borns and reals of the FKS output do not have: they keep the
-    built-in or user virtual."""
+    tools/make_onia_model.py). Its P-wave layer (one or two P-wave bound
+    states) computes in dual numbers: the FKS output gives it the dual HELAS
+    library under its own names, next to the plain one of the Borns and reals
+    (fks_onia_loopdual). More than two P-wave states keep the built-in or
+    user virtual."""
     model = process.get('model')
     if 'QCD' not in (model.get('perturbation_couplings') or []):
         return False, ('the model %s has no QCD loops (MadLoop: a loop model, e.g. '
                        '"import model loop_sm_onia-c_mass")' % model.get('name'))
+    pwaves = set()
     for leg in process.get('legs'):
         onium = onium_of(leg)
         if onium and onium.get('L', 0) > 0:
-            return False, ('P-wave bound state %s (MadLoop in the FKS output: '
-                           'S-wave bound states only)' % onium.get('name'))
+            pwaves.add(onium.get('index', leg.get('number')))
+    if len(pwaves) > 2:
+        return False, ('%d P-wave bound states (MadLoop: at most two)' % len(pwaves))
     return True, ''
 
 

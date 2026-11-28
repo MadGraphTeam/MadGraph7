@@ -2908,7 +2908,8 @@ c     quadruple precision (MP_Dual).
             stream.write(tree[start:end])
 
     def write_aloha_library(self, model, wanted_lorentz, npwave=0, gauge='',
-                            loop_dual=False, loop_npwave=1, loop_ep=False):
+                            loop_dual=False, loop_npwave=1, loop_ep=False,
+                            write_dir=None):
         """The ALOHA routines of the matrix elements and their helper file:
         Source/DHELAS, Source/DHELAS<n> for P-wave onia, and for the other
         gauge of an output that mixes gauges Source/DHELAS_<GAUGE> (called
@@ -2917,7 +2918,11 @@ c     quadruple precision (MP_Dual).
         loop_dual: the library of a MadLoop output with a P-wave bound state,
         Source/DHELAS itself, whose routines (the tree-level and the loop
         ones) are the dual-number routines of the tree-level P-wave output,
-        in double and in quadruple precision (write_loop_dual_aloha_functions)."""
+        in double and in quadruple precision (write_loop_dual_aloha_functions).
+
+        write_dir: another directory for the library (an existing one), e.g.
+        the dual library of the P-wave virtuals of an FKS output, next to its
+        plain Source/DHELAS (fks_onia_loopdual)."""
 
         old_aloha_mp = aloha.mp_precision
         aloha.mp_precision = self.opt['mp']
@@ -2953,10 +2958,13 @@ c     quadruple precision (MP_Dual).
             aloha_model.compute_all(save=False)
 
         # Write them out
-        write_dir=pjoin(self.dir_path, 'Source', 'DHELAS')
-        if npwave > 0:
+        if write_dir:
+            pass
+        elif npwave > 0:
             write_dir=pjoin(self.dir_path, 'Source', 'DHELAS%i'%npwave)
-        elif gauge:
+        elif not gauge:
+            write_dir=pjoin(self.dir_path, 'Source', 'DHELAS')
+        else:
             write_dir=pjoin(self.dir_path, 'Source',
                             'DHELAS' + self.gauge_libraries[gauge][0])
             if not os.path.isdir(write_dir):

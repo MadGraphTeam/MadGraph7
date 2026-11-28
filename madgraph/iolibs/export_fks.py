@@ -37,6 +37,7 @@ import madgraph.fks.fks_helas_objects as fks_helas_objects
 import madgraph.fks.fks_base as fks
 import madgraph.fks.fks_common as fks_common
 import madgraph.fks.fks_onia as fks_onia
+import madgraph.fks.fks_onia_loopdual as fks_onia_loopdual
 import aloha
 import madgraph.fks.fks_real_channels_auto as fks_real_channels_auto
 import fractions
@@ -403,6 +404,50 @@ class ProcessExporterFortranFKS(loop_exporters.LoopProcessExporterFortranSA):
         for cp_file in files_to_copy:
             cp(pjoin(_file_path,cp_file),
                 pjoin(self.dir_path,'bin','internal',os.path.basename(cp_file)))
+
+    def write_aloha_library(self, model, wanted_lorentz, npwave=0, gauge='', **opts):
+        """The HELAS library of the FKS output: Source/DHELAS is the plain
+        one (the Born and real matrix elements, the S-wave virtuals), never the
+        dual one of MadLoop's P-wave layer (loop_exporters), which goes in
+        Source/DHELAS_LD<n> with its names prefixed (fks_onia_loopdual), one
+        per number n of P-wave states of the virtuals."""
+        export_v4.ProcessExporterFortran.write_aloha_library(
+            self, model, wanted_lorentz, npwave=npwave, gauge=gauge)
+        if npwave or gauge:
+            return
+        counts = set(fks_onia_loopdual.marked_vdirs(
+            pjoin(self.dir_path, 'SubProcesses')).values())
+        for n in sorted(counts):
+            self.write_onia_loop_dual_library(model, wanted_lorentz, n)
+
+    def write_onia_loop_dual_library(self, model, wanted_lorentz, npwave):
+        """Source/DHELAS_LD<npwave>: the dual-number HELAS library of the
+        MadLoop virtuals with npwave P-wave bound states, written as in a
+        standalone P-wave MadLoop output (write_aloha_library, loop_dual), from
+        a fresh ALOHA model (the cached one holds the plain routines), then its
+        names prefixed LD<npwave>_."""
+        from aloha import aloha_lib
+        write_dir = pjoin(self.dir_path, 'Source', fks_onia_loopdual.library_dir(npwave))
+        if os.path.isdir(write_dir):
+            shutil.rmtree(write_dir)
+        os.mkdir(write_dir)
+        cached = self.__dict__.pop('aloha_model', None)
+        aloha_lib.KERNEL.clean()
+        try:
+            export_v4.ProcessExporterFortran.write_aloha_library(
+                self, model, wanted_lorentz, loop_dual=True, loop_npwave=npwave,
+                write_dir=write_dir)
+        finally:
+            aloha_lib.KERNEL.clean()
+            if cached is not None:
+                self.aloha_model = cached
+        # the loop sizes of the output (write_coef_specs_file), shared
+        plain_specs = pjoin(self.dir_path, 'Source', 'DHELAS', 'coef_specs.inc')
+        if os.path.exists(plain_specs):
+            shutil.copy(plain_specs, pjoin(write_dir, 'coef_specs.inc'))
+        names = fks_onia_loopdual.rename_library(write_dir, npwave)
+        logger.info('MadLoop P-wave virtuals: dual HELAS library %s (%d names prefixed %s)'
+                    % (os.path.basename(write_dir), len(names), fks_onia_loopdual.prefix(npwave)))
 
     def convert_model(self, model, wanted_lorentz = [], 
                                             wanted_couplings = [], **opts):
@@ -6488,6 +6533,68 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
         ProcessExporterFortranFKS.finalize(self, *args, **opts)
         #export_v4.ProcessExporterFortranSA.finalize(self, *args, **opts)
         self.set_onia_madloop_card()
+        self.link_onia_loop_dual()
+
+    def link_onia_loop_dual(self):
+        """The V* directories of the Borns with P-wave bound states (marked
+        when written, fks_onia_loopdual) and their P directories: the names of
+        the dual library Source/DHELAS_LD<n> prefixed in their sources, a
+        makefile of their own that compiles against its modules and links it,
+        libdhelas_ld<n> after libMadLoop in the P directory, and the rules of
+        the library in Source/makefile."""
+        subprocesses = pjoin(self.dir_path, 'SubProcesses')
+        marked = fks_onia_loopdual.marked_vdirs(subprocesses)
+        if not marked:
+            return
+        source = pjoin(self.dir_path, 'Source')
+        with open(pjoin(subprocesses, 'makefile_loop')) as stream:
+            loop_makefile = stream.read()
+        for vdir, n in sorted(marked.items()):
+            names = fks_onia_loopdual.library_names(source, n)
+            fks_onia_loopdual.rename_directory(vdir, names, fks_onia_loopdual.prefix(n))
+            lib = fks_onia_loopdual.library_name(n)
+            text = loop_makefile.replace('-ldhelas ', '-l%s ' % lib).replace(
+                '$(LIBDIR)libdhelas.$(libext)', '$(LIBDIR)lib%s.$(libext)' % lib)
+            text = text.replace('-c -I$(LIBDIR) $<', '-c -I$(LIBDIR) -I../../../Source/%s $<'
+                                % fks_onia_loopdual.library_dir(n))
+            text = text.replace('$(LOOP_INCLUDE)', '$(LOOP_INCLUDE) -I../../../Source/%s'
+                                % fks_onia_loopdual.library_dir(n))
+            if n == 2:
+                text += loop_exporters.LoopProcessOptimizedExporterFortranSA.ONIA_PW2_CODE_MODEL
+            makefile = pjoin(vdir, 'makefile')
+            if os.path.lexists(makefile):
+                os.remove(makefile)
+            with open(makefile, 'w') as stream:
+                stream.write(text)
+            pdir_makefile = pjoin(os.path.dirname(vdir), 'makefile')
+            with open(pdir_makefile) as stream:
+                text = stream.read()
+            old = 'NLOLIBS=-L$(LIBDIR) $(libmadloop) '
+            if text.count(old) != 1:
+                raise MadGraph5Error('Unexpected makefile in %s' % os.path.dirname(vdir))
+            text = text.replace(old, old + '-l%s ' % lib)
+            with open(pdir_makefile, 'w') as stream:
+                stream.write(text)
+        source_makefile = pjoin(source, 'makefile')
+        with open(source_makefile) as stream:
+            text = stream.read()
+        old = '$(LIBDIR)libdhelas.a: DHELAS\n'
+        rules, targets = '', ''
+        for n in sorted(set(marked.values())):
+            lib = fks_onia_loopdual.library_name(n)
+            ldir = fks_onia_loopdual.library_dir(n)
+            targets += ' $(LIBDIR)lib%s.a' % lib
+            rules += ('$(LIBDIR)lib%s.a: %s\n\trm -f $(LIBDIR)lib%s.a\n\tcd %s; make\n'
+                      '\tcp -f %s/*.mod $(LIBDIR)\n\n' % (lib, ldir, lib, ldir, ldir))
+        if text.count(old) != 1 or text.count('all: ') < 1:
+            raise MadGraph5Error('Unexpected Source/makefile')
+        text = text.replace(old, rules + old)
+        text = text.replace('all: $(LIBDIR)libdhelas.a', 'all: $(LIBDIR)libdhelas.a' + targets, 1)
+        with open(source_makefile, 'w') as stream:
+            stream.write(text)
+        logger.info('MadLoop P-wave virtuals in %d directories (dual HELAS libraries %s)'
+                    % (len(marked), ', '.join(fks_onia_loopdual.library_dir(n)
+                                              for n in sorted(set(marked.values())))))
 
     def set_onia_madloop_card(self):
         """MadLoop virtuals of Borns with bound states (write_onia_loop_files
@@ -6782,9 +6889,16 @@ class ProcessOptimizedExporterFortranFKS(loop_exporters.LoopProcessOptimizedExpo
 
         calls=self.write_loop_matrix_element_v4(None,matrix_element,fortran_model)
         
-        # We need a link to coefs.inc from DHELAS
-        ln(pjoin(self.dir_path, 'Source', 'DHELAS', 'coef_specs.inc'),
-                                                        abspath=False, cwd=None)
+        # We need a link to coefs.inc from DHELAS (from the dual library of
+        # the P-wave virtuals for a Born with P-wave bound states, whose
+        # directory is marked here: fks_onia_loopdual)
+        import madgraph.loop.loop_onia as loop_onia
+        npwave = loop_onia.npwave(matrix_element)
+        if npwave:
+            fks_onia_loopdual.write_marker('.', npwave)
+        ln(pjoin(self.dir_path, 'Source',
+                 fks_onia_loopdual.library_dir(npwave) if npwave else 'DHELAS',
+                 'coef_specs.inc'), abspath=False, cwd=None)
     
         # The born matrix element, if needed
         filename = 'born_matrix.f'

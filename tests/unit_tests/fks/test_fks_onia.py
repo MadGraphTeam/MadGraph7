@@ -273,9 +273,10 @@ class TestFKSOniaGeneration(unittest.TestCase):
 
     def test_virtual_source(self):
         """[QCD] with bound states: the tree model keeps the built-in or user
-        virtual (onia_virtual); a loop model gives MadLoop's for S waves
-        (virt_process with the constituent legs and their 'onium'), and the
-        built-in or user one for P waves (fks_onia.madloop_virtual)."""
+        virtual (onia_virtual); a loop model gives MadLoop's (virt_process with
+        the constituent legs and their 'onium'), for S waves and for up to two
+        P waves, whose dual HELAS library the FKS output links under its own
+        names (fks_onia.madloop_virtual, fks_onia_loopdual)."""
         born = self.generate('g g > etac(1|1S01) [QCD]')[0]
         self.assertTrue(born.onia_virtual)
         self.assertIsNone(born.virt_process)
@@ -285,7 +286,7 @@ class TestFKSOniaGeneration(unittest.TestCase):
         cmd.exec_cmd('import model loop_sm_onia-c_mass')
         for line, madloop in [('g g > etac(1|1S01) [QCD]', True),
                               ('u u~ > tata(1|3S1) [QCD]', True),
-                              ('g g > chic2(1|3P21) [QCD]', False)]:
+                              ('g g > chic2(1|3P21) [QCD]', True)]:
             cmd.exec_cmd('generate %s' % line)
             born = cmd._fks_multi_proc['born_processes'][0]
             self.assertEqual(not getattr(born, 'onia_virtual', False), madloop, line)
@@ -300,6 +301,86 @@ class TestFKSOniaGeneration(unittest.TestCase):
                                            .born_amp['process'])
         self.assertFalse(ok)
         self.assertIn('no QCD loops', why)
+
+    def test_loopdual_renaming(self):
+        """The dual HELAS library of MadLoop's P-wave virtuals in an FKS output
+        (fks_onia_loopdual): its external procedures and modules are prefixed
+        in the library and in the V* sources, not the module procedures, nor
+        names that only contain one; a shared (linked) file is copied only if
+        it changes; long fixed-form lines are continued."""
+        import shutil
+        import tempfile
+        import madgraph.fks.fks_onia_loopdual as dual
+        tmp = tempfile.mkdtemp()
+        try:
+            lib = os.path.join(tmp, 'lib')
+            vdir = os.path.join(tmp, 'V0')
+            os.mkdir(lib)
+            os.mkdir(vdir)
+            with open(os.path.join(lib, 'aloha_functions.f'), 'w') as f:
+                f.write("      module ALOHA_OBJECT\n      use dual_variables\n"
+                        "      contains\n      function inner(x)\n      end function inner\n"
+                        "      end module ALOHA_OBJECT\n"
+                        "      subroutine vxxxxx(p,w)\n      end\n"
+                        "      double complex function mp_ffv1_0(a)\n      end\n")
+            with open(os.path.join(lib, 'dual_variables.f'), 'w') as f:
+                f.write("      module dual_variables\n      end module dual_variables\n")
+            with open(os.path.join(lib, 'FFV1_0.f'), 'w') as f:
+                f.write("      SUBROUTINE FFV1_0(F1,V3,COUP,VERTEX)\n      USE ALOHA_OBJECT\n"
+                        "      CALL VXXXXX(P,W)\n      END\n")
+            with open(os.path.join(lib, 'aloha_file.inc'), 'w') as f:
+                f.write('ALOHARoutine = FFV1_0.o\n')
+            with open(os.path.join(lib, 'makefile'), 'w') as f:
+                f.write('LIBRARY = libdhelas.$(libext)\n')
+            names = dual.defined_names(lib)
+            self.assertEqual(names, set(['aloha_object', 'dual_variables', 'vxxxxx',
+                                         'mp_ffv1_0', 'ffv1_0']))
+            self.assertEqual(dual.rename_library(lib, 1), names)
+            with open(os.path.join(lib, 'FFV1_0.f')) as f:
+                text = f.read()
+            self.assertIn('SUBROUTINE LD1_FFV1_0(', text)
+            self.assertIn('USE LD1_ALOHA_OBJECT', text)
+            self.assertIn('CALL LD1_VXXXXX(P,W)', text)
+            with open(os.path.join(lib, 'aloha_functions.f')) as f:
+                text = f.read()
+            self.assertIn('function inner(x)', text)
+            self.assertIn('use LD1_dual_variables', text)
+            with open(os.path.join(lib, 'aloha_file.inc')) as f:
+                self.assertEqual(f.read(), 'ALOHARoutine = FFV1_0.o\n')
+            with open(os.path.join(lib, 'makefile')) as f:
+                self.assertIn('libdhelas_ld1.', f.read())
+            shared = os.path.join(tmp, 'shared.f')
+            with open(shared, 'w') as f:
+                f.write("      CALL MP_FFV1_0(A)\n")
+            untouched = os.path.join(tmp, 'untouched.f')
+            with open(untouched, 'w') as f:
+                f.write("      CALL MY_FFV1_0X(A)\n")
+            os.symlink(shared, os.path.join(vdir, 'shared.f'))
+            os.symlink(untouched, os.path.join(vdir, 'untouched.f'))
+            long_call = '      CALL FFV1_0(' + ', '.join(['W(1,%d)' % i for i in range(20)]) + ')\n'
+            with open(os.path.join(vdir, 'loop.f'), 'w') as f:
+                f.write(long_call + "C     FFV1_0 in a comment\n")
+            changed = dual.rename_directory(vdir, names, dual.prefix(1))
+            self.assertEqual(sorted(changed), ['loop.f', 'shared.f'])
+            self.assertFalse(os.path.islink(os.path.join(vdir, 'shared.f')))
+            self.assertTrue(os.path.islink(os.path.join(vdir, 'untouched.f')))
+            with open(shared) as f:
+                self.assertEqual(f.read(), "      CALL MP_FFV1_0(A)\n")
+            with open(os.path.join(vdir, 'shared.f')) as f:
+                self.assertEqual(f.read(), "      CALL LD1_MP_FFV1_0(A)\n")
+            with open(os.path.join(vdir, 'loop.f')) as f:
+                lines = f.read().splitlines()
+            self.assertTrue(all(len(l) <= dual.MAX_COLUMNS for l in lines))
+            self.assertTrue(lines[0].startswith('      CALL LD1_FFV1_0('))
+            self.assertTrue(lines[1].startswith('     $ '))
+            dual.write_marker(vdir, 2)
+            self.assertEqual(dual.marked_vdirs(tmp), {})
+            pdir = os.path.join(tmp, 'P0_x')
+            os.mkdir(pdir)
+            shutil.move(vdir, os.path.join(pdir, 'V0_x'))
+            self.assertEqual(dual.marked_vdirs(tmp), {os.path.join(pdir, 'V0_x'): 2})
+        finally:
+            shutil.rmtree(tmp)
 
     def test_vanishing_born(self):
         """Borns that vanish identically by colour or C parity, or as a
