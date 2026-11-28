@@ -924,14 +924,10 @@ class ColorBasis(dict):
                 color = -color
             if not onium:
                 onium = True
-                # an incoming (anti)quark carries the index of an
-                # outgoing (anti)antiquark in the colour strings
-                onium_color = color if l.get('state') else -color
+                onium_color = color
                 onium_number = l.get('number')
             else:
                 onium = False
-                if not l.get('state'):
-                    color = -color
                 pid_color_numbers.append([(onium_color,color),(onium_number,l.get('number')),l.get('onium').get('C')])
         return pid_color_numbers
 
