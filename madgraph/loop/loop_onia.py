@@ -69,15 +69,29 @@ def has_onia(matrix_element):
         return False
 
 
+def has_initial_onia(matrix_element):
+    """True if the (loop) matrix element has a bound state in the initial
+    state (the decay of a bound state)."""
+    try:
+        return any(leg.get('onium') and not leg.get('state')
+                   for leg in matrix_element.get('processes')[0].get('legs'))
+    except (MadGraph5Error, AttributeError, IndexError, KeyError):
+        return False
+
+
 def onia_loop_info(matrix_element):
     """The bound-state data of a LoopHelasMatrixElement, as a dictionary:
 
       nexternal, ninitial       constituent legs (MadLoop's internal legs)
       nexternal_phys            legs with each bound state counted once
+      ninitial_phys             incoming particles, a decaying bound state
+                                counted once
+      ninitial_onia             decaying bound states (0 or 1)
       mapping[i]                physical leg (1-based) of constituent leg i+1
       onia                      one dict per bound state: q1 (particle) and q2
                                 (antiparticle) constituent legs, phys (its
-                                physical leg), S, L, J, C, id, name
+                                physical leg), S, L, J, C, id, name, initial
+                                (a decaying bound state)
       helc                      the constituent helicity configurations, in the
                                 order of get_helicity_matrix (HelConfigs.dat)
       others[h]                 index (1-based) of the helicities of the other
@@ -108,8 +122,6 @@ def onia_loop_info(matrix_element):
         onium = wf.get('onium')
         if not onium:
             continue
-        if not wf.get('leg_state'):
-            raise OniaLoopError('A bound state in the initial state is not supported.')
         index = onium.get('index')
         if index in pending:
             first = pending.pop(index)
@@ -121,7 +133,8 @@ def onia_loop_info(matrix_element):
                              first=first.get('number_external'),
                              S=onium.get('S'), L=onium.get('L', 0), J=onium.get('J'),
                              C=onium.get('C'), id=abs(onium.get('id')),
-                             name=onium.get('name'), index=index))
+                             name=onium.get('name'), index=index,
+                             initial=not wf.get('leg_state')))
         else:
             pending[index] = wf
     if pending:
@@ -212,7 +225,10 @@ def onia_loop_info(matrix_element):
     ipwaves = [onia.index(o) + 1 for o in pwave]
     ipwave = ipwaves[0] if ipwaves else 0
 
+    # a decaying bound state is one incoming particle
+    ninitial_phys = ninitial - sum(1 for o in onia if o['initial'])
     return dict(nexternal=nexternal, ninitial=ninitial, nexternal_phys=nexternal_phys,
+                ninitial_phys=ninitial_phys, ninitial_onia=ninitial - ninitial_phys,
                 mapping=mapping, onia=onia, helc=helc, others=others,
                 phys_helc=phys_helc, phys_leg=phys_leg, phys_others=phys_others,
                 nothers=len(signatures), jz=jz, norm=norm, ipwave=ipwave,
@@ -432,11 +448,12 @@ def physical_charges(matrix_element, info):
     """{physical leg: (colour index, representation)} of the coloured physical
     legs: a parton of colour 3, -3 (initial quarks, final antiquarks) or 8,
     and a colour-octet bound state of coloured constituents, whose total
-    charge T_Q + T_Qbar acts on its octet index, the number of its quark.
-    A colour-singlet bound state has no charge."""
+    charge T_Q + T_Qbar acts on its octet index (octet_leg: the number of
+    its quark, of its antiquark for a decaying bound state). A colour-singlet
+    bound state has no charge."""
     process = matrix_element.get('processes')[0]
     model = process.get('model')
-    onia = dict((o['q1'], o) for o in info['onia'])
+    onia = dict((octet_leg(o), o) for o in info['onia'])
     charges = {}
     for leg in process.get('legs'):
         num = leg.get('number')
@@ -637,6 +654,14 @@ def physical_color_links(info, constituent_links):
 # or an initial antiquark, -t^aT for a final antiquark or an initial quark,
 # T^a = -i f for an octet.
 
+def octet_leg(onium):
+    """The constituent leg (an entry of onia_loop_info's 'onia') whose number
+    is the octet index of the bound state in the colour strings: the leg of
+    colour 3 after crossing, the quark, or the antiquark of a decaying
+    (initial-state) bound state."""
+    return onium['q2'] if onium.get('initial') else onium['q1']
+
+
 def _coloured_pair(matrix_element, onium):
     """Whether the constituents of a bound state (an entry of
     onia_loop_info's 'onia') are coloured: a quarkonium, not a leptonium."""
@@ -809,11 +834,13 @@ def pwave_soft_current(matrix_element, info, amp_to_jamp, ipw=None):
     onia_numbers = basis.get_onia_color_numbers(process)
     born_basis = matrix_element.get('born_color_basis')
     keys_p = sorted(born_basis.keys())
-    # the octet index of a quarkonium is the number of its quark (colour 3)
-    n_q = pw['q1']
+    # the octet index of a quarkonium is the number of its leg of colour 3
+    # in the colour strings (OniumColorString): its quark, or for a decaying
+    # bound state its antiquark (the diagrams carry the crossed constituents)
+    n_q = octet_leg(pw)
     octet_index = {}
     for o in info['onia']:
-        octet_index[o['q1']] = o
+        octet_index[octet_leg(o)] = o
     a, fresh, c_new, m_new = -4001, -4002, -4003, -4004
 
     # the coloured physical legs other than the P-wave state: (number of

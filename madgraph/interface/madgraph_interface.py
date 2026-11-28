@@ -7707,10 +7707,19 @@ This implies that with decay chains:
         """Refuse the perturbed processes with bound states that MadLoop does
         not support: it computes the one-loop QCD virtual ([virt=QCD]) of
         processes with S-wave bound states, and at most two P-wave bound
-        states, in the final state, as the interference with the Born of the
-        projected amplitudes (colour, spin, orbital and total angular
+        states, in the final state, and of the decay of a colour-singlet bound
+        state (alone in the initial state), as the interference with the Born
+        of the projected amplitudes (colour, spin, orbital and total angular
         momentum projectors of arXiv:2510.26773, at zero relative momentum of
         the constituents)."""
+
+        initial = [leg for leg in legs if not leg.get('state')]
+        if any(leg.get('onium') for leg in initial) and \
+           (len(initial) != 2 or not all(leg.get('onium') for leg in initial)):
+            raise self.InvalidCmd(
+                "The one-loop virtual of a bound state in the initial state is "
+                "supported for its decay only, the bound state alone in the initial "
+                "state (1 > N).")
 
         if loop_option != 'virt':
             if loop_option in ['all', 'real', 'LOonly']:
@@ -7747,6 +7756,17 @@ This implies that with decay chains:
                     raise self.InvalidCmd(
                         "The one-loop virtual of processes with more than two P-wave "
                         "bound states is not supported (%s)." % onium.get('name'))
+                if len(pwave) > 1 and any(l.get('onium') and not l.get('state') and
+                                          l.get('onium').get('L', 0) == 1 for l in legs):
+                    raise self.InvalidCmd(
+                        "The one-loop virtual of the decay of a P-wave bound state into "
+                        "another P-wave bound state is not supported (%s)."
+                        % onium.get('name'))
+            if not leg.get('state') and onium.get('C') != 1:
+                raise self.InvalidCmd(
+                    "The one-loop virtual of the decay of a colour-octet bound state "
+                    "(%s) is not supported: only colour-singlet bound states decay at "
+                    "one loop." % onium.get('name'))
             if leg.get('polarization'):
                 raise self.InvalidCmd(
                     "Polarised bound states (%s) are not supported at one loop."

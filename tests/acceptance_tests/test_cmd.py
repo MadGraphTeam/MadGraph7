@@ -5000,6 +5000,82 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
                 self.assertAlmostEqual(r['single_norm'], single, 8, process)
                 self.assertAlmostEqual(r['double_norm'], double, 8, process)
 
+    def test_quarkonium_decay_loop_standalone(self):
+        """MadLoop one-loop QCD virtuals of bound-state decays (a colour
+        singlet in the initial state), in units of Born * alpha_s/(2 pi):
+        - the textbook corrections of eta_c > a a (-(20-pi^2)/3 alpha_s/pi),
+          J/psi > e+ e- (-16/3), chi_c0 > a a (pi^2/3-28/9) and chi_c2 > a a
+          (-16/3), with vanishing poles, at rest and boosted;
+        - the Born of eta_c > a a and chi_c0 > a a: the LO widths
+          3 e_c^4 alpha^2 |R(0)|^2/m_c^2 and 27 e_c^4 alpha^2 |R'(0)|^2/m_c^4,
+          with the decay LDMEs of the onia card (Block ldme_decay, <O_H> =
+          2 Nc |R(0)|^2/(4 pi) and 2 Nc 3 |R'(0)|^2/(4 pi)), averaged over the
+          2J+1 states of the bound state;
+        - eta_c > g g and chi_c1 > u u~ g (boosted): the poles are those of
+          ONIA_IR_POLES, with the P -> S term of the decaying P wave."""
+
+        import sys
+        import math
+        import re
+        sys.path.insert(0, pjoin(MG5DIR, 'tools'))
+        import onia_loop_check
+
+        tirust = self.cmd.options.get('tirust')
+        if not tirust or str(tirust) == 'None' or not os.path.isdir(str(tirust)):
+            self.skipTest('TIRust is not installed (install tirust)')
+
+        pi2, CF = math.pi**2, 4./3.
+        ec = 2./3.
+        # (process, finite, poles predicted, LO width(alpha, LDME, m_c), P wave)
+        processes = [
+            ('etac(1|1S01) > a a [virt=QCD]', 2*CF*(pi2/4-5), False,
+             lambda a, L, m: 3*ec**4*a**2*(L*4*math.pi/6)/m**2, False),
+            ('Jpsi(1|3S11) > e+ e- / z [virt=QCD]', -32./3, False, None, False),
+            ('etac(1|1S01) > g g [virt=QCD]', None, True, None, False),
+            ('chic0(1|3P01) > a a [virt=QCD]', 2*(pi2/3-28./9), False,
+             lambda a, L, m: 27*ec**4*a**2*(L*4*math.pi/18)/m**4, True),
+            ('chic1(1|3P11) > u u~ g [virt=QCD]', None, True, None, True),
+        ]
+        for i, (process, finite, predicted, width, pwave) in enumerate(processes):
+            extra = ['set tirust %s --no_save' % self.raised_power_tirust()] if pwave else []
+            outdir = onia_loop_check.output_process(
+                'loop_sm_onia-c_mass', process, pjoin(self.tmpdir, 'onia_decay_%d' % i),
+                extra=extra, regenerate=True)
+            pdir = onia_loop_check.subprocess_dir(outdir)
+            onia_loop_check.build_driver(pdir)
+            masses = onia_loop_check.driver_masses(pdir)
+            points = onia_loop_check.decay_points(masses[1:], masses[0], count=1,
+                                                  boost=onia_loop_check.DECAY_BOOST)
+            if not predicted:
+                # and at rest (a P wave at rest only for 1 -> 2)
+                points = onia_loop_check.decay_points(masses[1:], masses[0], count=1) + points
+            onia_loop_check.set_reduction(outdir, [9])
+            results = onia_loop_check.run_points(pdir, points, mu=masses[0])
+            self.assertEqual(len(results), len(points))
+            for r in results:
+                self.assertEqual(r['ret_code'] // 100, 2, process)
+                if predicted:
+                    self.assertLess(abs(r['single_norm'] - r['predicted_single_norm']),
+                                    1e-8 * max(1., abs(r['single_norm'])), process)
+                    self.assertLess(abs(r['double_norm'] - r['predicted_double_norm']),
+                                    1e-8 * max(1., abs(r['double_norm'])), process)
+                    continue
+                self.assertLess(abs(r['finite_norm']/finite - 1.),
+                                max(5e-9, r['accuracy']), process)
+                self.assertLess(abs(r['single_norm']), 1e-8, process)
+                self.assertLess(abs(r['double_norm']), 1e-8, process)
+            if width:
+                cards = pjoin(outdir, 'Cards')
+                ldme = float(re.search(r'(?im)^block\s+ldme_decay\s*\n\s*\d+\s+(\S+)',
+                                       open(pjoin(cards, 'onia_card.dat')).read()).group(1))
+                param = open(pjoin(cards, 'param_card.dat')).read()
+                aewm1 = float(re.search(r'(?m)^\s*1\s+(\S+)\s+#\s*aEWM1', param).group(1))
+                mc = masses[0] / 2
+                for r in results:
+                    # Gamma = |M|^2/(16 pi M), the photon symmetry factor in IDEN
+                    self.assertAlmostEqual(r['born']/(16*math.pi*masses[0]) /
+                                           width(1/aewm1, ldme, mc), 1., 12, process)
+
     def test_quarkonium_loop_helicities(self):
         """SLOOPMATRIXHEL for bound states (the MC over helicities of MadFKS)
         on g g > Jpsi(1|3S11) g [virt=QCD]: its 24 physical configurations
