@@ -64,7 +64,7 @@ This is what the MC over helicities of MadFKS uses.
 - **Tool.** `tools/onia_loop_check.py` drives it with `run_points_hel`.
 
 Supported: `[virt=QCD]` with S-wave bound states in the final state, and at
-most one P-wave bound state, and the decays of colour-singlet bound states
+most one P-wave bound state, and the decays of bound states
 (below). A P-wave output needs a TIRust installation with
 raised propagator powers (`raised_powers` in its metadata; `install tirust
 --update`), and must be output alone or with other P-wave processes: its
@@ -133,9 +133,9 @@ polynomial routines are written for that rank (`loop_onia.loop_rank_increase`).
 
 Refused with an explanatory error:
 - more than two P-wave bound states, and states with L >= 2;
-- a bound state in the initial state other than a decaying colour singlet
-  alone in the initial state (colour octets, 2 > N), and a decaying P-wave
-  state with a P-wave state in its final state;
+- a bound state in the initial state other than a decaying one alone in
+  the initial state (2 > N), and a decaying P-wave state with a P-wave state
+  in its final state;
 - the FKS modes `[QCD]` and `[real=QCD]` (developed on the `onia_fks` branch);
 - loop-induced processes (`[sqrvirt=QCD]`);
 - `[virt=QED]`;
@@ -145,8 +145,8 @@ Refused with an explanatory error:
 
 ## Decays
 
-The decay of a colour-singlet S- or P-wave bound state, alone in the initial
-state, at one loop:
+The decay of an S- or P-wave bound state, colour singlet or octet, alone in
+the initial state, at one loop:
 
 ```text
 import model loop_sm_onia-c_mass
@@ -158,9 +158,11 @@ The tree level is that of the onia decays (`onia_decay`): the incoming
 constituents with momentum P/2 each, their spin projector
 `ONIA_PROJ_IN` (ubar(p1) Gamma' v(p2), an incoming polarisation), for a P wave
 the incoming polarisation vectors as directions of the relative momentum, and
-the decay LDME `<O_H>` of `Block ldme_decay` of the onia card (for an S wave
-2 Nc |R(0)|^2/(4 pi), for a P wave 2 Nc 3 |R'(0)|^2/(4 pi), whatever J). The
-result is averaged over the 2J+1 states of the bound state (in `IDEN`); a
+the decay LDME `<O_H>` of `Block ldme_decay` of the onia card (for a colour
+singlet 2 Nc |R(0)|^2/(4 pi) for an S wave, 2 Nc 3 |R'(0)|^2/(4 pi) for a P
+wave, whatever J; a colour octet is normalised with 1/8 in place of 1/(2 Nc)).
+The result is averaged over the 2J+1 states of the bound state (in `IDEN`;
+the colour of an octet is in its LDME); a
 configuration of `SLOOPMATRIXHEL` is its J_z. MadLoop's own legs are the
 constituents, two incoming legs; the physical process has one incoming
 particle. The momenta are on shell with the bound-state mass m1 + m2: set its
@@ -168,9 +170,10 @@ particle. The momenta are on shell with the bound-state mass m1 + m2: set its
 = M/2).
 
 - **Poles.** ONIA_IR_POLES takes the decaying state as incoming: a colour
-  singlet has no colour links, and the P -> S term of a decaying P wave is
-  that of the production with its momentum -P (all momenta outgoing). In the
-  colour strings the octet index of an incoming pair is its antiquark
+  singlet has no colour links, an octet is a massive adjoint particle (its
+  charge T_Q + T_Qbar, Gamma = C_A), and the P -> S term of a decaying P wave
+  is that of the production with its momentum -P (all momenta outgoing). In
+  the colour strings the octet index of an incoming pair is its antiquark
   (`loop_onia.octet_leg`).
 - **TIRust (pin 6ba4b53).** A P-wave state exactly at rest decaying into three
   particles gets wrong double-precision integrals (none refused; seen for
@@ -187,9 +190,15 @@ particle. The momenta are on shell with the bound-state mass m1 + m2: set its
     eta_c > a a gives 1 - (20-pi^2)/3 alpha_s/pi, J/psi > e+ e- gives
     1 - 16/3 alpha_s/pi, chi_c0 > a a gives 1 + (pi^2/3 - 28/9) alpha_s/pi,
     and chi_c2 > a a gives 1 - 16/3 alpha_s/pi.
+  - The colour octets 1S0[8] > g g and 3S1[8] > u u~: the virtuals of the
+    productions g g > 1S0[8] and u u~ > 3S1[8] (time reversal, Petrelli et
+    al.). Outside the test, 3P0[8] > g g and 3P2[8] > g g equal their
+    productions too, to 1e-12, and each octet decay's Born equals the tree
+    level.
   - The Born: the LO widths of eta_c > a a and chi_c0 > a a.
   - The poles of eta_c > g g, J/psi > g g g, chi_c0 > g g and
-    chi_c1 > u u~ g against ONIA_IR_POLES.
+    chi_c1 > u u~ g against ONIA_IR_POLES; outside the test also
+    1S0[8] > u u~ g, 3S1[8] > g g g and 3P1[8] > u u~ g.
 - **He and Huang** (arXiv:2608.23439): H > l+ l- a for eta_c and chi_c0,1,2,
   with l = e and mu, at NLO (the virtual only).
   - Their LO tables are reproduced to every printed digit, with their

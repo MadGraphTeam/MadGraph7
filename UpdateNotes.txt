@@ -33,8 +33,8 @@ ANNOUNCEMENT:
        cancel in the projected helicity sum. Such points are rescued in quadruple
        precision: g g > Jpsi g with a 1.5 MeV gluon was 22% off (1e4 GeV b, t) or 1.7e-4
        off (physical masses) with an accuracy of 1e-9.
-   HS: MadLoop: one-loop QCD virtual of the decay of a colour-singlet S- or P-wave bound
-       state ('generate etac(1|1S01) > a a [virt=QCD]'), on the tree level of the onium
+   HS: MadLoop: one-loop QCD virtual of the decay of an S- or P-wave bound state, colour
+       singlet or octet ('generate etac(1|1S01) > a a [virt=QCD]'), on the tree level of the onium
        decays (incoming projector, decay LDME of Block ldme_decay). It reproduces the
        textbook corrections of eta_c, chi_c0,2 > a a and J/psi > e+ e-, and the
        H > l+ l- a widths of He and Huang (arXiv:2608.23439). A P-wave state exactly at rest

@@ -5011,6 +5011,9 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
           with the decay LDMEs of the onia card (Block ldme_decay, <O_H> =
           2 Nc |R(0)|^2/(4 pi) and 2 Nc 3 |R'(0)|^2/(4 pi)), averaged over the
           2J+1 states of the bound state;
+        - the colour octets 1S0[8] > g g and 3S1[8] > u u~: the virtuals of
+          the productions g g > 1S0[8] and u u~ > 3S1[8] (time reversal), the
+          values of Petrelli et al. of test_quarkonium_loop_standalone;
         - eta_c > g g and chi_c1 > u u~ g (boosted): the poles are those of
           ONIA_IR_POLES, with the P -> S term of the decaying P wave."""
 
@@ -5024,19 +5027,34 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
         if not tirust or str(tirust) == 'None' or not os.path.isdir(str(tirust)):
             self.skipTest('TIRust is not installed (install tirust)')
 
-        pi2, CF = math.pi**2, 4./3.
+        pi2, CF, CA, TF, nl = math.pi**2, 4./3., 3., 0.5, 3
         ec = 2./3.
-        # (process, finite, poles predicted, LO width(alpha, LDME, m_c), P wave)
+
+        def vp(r):
+            # finite heavy-quark vacuum polarisation integral of the bubbles
+            n = 4000
+            return sum((x*(1-x))*math.log(1-x*(1-x)*r) for x in
+                       ((i+0.5)/n for i in range(n)))/n
+
+        Bn_1S0_8 = CF*(-5+pi2/4) + CA*(2+7*pi2/24)
+        Bn_3S1_8 = CF*(-8+2*pi2/3) + CA*(50./9+2./3*math.log(2.)-pi2/4)
+        qq8 = 2*(Bn_3S1_8 - 10./9*nl*TF - 16./9*TF) - CF*pi2/3 + \
+              4*vp((3.1/4.7)**2) + 4*vp((3.1/173.)**2)
+        # (process, finite, poles (single, double) or None for those of
+        # ONIA_IR_POLES, LO width(alpha, LDME, m_c), P wave)
         processes = [
-            ('etac(1|1S01) > a a [virt=QCD]', 2*CF*(pi2/4-5), False,
+            ('etac(1|1S01) > a a [virt=QCD]', 2*CF*(pi2/4-5), (0., 0.),
              lambda a, L, m: 3*ec**4*a**2*(L*4*math.pi/6)/m**2, False),
-            ('Jpsi(1|3S11) > e+ e- / z [virt=QCD]', -32./3, False, None, False),
-            ('etac(1|1S01) > g g [virt=QCD]', None, True, None, False),
-            ('chic0(1|3P01) > a a [virt=QCD]', 2*(pi2/3-28./9), False,
+            ('Jpsi(1|3S11) > e+ e- / z [virt=QCD]', -32./3, (0., 0.), None, False),
+            ('etac(1|1S08) > g g [virt=QCD]', 2*Bn_1S0_8 - CA*pi2/3, (-12., -6.), None, False),
+            ('Jpsi(1|3S18) > u u~ [virt=QCD]', qq8, (-7., -8./3), None, False),
+            ('etac(1|1S01) > g g [virt=QCD]', None, None, None, False),
+            ('chic0(1|3P01) > a a [virt=QCD]', 2*(pi2/3-28./9), (0., 0.),
              lambda a, L, m: 27*ec**4*a**2*(L*4*math.pi/18)/m**4, True),
-            ('chic1(1|3P11) > u u~ g [virt=QCD]', None, True, None, True),
+            ('chic1(1|3P11) > u u~ g [virt=QCD]', None, None, None, True),
         ]
-        for i, (process, finite, predicted, width, pwave) in enumerate(processes):
+        for i, (process, finite, poles, width, pwave) in enumerate(processes):
+            predicted = poles is None
             extra = ['set tirust %s --no_save' % self.raised_power_tirust()] if pwave else []
             outdir = onia_loop_check.output_process(
                 'loop_sm_onia-c_mass', process, pjoin(self.tmpdir, 'onia_decay_%d' % i),
@@ -5062,8 +5080,9 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
                     continue
                 self.assertLess(abs(r['finite_norm']/finite - 1.),
                                 max(5e-9, r['accuracy']), process)
-                self.assertLess(abs(r['single_norm']), 1e-8, process)
-                self.assertLess(abs(r['double_norm']), 1e-8, process)
+                self.assertAlmostEqual(r['single_norm'], poles[0], 8, process)
+                self.assertAlmostEqual(r['double_norm'], poles[1], 8, process)
+                self.assertAlmostEqual(r['predicted_single_norm'], poles[0], 8, process)
             if width:
                 cards = pjoin(outdir, 'Cards')
                 ldme = float(re.search(r'(?im)^block\s+ldme_decay\s*\n\s*\d+\s+(\S+)',

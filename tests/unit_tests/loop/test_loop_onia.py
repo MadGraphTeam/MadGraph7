@@ -146,12 +146,12 @@ class TestLoopOniaGeneration(unittest.TestCase):
                               'generate %s' % p, printcmd=False, errorhandling=False))
 
     def test_decays_refused(self):
-        """The one-loop virtual of a decaying bound state: a colour singlet
-        alone in the initial state, not decaying into a P-wave state if it
-        is one itself."""
-        refused = ['etac(1|1S08) > g g [virt=QCD]',
-                   'chic0(1|3P01) > hc(1|1P11) a [virt=QCD]',
-                   'etac(1|1S01) g > g g [virt=QCD]']
+        """The one-loop virtual of a decaying bound state: alone in the
+        initial state, not decaying into a P-wave state if it is one
+        itself."""
+        refused = ['chic0(1|3P01) > hc(1|1P11) a [virt=QCD]',
+                   'etac(1|1S01) g > g g [virt=QCD]',
+                   'Jpsi(1|3S18) g > u u~ [virt=QCD]']
         for process in refused:
             self.assertRaises(madgraph.InvalidCmd, lambda p=process: self.cmd.exec_cmd(
                               'generate %s' % p, printcmd=False, errorhandling=False))
@@ -188,6 +188,15 @@ class TestLoopOniaGeneration(unittest.TestCase):
         soft = loop_onia.pwave_soft_current(me, info, self.exporter().get_amp_to_jamp_map)
         self.assertEqual([(s['colour'], s['label']) for s in soft], [(8, '18')])
         self.assertEqual(sorted(set(k for k, kind in soft[0]['links'])), [2, 3, 4])
+        # a colour octet: averaged over its 2J+1 states only (its decay LDME
+        # carries the colour, as at tree level), its charge on the octet
+        # index of the colour strings, its antiquark
+        me = self.matrix_element('Jpsi(1|3S18) > u u~ [virt=QCD]')
+        self.assertEqual(me.get_denominator_factor(), 3)
+        self.assertEqual(me.get_hel_avg_factor(), 3)
+        info = loop_onia.onia_loop_info(me)
+        self.assertEqual(loop_onia.physical_charges(me, info),
+                         {1: (2, 8), 2: (3, 3), 3: (4, -3)})
         # a bound state produced is not affected
         me = self.matrix_element('g g > etac(1|1S01) [virt=QCD]')
         self.assertFalse(loop_onia.has_initial_onia(me))
