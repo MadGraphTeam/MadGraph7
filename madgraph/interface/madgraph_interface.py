@@ -9720,6 +9720,25 @@ This implies that with decay chains:
             logger.warning('main164 of Pythia8 could not be compiled for HepMC%d, ' % other +
                 'so that Pythia8 will only write HepMC%d events:\n%s' % (native, error))
 
+    # Ninja's Automake rules install its Fortran module files
+    # (ninjago_module.mod, quadninjago_module.mod, mninja.mod, ninjavholo.mod)
+    # as headers but have no rule that makes them: they only appear as a side
+    # effect of compiling the .F90 sources. installNinja.sh runs a plain
+    # `make`, which is serial unless the caller's MAKEFLAGS carries -jN. Then
+    # make reaches the headers before the objects that write them and stops
+    # with "No rule to make target 'quadninjago_module.mod'".
+    SERIAL_MAKE_HEPTOOLS = ('ninja',)
+
+    @staticmethod
+    def environment_without_parallel_make(environ=None):
+        """Copy of the environment without the make flags a parent make or
+        shell passes down (-jN, jobserver), so that a build which relies on
+        serial order runs serially."""
+        environ = dict(os.environ if environ is None else environ)
+        for key in ('MAKEFLAGS', 'MFLAGS', 'GNUMAKEFLAGS'):
+            environ.pop(key, None)
+        return environ
+
     def advanced_install(self, tool_to_install,
                                HepToolsInstaller_web_address=None,
                                additional_options=[]):
@@ -9797,6 +9816,11 @@ This implies that with decay chains:
         prefix, config_file = self.heptools_install_target(
                                        self.options['heptools_install_dir'])
 
+        # None inherits the environment unchanged.
+        installer_env = None
+        if tool in self.SERIAL_MAKE_HEPTOOLS:
+            installer_env = self.environment_without_parallel_make()
+
         # Special rules for certain tools
         if tool in ['madanalysis5', 'rivet']:
             add_options.append('--mg5_path=%s'%MG5DIR)
@@ -9871,7 +9895,8 @@ This implies that with decay chains:
             return_code = misc.call([sys.executable, pjoin(MG5DIR,'HEPTools',
              'HEPToolsInstallers','HEPToolInstaller.py'), tool,
              '--prefix=%s' % prefix]
-                        + lhapdf_option + compiler_options + add_options)
+                        + lhapdf_option + compiler_options + add_options,
+                        env=installer_env)
         else:
             logger.info('Now installing %s. Be patient...'%tool)
             # Make sure each option in add_options appears only once
@@ -9883,7 +9908,7 @@ This implies that with decay chains:
                         (['--force'] if '--force' in add_options else [])
             return_code = misc.call([sys.executable, pjoin(MG5DIR,'HEPTools',
               'HEPToolsInstallers', 'HEPToolInstaller.py'), tool,'--prefix=%s'%
-              prefix] + compiler_options + add_options)
+              prefix] + compiler_options + add_options, env=installer_env)
         if return_code in [0,11]:
             if tool_to_install not in self.install_plugin:
                 logger.info("%s successfully installed in %s."%(

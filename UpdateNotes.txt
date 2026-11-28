@@ -5,6 +5,11 @@ ANNOUNCEMENT:
    A new LTS (based on the current 3.5.X) is starting now and will act as the stable release for the coming years.
 
 0.4.0 (XX/XX/XX):
+   OM: install ninja failed when MAKEFLAGS=-jN was set in the environment (e.g. exported by a
+       batch script): Ninja's Makefile has no rule for its Fortran .mod files, which only appear
+       as a side effect of compiling the .F90 sources, so a parallel make stopped with "No rule
+       to make target 'quadninjago_module.mod'". Ninja is now built without inherited parallel
+       make flags, as its installer intends.
    OM: output warns when zerowidth_external (on by default) drops the width of an internal
        propagator that can go on shell inside phase space, e.g. the final-state W- > d u~ of
        p p > w+ w+ j j QCD=0 (the W+ being external, every internal W loses its width): the
