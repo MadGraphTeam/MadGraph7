@@ -146,7 +146,9 @@ c the dipole-dipole terms of the pairs of P-wave quarkonia
       enddo
       wgt=contr*g**2*iden_comp
 c the coupling orders: those of the Born, and g^2
-      ord(1:nsplitorders)=born_orders(1:nsplitorders)
+c (the Born has a single combination of coupling orders, amp_split
+c position 1; born_orders is the generation constraint)
+      call amp_split_pos_to_orders(1,ord)
       ord(qcd_pos)=ord(qcd_pos)+2
       ipos=orders_to_amp_split_pos(ord)
       amp_split(ipos)=amp_split(ipos)+wgt

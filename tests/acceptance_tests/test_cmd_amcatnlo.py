@@ -1437,8 +1437,10 @@ class TestOniaFixedOrder(unittest.TestCase):
         interface.exec_cmd('import command %s' % pjoin(self.tmpdir, 'cmd'))
         run = 'run_01' if order == 'NLO' else 'run_01_LO'
         summary = open(pjoin(self.path, 'Events', run, 'summary.txt')).read()
-        xsect = summary.split("Total cross section:")[1].split(" +-")[0]
-        error = summary.split("Total cross section:")[1].split(" +-")[1].split()[0]
+        # a cross section, or the width of a decay
+        key = "Total cross section:" if "Total cross section:" in summary else "decay width:"
+        xsect = summary.split(key)[1].split(" +-")[0]
+        error = summary.split(key)[1].split(" +-")[1].split()[0]
         return float(xsect), float(error)
 
     def check(self, value, error, reference, reference_error):
@@ -1514,6 +1516,29 @@ class TestOniaFixedOrder(unittest.TestCase):
             self.assertEqual(sorted(undefined & plain), [], vdir)
         self.check(sig, err, ONIA_REF['chic0'][0], ONIA_REF['chic0'][1])
 
+    def test_onia_fo_decay_etac_madloop(self):
+        """eta_c > g g at NLO (the decay of a bound state, JHEP_Decay): FKS
+        with MadLoop's decay virtual, against the analytic width of Petrelli
+        et al. at mu = m_c (n_f = 3, alpha_s(m_c) from the run). Needs
+        TIRust."""
+        tirust = self.tirust_libdir()
+        if not tirust:
+            self.skipTest('TIRust is not installed (install tirust, or set TIRUST_LIB)')
+        width, err = self.run_fo('etac(1|1S01) > g g [QCD]', 1.55,
+                                 ['lpp1 0', 'lpp2 0', 'req_acc_FO 0.003'],
+                                 model='loop_sm_onia-c_mass',
+                                 pre=['set tirust %s --no_save' % tirust])
+        log = open(glob.glob(pjoin(self.path, 'SubProcesses', 'P0*', 'all_G1', 'log.txt'))[0]).read()
+        alpha_s = float(log.split('alpha_s=')[1].split()[0])
+        # LO 4 pi/9 alpha_s^2 <O>/m^2; K = 1 + alpha_s/pi [C_F(pi^2/4-5)
+        # + C_A(199/18-13 pi^2/24) - 8 n_f/9 + 2 b0 log(mu/M)]
+        ldme, m, nf = 0.3867, 1.55, 3
+        b0 = 11. / 2 - nf / 3.
+        coef = 4. / 3 * (math.pi ** 2 / 4 - 5) + 3 * (199. / 18 - 13 * math.pi ** 2 / 24) \
+            - 8. * nf / 9 + 2 * b0 * math.log(0.5)
+        analytic = 4 * math.pi / 9 * alpha_s ** 2 * ldme / m ** 2 * (1 + alpha_s / math.pi * coef)
+        self.check(width, err, analytic, 0.)
+
     def test_onia_fo_jpsi_octet_2to2_real(self):
         """p p > J/psi[3S1(8)] j, real emission and integrated counterterms of
         a colour-octet onium (soft partner with a sector of its own, massive
@@ -1539,7 +1564,7 @@ class TestOniaFixedOrder(unittest.TestCase):
             interface.exec_cmd('generate g g > Jpsi(1|3S18) g [real=QCD]', errorhandling=False)
         self.assertIn('massive constituents', str(ctx.exception))
         interface.exec_cmd('import model sm_onia-c_mass')
-        for process, text in [('Jpsi(1|3S11) > g g g [QCD]', 'initial state'),
+        for process, text in [('u Jpsi(1|3S18) > u [QCD]', 'initial state'),
                               ('g g > Jpsi(1|3S18) g [QED]', 'QCD corrections only')]:
             with self.assertRaises(Exception) as ctx:
                 interface.exec_cmd('generate %s' % process, errorhandling=False)

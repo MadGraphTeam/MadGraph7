@@ -6957,7 +6957,10 @@ c LDME counterterms (fks_onia_soft.f; 0 otherwise), at the Born orders + g^2
             call bsv_onia(p,xicut_used,bsv_onia_wgt)
             if (bsv_onia_wgt.ne.0d0) then
                bsv_wgt=bsv_wgt+bsv_onia_wgt
-               ord_onia(1:nsplitorders)=born_orders(1:nsplitorders)
+c              (the orders of the Born, a single combination for a P wave:
+c              born_orders is the generation constraint, e.g. 198 for an
+c              unconstrained QCD order)
+               call amp_split_pos_to_orders(1,ord_onia)
                ord_onia(qcd_pos)=ord_onia(qcd_pos)+2
                k=orders_to_amp_split_pos(ord_onia)
                amp_split_bsv(k)=amp_split_bsv(k)+bsv_onia_wgt
@@ -7703,7 +7706,7 @@ c Borns (fks_onia_soft.f; 0 otherwise), at the Born orders + g^2
       call getpoles_onia(single_onia)
       if (single_onia.ne.0d0) then
          single=single+single_onia
-         ord_onia(1:nsplitorders)=born_orders(1:nsplitorders)
+         call amp_split_pos_to_orders(1,ord_onia)
          ord_onia(qcd_pos)=ord_onia(qcd_pos)+2
          k=orders_to_amp_split_pos(ord_onia)
          amp_split_poles_FKS(k,1)=amp_split_poles_FKS(k,1)+single_onia
