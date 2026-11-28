@@ -17,7 +17,7 @@ Type ``tutorial`` at the prompt for a guided walkthrough that runs inside the in
 shows a menu of lessons. You pick one by name, for example::
 
     tutorial lo
-    tutorial mg7
+    tutorial syntax
 
 The first lessons are a good start:
 
@@ -26,9 +26,6 @@ The first lessons are a good start:
 
 ``syntax``
     The process syntax: orders, interference, decay chains and polarization.
-
-``mg7``
-    The run card, the phase-space options and training MadNIS.
 
 Other lessons cover models, decays, standalone matrix elements, NLO and MadLoop, the
 ``check`` commands and the MadEvent mode. The ``exercises`` lesson checks your answers
