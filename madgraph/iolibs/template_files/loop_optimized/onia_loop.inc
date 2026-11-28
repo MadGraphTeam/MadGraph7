@@ -57,6 +57,7 @@ C     times the unselected result.
       SAVE FAILED_WARNED
       INTEGER I
 ## if(OniaPwave){
+      %(real_dp_format)s P_REST(0:3,NEXTERNAL_PHYS)
       LOGICAL PW_REFUSED, PW_WARNED
       COMMON/%(proc_prefix)sPW_REFUSED/PW_REFUSED
       DATA PW_WARNED/.FALSE./
@@ -86,9 +87,13 @@ C     (ONIA_OTHERS_SEL); a J_z selection of the user is kept aside
 C       MadLoop sums over the selected constituent configurations
         USERHEL=-1
       ENDIF
-      CALL %(proc_prefix)sONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
 ## if(OniaPwave){
+C     a P-wave bound state almost at rest put exactly at rest
+      CALL %(proc_prefix)sONIA_PW_NEAR_REST(P_PHYS,P_REST)
+      CALL %(proc_prefix)sONIA_CONSTITUENT_MOMENTA(P_REST,P)
       PW_REFUSED=.FALSE.
+## } else {
+      CALL %(proc_prefix)sONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
 ## }
       CALL %(proc_prefix)sSLOOPMATRIX_CONSTITUENTS(P,ANS)
 C     At threshold only TIRust (MLReductionLib=9) reduces the integrals
@@ -234,6 +239,50 @@ C     boosted to the frame of the bound state
       ENDIF
       END
 
+## if(OniaPwave){
+      SUBROUTINE %(proc_prefix)sONIA_PW_NEAR_REST(P_IN,P_OUT)
+C     P_OUT: the physical momenta P_IN, with every P-wave bound state almost
+C     at rest (0 < |p| < 1E-6 E: e.g. the rounding of a boost to its rest
+C     frame) put exactly at rest. All momenta are boosted to its rest frame,
+C     then its 3-momentum is set to 0 (its mass kept). Near rest the
+C     helicity basis of its constituent spinors turns with the relative
+C     momentum like 1/|p|: the derivative of a P wave then loses
+C     eps_mach E/|p| in the cancellation between projector and amplitudes
+C     (chi_c0 > g g: 15%% at |p| = 1E-15 E, 1E-4 at 1E-12 E). Exactly at rest
+C     the spinors have a fixed axis. The results summed over the
+C     polarisations are Lorentz invariant, and the J_z axis of such a state
+C     (its direction of flight) would be the rounding of its momentum.
+      IMPLICIT NONE
+      INTEGER NEXTERNAL_PHYS
+      PARAMETER (NEXTERNAL_PHYS=%(onia_nexternal_phys)d)
+      %(real_dp_format)s P_IN(0:3,NEXTERNAL_PHYS), P_OUT(0:3,NEXTERNAL_PHYS)
+      INCLUDE 'onia_loop_data.inc'
+      %(real_dp_format)s B(3), B2, G, BP, F, PV2, Q(0:3)
+      INTEGER K, I, J
+      P_OUT(0:3,1:NEXTERNAL_PHYS)=P_IN(0:3,1:NEXTERNAL_PHYS)
+      DO K=1,ONIA_NONIA
+        IF (ONIA_L(K).NE.1) CYCLE
+        I=ONIA_MAPPING(ONIA_Q1(K))
+        PV2=P_OUT(1,I)**2+P_OUT(2,I)**2+P_OUT(3,I)**2
+        IF (PV2.EQ.0D0.OR.PV2.GE.(1D-6*P_OUT(0,I))**2) CYCLE
+        B(1:3)=-P_OUT(1:3,I)/P_OUT(0,I)
+        B2=B(1)**2+B(2)**2+B(3)**2
+        G=1D0/SQRT(1D0-B2)
+        DO J=1,NEXTERNAL_PHYS
+          IF (J.EQ.I) CYCLE
+C         (G-1)/B2 = G^2/(G+1), exact for a tiny velocity
+          BP=B(1)*P_OUT(1,J)+B(2)*P_OUT(2,J)+B(3)*P_OUT(3,J)
+          F=G**2/(G+1D0)*BP+G*P_OUT(0,J)
+          Q(0)=G*(P_OUT(0,J)+BP)
+          Q(1:3)=P_OUT(1:3,J)+F*B(1:3)
+          P_OUT(0:3,J)=Q(0:3)
+        ENDDO
+        P_OUT(0,I)=SQRT(P_OUT(0,I)**2-PV2)
+        P_OUT(1:3,I)=0D0
+      ENDDO
+      END
+
+## }
       SUBROUTINE %(proc_prefix)sONIA_SET_RELATIVE_MOMENTUM(Q)
 C     Diagnostic: give the constituents of every bound state the relative
 C     momentum +-Q (a 3-vector in the rest frame of the bound state, which
@@ -373,7 +422,13 @@ C         the diagnostic relative momentum: 2 sqrt(m^2+q^2)
         PF(0:3)=PF(0:3)+P_PHYS(0:3,I)
       ENDDO
       IF (NINCOMING.EQ.1) THEN
+## if(OniaInitial){
+C       a decaying bound state: on its mass shell m1+m2 at the QP rounding,
+C       so that its constituents are exactly at threshold for TIRust
+        CALL %(proc_prefix)sMP_ONIA_DECAY_ON_SHELL(P_PHYS,PMASS,PF)
+## } else {
         P_PHYS(0:3,1)=PF(0:3)
+## }
       ELSE
         KMOM=SQRT(P_PHYS(1,1)**2+P_PHYS(2,1)**2+P_PHYS(3,1)**2)
         IF (KMOM.GT.0.0E0_16) THEN
@@ -394,6 +449,76 @@ C         p1 = (sqrt(k^2+m1^2), k n) with (PF-p1)^2 = m2^2
       ENDIF
       CALL %(proc_prefix)sMP_ONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
       END
+## if(OniaInitial){
+
+      SUBROUTINE %(proc_prefix)sMP_ONIA_DECAY_ON_SHELL(P_PHYS,PMASS,PF)
+C     The momenta of a decay of a bound state, in quadruple precision: the
+C     decaying state keeps its 3-momentum and gets the energy of its mass
+C     PMASS(1) = m1+m2, so that P^2 = (m1+m2)^2 and its constituents P/2 are
+C     at threshold at the QP rounding (a sum of the final momenta misses it
+C     by the rounding of their double-precision inputs, which TIRust's QP
+C     pass takes as a distance from threshold). The final momenta (on shell,
+C     summing to PF) are rescaled in their rest frame to the energy m1+m2,
+C     then boosted to the frame of the decaying state, so that they conserve
+C     momentum. A decaying state at rest stays exactly at rest.
+      IMPLICIT NONE
+      INTEGER NEXTERNAL_PHYS
+      PARAMETER (NEXTERNAL_PHYS=%(onia_nexternal_phys)d)
+      %(real_mp_format)s P_PHYS(0:3,NEXTERNAL_PHYS), PMASS(NEXTERNAL_PHYS), PF(0:3)
+      %(real_mp_format)s BF(3), BI(3), K(0:3,NEXTERNAL_PHYS), K2(NEXTERNAL_PHYS)
+      %(real_mp_format)s XI, TOT, DTOT, E, STEP, PIN(0:3), ONE
+      PARAMETER (ONE=1.0E0_16)
+      INTEGER I, IT
+      PIN(1:3)=P_PHYS(1:3,1)
+      PIN(0)=SQRT(PMASS(1)**2+PIN(1)**2+PIN(2)**2+PIN(3)**2)
+      BF(1:3)=PF(1:3)/PF(0)
+      BI(1:3)=PIN(1:3)/PIN(0)
+C     the final momenta in their rest frame
+      DO I=2,NEXTERNAL_PHYS
+        CALL %(proc_prefix)sMP_ONIA_BOOST(P_PHYS(0,I),-BF,K(0,I))
+        K2(I)=K(1,I)**2+K(2,I)**2+K(3,I)**2
+      ENDDO
+C     their 3-momenta scaled by XI: sum_i sqrt(m_i^2+XI^2 k_i^2) = m1+m2
+      XI=ONE
+      DO IT=1,100
+        TOT=0.0E0_16
+        DTOT=0.0E0_16
+        DO I=2,NEXTERNAL_PHYS
+          E=SQRT(PMASS(I)**2+XI**2*K2(I))
+          TOT=TOT+E
+          IF (E.GT.0.0E0_16) DTOT=DTOT+XI*K2(I)/E
+        ENDDO
+        IF (DTOT.LE.0.0E0_16) EXIT
+        STEP=(TOT-PMASS(1))/DTOT
+        XI=XI-STEP
+        IF (ABS(STEP).LE.4.0E0_16*EPSILON(ONE)*ABS(XI)) EXIT
+      ENDDO
+      DO I=2,NEXTERNAL_PHYS
+        K(1:3,I)=XI*K(1:3,I)
+        K(0,I)=SQRT(PMASS(I)**2+XI**2*K2(I))
+        CALL %(proc_prefix)sMP_ONIA_BOOST(K(0,I),BI,P_PHYS(0,I))
+      ENDDO
+      P_PHYS(0:3,1)=PIN(0:3)
+      END
+
+      SUBROUTINE %(proc_prefix)sMP_ONIA_BOOST(P,B,Q)
+C     Q: the 4-vector P boosted with the velocity B (a 3-vector; B = 0
+C     gives P itself)
+      IMPLICIT NONE
+      %(real_mp_format)s P(0:3), B(3), Q(0:3), B2, G, BP, F
+      B2=B(1)**2+B(2)**2+B(3)**2
+      IF (B2.EQ.0.0E0_16) THEN
+        Q(0:3)=P(0:3)
+        RETURN
+      ENDIF
+      G=1.0E0_16/SQRT(1.0E0_16-B2)
+      BP=B(1)*P(1)+B(2)*P(2)+B(3)*P(3)
+C     (G-1)/B2 = G^2/(G+1), exact for a tiny velocity
+      F=G**2/(G+1.0E0_16)*BP+G*P(0)
+      Q(0)=G*(P(0)+BP)
+      Q(1:3)=P(1:3)+F*B(1:3)
+      END
+## }
 
 ## if(not OniaPwave){
       SUBROUTINE %(proc_prefix)sONIA_LOOP_PROJ(P1,M1,NHEL1,P2,M2,NHEL2,P3,M3,NHEL3,SPIN,PROJ)
@@ -1371,6 +1496,12 @@ C     partons k need no sign)
       MQ=CMASS(ONIA_Q1(ONIA_IPW))
       MQB=CMASS(ONIA_Q2(ONIA_IPW))
       R=MQ/MQB
+## if(OniaInitial){
+C     a decaying pair, crossed to all-outgoing momenta, is the produced pair
+C     of momentum -P with m_Q and m_Qbar exchanged: R -> 1/R (only the total
+C     charge part (1/R-R)/2 of Q_eff(88) changes, for unequal masses)
+      IF (ONIA_IN(ONIA_IPW).EQ.1) R=MQB/MQ
+## }
       MSUM=2D0+R+1D0/R
       FAC=FACT/DBLE(ONIA_IDEN)
 C     the cross vectors k.VEC(k)
@@ -1611,6 +1742,7 @@ C     The closed loop of the current direction: its derivative DWL with W2
 C     into the loop coefficients, and on the first direction its value WL
 C     with W1 and with V (the propagator derivatives, PCOEFS)
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: PCOEFS => PWPCOEFS
       IMPLICIT NONE
       INTEGER NBORNAMPS, NCOMB, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NBORNAMPS=%(nbornamps)d, NCOMB=%(ncomb)d)
@@ -1620,8 +1752,7 @@ C     with W1 and with V (the propagator derivatives, PCOEFS)
       INTEGER RANK, LCUT_SIZE, LOOP_GROUP_NUMBER, SYMFACT, MULTIPLIER, COLOR_ID, HELCONFIG
       %(complex_dp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
       COMMON/%(proc_prefix)sLCOEFS/LOOPCOEFS
-      %(complex_dp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMMON/%(proc_prefix)sPW_PCOEFS/PCOEFS
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_dp_format)s WEFF(NBORNAMPS,NCOMB)
       %(real_dp_format)s BORN2
       COMMON/%(proc_prefix)sONIA_EFFECTIVE/WEFF,BORN2
@@ -1656,6 +1787,7 @@ C     derivatives of PL those of the last LOOP_n (PW_DPL), along the last
 C     direction PW_EPS. The shifts are those of TIRust: S_1 the sum of PL,
 C     S_J the sum of the first J-1.
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: PCOEFS => PWPCOEFS
       IMPLICIT NONE
       INTEGER NEXTERNAL, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -1665,8 +1797,7 @@ C     S_J the sum of the first J-1.
       %(mass_dp_format)s M2L(NLOOPLINE)
       %(complex_dp_format)s RES(3)
       LOGICAL STABLE
-      %(complex_dp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMMON/%(proc_prefix)sPW_PCOEFS/PCOEFS
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_dp_format)s PW_DPL(0:3,NEXTERNAL)
       COMMON/%(proc_prefix)sPW_DPL/PW_DPL
       INTEGER PW_ILZ
@@ -1778,7 +1909,7 @@ C  the pair. A propagator of line i with shift S_i(q1,q2) contributes
 C  through 1/D_i = 1/D - (D_1 e1 + D_2 e2 + D_12 e1 e2)/D^2
 C  + 2 D_1 D_2 e1 e2/D^3, with D_a = 2 (S_i-l).dS_ia, dS_ia = c_ia eps_a
 C  and D_12 = 2 dS_i1.dS_i2: the polynomials merged with the direction
-C  sums of the weights (PW2_PCOEFS)
+C  sums of the weights (PW2P1..PW2PT of module PW_DUAL)
 C     P1(mu) = N0 x VW1 + N2 x V3B,   P2(mu) = N0 x VW2 + N1 x V3A,
 C     PX = N0 x XW,                   PT(mu,nu) = N0 x TW
 C  (N_c the loop numerators) are reduced with raised propagator powers
@@ -2429,9 +2560,11 @@ C     dipole-dipole pole. It is not added to ANS.
       %(real_dp_format)s P_PHYS(0:3,NEXTERNAL_PHYS), MU_L, CT(2)
       INCLUDE 'coupl.inc'
       %(real_dp_format)s P(0:3,NEXTERNAL), CMASS(NEXTERNAL), PDD, AO2PI, PI
+      %(real_dp_format)s P_REST(0:3,NEXTERNAL_PHYS)
       PI=4D0*DATAN(1D0)
       AO2PI=G**2/(8D0*PI**2)
-      CALL %(proc_prefix)sONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
+      CALL %(proc_prefix)sONIA_PW_NEAR_REST(P_PHYS,P_REST)
+      CALL %(proc_prefix)sONIA_CONSTITUENT_MOMENTA(P_REST,P)
       CALL %(proc_prefix)sONIA_PREPARE(P)
       CALL %(proc_prefix)sONIA_MASSES(CMASS)
       CALL %(proc_prefix)sONIA_PW2_DIPOLE_DIPOLE(CMASS,PDD)
@@ -2542,6 +2675,7 @@ C     and with V3A into P2 (once per ILZ1); its d/d eps2 component DWL2 with
 C     W2 and with V3B into P1 (once per ILZ2); its value WL with W0, with
 C     VW1 into P1, VW2 into P2, XW into PX and TW into PT (first pair)
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: P1 => PW2P1, P2 => PW2P2, PX => PW2PX, PT => PW2PT
       IMPLICIT NONE
       INTEGER NBORNAMPS, NCOMB, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NBORNAMPS=%(nbornamps)d, NCOMB=%(ncomb)d)
@@ -2553,11 +2687,7 @@ C     VW1 into P1, VW2 into P2, XW into PX and TW into PT (first pair)
       INTEGER RANK, LCUT_SIZE, LOOP_GROUP_NUMBER, SYMFACT, MULTIPLIER, COLOR_ID, HELCONFIG
       %(complex_dp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
       COMMON/%(proc_prefix)sLCOEFS/LOOPCOEFS
-      %(complex_dp_format)s P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_dp_format)s P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_dp_format)s PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-      %(complex_dp_format)s PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
-      COMMON/%(proc_prefix)sPW2_PCOEFS/P1,P2,PX,PT
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_dp_format)s WEFF(NBORNAMPS,NCOMB)
       %(real_dp_format)s BORN2
       COMMON/%(proc_prefix)sONIA_EFFECTIVE/WEFF,BORN2
@@ -2621,6 +2751,7 @@ C     (onia_loop.f header). PL and M2L are the lines and masses of the loop
 C     (TIR_interface.f), the derivatives of PL those of the last LOOP_n
 C     (PW_DPL along PW_EPS1, PW_DPL2 along PW_EPS2).
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: P1 => PW2P1, P2 => PW2P2, PX => PW2PX, PT => PW2PT
       IMPLICIT NONE
       INTEGER NEXTERNAL, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -2630,11 +2761,7 @@ C     (PW_DPL along PW_EPS1, PW_DPL2 along PW_EPS2).
       %(complex_dp_format)s M2L(NLOOPLINE)
       %(complex_dp_format)s RES(3)
       LOGICAL STABLE
-      %(complex_dp_format)s P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_dp_format)s P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_dp_format)s PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-      %(complex_dp_format)s PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
-      COMMON/%(proc_prefix)sPW2_PCOEFS/P1,P2,PX,PT
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_dp_format)s PW_DPL(0:3,NEXTERNAL)
       COMMON/%(proc_prefix)sPW_DPL/PW_DPL
       %(complex_dp_format)s PW_DPL2(0:3,NEXTERNAL)
@@ -3400,6 +3527,7 @@ C     TARGET in place of AMP and LOOPCOEFS
      & SYMFACT,MULTIPLIER,COLOR_ID,HELCONFIG)
 C     As PW_CREATE_LOOP_COEFS, in quadruple precision
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: PCOEFS => MPPWPCOEFS
       IMPLICIT NONE
       INTEGER NBORNAMPS, NCOMB, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NBORNAMPS=%(nbornamps)d, NCOMB=%(ncomb)d)
@@ -3409,8 +3537,7 @@ C     As PW_CREATE_LOOP_COEFS, in quadruple precision
       INTEGER RANK, LCUT_SIZE, LOOP_GROUP_NUMBER, SYMFACT, MULTIPLIER, COLOR_ID, HELCONFIG
       %(complex_mp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
       COMMON/%(proc_prefix)sMP_LCOEFS/LOOPCOEFS
-      %(complex_mp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMMON/%(proc_prefix)sMP_PW_PCOEFS/PCOEFS
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_mp_format)s WEFF(NBORNAMPS,NCOMB)
       COMMON/%(proc_prefix)sMP_ONIA_EFFECTIVE/WEFF
       %(complex_mp_format)s W2(NBORNAMPS,NCOMB,3), VW(NBORNAMPS,0:3,NCOMB)
@@ -3437,6 +3564,7 @@ C     As PW_CREATE_LOOP_COEFS, in quadruple precision
       SUBROUTINE %(proc_prefix)sMP_ONIA_PW_DOUBLED(I_SQSO,I_LOOPGROUP,CTMODE,NLOOPLINE,RANK,PL,M2L,RES,STABLE)
 C     As ONIA_PW_DOUBLED, in quadruple precision
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: PCOEFS => MPPWPCOEFS
       IMPLICIT NONE
       INTEGER NEXTERNAL, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -3446,8 +3574,7 @@ C     As ONIA_PW_DOUBLED, in quadruple precision
       %(mass_dp_format)s M2L(NLOOPLINE)
       %(complex_mp_format)s RES(3)
       LOGICAL STABLE
-      %(complex_mp_format)s PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMMON/%(proc_prefix)sMP_PW_PCOEFS/PCOEFS
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_mp_format)s MP_PW_DPL(0:3,NEXTERNAL)
       COMMON/%(proc_prefix)sMP_PW_DPL/MP_PW_DPL
       INTEGER PW_ILZ
@@ -3944,6 +4071,7 @@ C     As PW_SPLIT_COEFS2, in quadruple precision
      & LOOP_GROUP_NUMBER,SYMFACT,MULTIPLIER,COLOR_ID,HELCONFIG)
 C     As PW_CREATE_LOOP_COEFS2, in quadruple precision
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: P1 => MPPW2P1, P2 => MPPW2P2, PX => MPPW2PX, PT => MPPW2PT
       IMPLICIT NONE
       INTEGER NBORNAMPS, NCOMB, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NBORNAMPS=%(nbornamps)d, NCOMB=%(ncomb)d)
@@ -3955,11 +4083,7 @@ C     As PW_CREATE_LOOP_COEFS2, in quadruple precision
       INTEGER RANK, LCUT_SIZE, LOOP_GROUP_NUMBER, SYMFACT, MULTIPLIER, COLOR_ID, HELCONFIG
       %(complex_mp_format)s LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
       COMMON/%(proc_prefix)sMP_LCOEFS/LOOPCOEFS
-      %(complex_mp_format)s P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_mp_format)s P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_mp_format)s PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-      %(complex_mp_format)s PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
-      COMMON/%(proc_prefix)sMP_PW2_PCOEFS/P1,P2,PX,PT
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_mp_format)s WEFF(NBORNAMPS,NCOMB)
       COMMON/%(proc_prefix)sMP_ONIA_EFFECTIVE/WEFF
       %(complex_mp_format)s W1(NBORNAMPS,NCOMB,3), W2(NBORNAMPS,NCOMB,3)
@@ -4010,6 +4134,7 @@ C     As PW_CREATE_LOOP_COEFS2, in quadruple precision
       SUBROUTINE %(proc_prefix)sMP_ONIA_PW_DOUBLED(I_SQSO,I_LOOPGROUP,CTMODE,NLOOPLINE,RANK,PL,M2L,RES,STABLE)
 C     As ONIA_PW_DOUBLED (two P-wave states), in quadruple precision
       USE %(proc_prefix)sPOLYNOMIAL_CONSTANTS
+      USE %(proc_prefix)sPW_DUAL, ONLY: P1 => MPPW2P1, P2 => MPPW2P2, PX => MPPW2PX, PT => MPPW2PT
       IMPLICIT NONE
       INTEGER NEXTERNAL, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NEXTERNAL=%(nexternal)d)
@@ -4019,11 +4144,7 @@ C     As ONIA_PW_DOUBLED (two P-wave states), in quadruple precision
       %(mass_dp_format)s M2L(NLOOPLINE)
       %(complex_mp_format)s RES(3)
       LOGICAL STABLE
-      %(complex_mp_format)s P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_mp_format)s P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      %(complex_mp_format)s PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-      %(complex_mp_format)s PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
-      COMMON/%(proc_prefix)sMP_PW2_PCOEFS/P1,P2,PX,PT
+C     (allocated in module %(proc_prefix)sPW_DUAL, polynomial.f)
       %(complex_mp_format)s MP_PW_DPL(0:3,NEXTERNAL)
       COMMON/%(proc_prefix)sMP_PW_DPL/MP_PW_DPL
       %(complex_mp_format)s MP_PW_DPL2(0:3,NEXTERNAL)
@@ -4364,7 +4485,11 @@ C     prepares the effective Born.
       ANSB(1)=BORN2
       END
 
+## if(OniaPwave){
+      SUBROUTINE %(proc_prefix)sONIA_IR_POLES(P_USER,POLES)
+## } else {
       SUBROUTINE %(proc_prefix)sONIA_IR_POLES(P_PHYS,POLES)
+## }
 C     The IR poles of the renormalised virtual predicted by the universal
 C     structure of the one-loop amplitudes (Catani, Dittmaier, Trocsanyi,
 C     hep-ph/0011222; arXiv:2402.19221 eqs. (216)-(217) for S waves): a
@@ -4378,6 +4503,9 @@ C     SLOOPMATRIX (alpha_s/(2 pi) (4 pi)^eps/Gamma(1-eps) at the scale MU_R).
       PARAMETER (NEXTERNAL=%(nexternal)d, NEXTERNAL_PHYS=%(onia_nexternal_phys)d)
       PARAMETER (NBORNAMPS=%(nbornamps)d, NINCOMING=%(nincoming)d)
       %(real_dp_format)s P_PHYS(0:3,NEXTERNAL_PHYS), POLES(2)
+## if(OniaPwave){
+      %(real_dp_format)s P_USER(0:3,NEXTERNAL_PHYS)
+## }
       INCLUDE 'onia_loop_data.inc'
       INCLUDE 'onia_loop_links.inc'
       INCLUDE 'coupl.inc'
@@ -4399,6 +4527,11 @@ C     SLOOPMATRIX (alpha_s/(2 pi) (4 pi)^eps/Gamma(1-eps) at the scale MU_R).
       PI=4D0*DATAN(1D0)
       MU2=MU_R**2
       AO2PI=G**2/(8D0*PI**2)
+## if(OniaPwave){
+C     a P-wave bound state almost at rest put exactly at rest, as in
+C     SLOOPMATRIX
+      CALL %(proc_prefix)sONIA_PW_NEAR_REST(P_USER,P_PHYS)
+## }
       CALL %(proc_prefix)sONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
       CALL %(proc_prefix)sONIA_PREPARE(P)
       CALL %(proc_prefix)sONIA_MASSES(CMASS)

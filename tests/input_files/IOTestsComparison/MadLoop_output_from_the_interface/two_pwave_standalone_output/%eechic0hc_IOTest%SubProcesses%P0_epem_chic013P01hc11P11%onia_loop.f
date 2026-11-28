@@ -69,6 +69,7 @@ C     times the unselected result.
       DATA FAILED_WARNED/.FALSE./
       SAVE FAILED_WARNED
       INTEGER I
+      REAL*8 P_REST(0:3,NEXTERNAL_PHYS)
       LOGICAL PW_REFUSED, PW_WARNED
       COMMON/ML5_0_PW_REFUSED/PW_REFUSED
       DATA PW_WARNED/.FALSE./
@@ -98,7 +99,9 @@ C     (ONIA_OTHERS_SEL); a J_z selection of the user is kept aside
 C       MadLoop sums over the selected constituent configurations
         USERHEL=-1
       ENDIF
-      CALL ML5_0_ONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
+C     a P-wave bound state almost at rest put exactly at rest
+      CALL ML5_0_ONIA_PW_NEAR_REST(P_PHYS,P_REST)
+      CALL ML5_0_ONIA_CONSTITUENT_MOMENTA(P_REST,P)
       PW_REFUSED=.FALSE.
       CALL ML5_0_SLOOPMATRIX_CONSTITUENTS(P,ANS)
 C     At threshold only TIRust (MLReductionLib=9) reduces the integrals
@@ -256,6 +259,54 @@ C     boosted to the frame of the bound state
           P(0:3,ONIA_Q2(K))=P(0:3,ONIA_Q2(K))-QLAB(0:3)
         ENDDO
       ENDIF
+      END
+
+      SUBROUTINE ML5_0_ONIA_PW_NEAR_REST(P_IN,P_OUT)
+C     P_OUT: the physical momenta P_IN, with every P-wave bound state
+C      almost
+C     at rest (0 < |p| < 1E-6 E: e.g. the rounding of a boost to its
+C      rest
+C     frame) put exactly at rest. All momenta are boosted to its rest
+C      frame,
+C     then its 3-momentum is set to 0 (its mass kept). Near rest the
+C     helicity basis of its constituent spinors turns with the relative
+C     momentum like 1/|p|: the derivative of a P wave then loses
+C     eps_mach E/|p| in the cancellation between projector and
+C      amplitudes
+C     (chi_c0 > g g: 15% at |p| = 1E-15 E, 1E-4 at 1E-12 E). Exactly
+C      at rest
+C     the spinors have a fixed axis. The results summed over the
+C     polarisations are Lorentz invariant, and the J_z axis of such a
+C      state
+C     (its direction of flight) would be the rounding of its momentum.
+      IMPLICIT NONE
+      INTEGER NEXTERNAL_PHYS
+      PARAMETER (NEXTERNAL_PHYS=4)
+      REAL*8 P_IN(0:3,NEXTERNAL_PHYS), P_OUT(0:3,NEXTERNAL_PHYS)
+      INCLUDE 'onia_loop_data.inc'
+      REAL*8 B(3), B2, G, BP, F, PV2, Q(0:3)
+      INTEGER K, I, J
+      P_OUT(0:3,1:NEXTERNAL_PHYS)=P_IN(0:3,1:NEXTERNAL_PHYS)
+      DO K=1,ONIA_NONIA
+        IF (ONIA_L(K).NE.1) CYCLE
+        I=ONIA_MAPPING(ONIA_Q1(K))
+        PV2=P_OUT(1,I)**2+P_OUT(2,I)**2+P_OUT(3,I)**2
+        IF (PV2.EQ.0D0.OR.PV2.GE.(1D-6*P_OUT(0,I))**2) CYCLE
+        B(1:3)=-P_OUT(1:3,I)/P_OUT(0,I)
+        B2=B(1)**2+B(2)**2+B(3)**2
+        G=1D0/SQRT(1D0-B2)
+        DO J=1,NEXTERNAL_PHYS
+          IF (J.EQ.I) CYCLE
+C         (G-1)/B2 = G^2/(G+1), exact for a tiny velocity
+          BP=B(1)*P_OUT(1,J)+B(2)*P_OUT(2,J)+B(3)*P_OUT(3,J)
+          F=G**2/(G+1D0)*BP+G*P_OUT(0,J)
+          Q(0)=G*(P_OUT(0,J)+BP)
+          Q(1:3)=P_OUT(1:3,J)+F*B(1:3)
+          P_OUT(0:3,J)=Q(0:3)
+        ENDDO
+        P_OUT(0,I)=SQRT(P_OUT(0,I)**2-PV2)
+        P_OUT(1:3,I)=0D0
+      ENDDO
       END
 
       SUBROUTINE ML5_0_ONIA_SET_RELATIVE_MOMENTUM(Q)
@@ -591,6 +642,7 @@ C     formula of ONIA_PROJ_DUAL of the tree-level output)
       PROJ = 0.5D0/SQRT(2D0*M1*M2)*TMP
       END
 
+
       SUBROUTINE ML5_0_ONIA_BORN_AMPS(P,NHEL,H,IC)
 C     The (dual) Born amplitudes of the constituent helicity
 C      configuration
@@ -797,6 +849,7 @@ C     into the loop coefficients, and on the first direction its value
 C      WL
 C     with W1 and with V (the propagator derivatives, PCOEFS)
       USE ML5_0_POLYNOMIAL_CONSTANTS
+      USE ML5_0_PW_DUAL, ONLY: PCOEFS => PWPCOEFS
       IMPLICIT NONE
       INTEGER NBORNAMPS, NCOMB, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NBORNAMPS=16, NCOMB=64)
@@ -807,8 +860,7 @@ C     with W1 and with V (the propagator derivatives, PCOEFS)
      $  COLOR_ID, HELCONFIG
       COMPLEX*16 LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
       COMMON/ML5_0_LCOEFS/LOOPCOEFS
-      COMPLEX*16 PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMMON/ML5_0_PW_PCOEFS/PCOEFS
+C     (allocated in module ML5_0_PW_DUAL, polynomial.f)
       COMPLEX*16 WEFF(NBORNAMPS,NCOMB)
       REAL*8 BORN2
       COMMON/ML5_0_ONIA_EFFECTIVE/WEFF,BORN2
@@ -870,7 +922,7 @@ C     + 2 D_1 D_2 e1 e2/D^3, with D_a = 2 (S_i-l).dS_ia, dS_ia = c_ia
 C      eps_a
 C     and D_12 = 2 dS_i1.dS_i2: the polynomials merged with the
 C      direction
-C     sums of the weights (PW2_PCOEFS)
+C     sums of the weights (PW2P1..PW2PT of module PW_DUAL)
 C     P1(mu) = N0 x VW1 + N2 x V3B,   P2(mu) = N0 x VW2 + N1 x V3A,
 C     PX = N0 x XW,                   PT(mu,nu) = N0 x TW
 C     (N_c the loop numerators) are reduced with raised propagator
@@ -1543,9 +1595,11 @@ C     dipole-dipole pole. It is not added to ANS.
       REAL*8 P_PHYS(0:3,NEXTERNAL_PHYS), MU_L, CT(2)
       INCLUDE 'coupl.inc'
       REAL*8 P(0:3,NEXTERNAL), CMASS(NEXTERNAL), PDD, AO2PI, PI
+      REAL*8 P_REST(0:3,NEXTERNAL_PHYS)
       PI=4D0*DATAN(1D0)
       AO2PI=G**2/(8D0*PI**2)
-      CALL ML5_0_ONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
+      CALL ML5_0_ONIA_PW_NEAR_REST(P_PHYS,P_REST)
+      CALL ML5_0_ONIA_CONSTITUENT_MOMENTA(P_REST,P)
       CALL ML5_0_ONIA_PREPARE(P)
       CALL ML5_0_ONIA_MASSES(CMASS)
       CALL ML5_0_ONIA_PW2_DIPOLE_DIPOLE(CMASS,PDD)
@@ -1668,6 +1722,8 @@ C     W2 and with V3B into P1 (once per ILZ2); its value WL with W0,
 C      with
 C     VW1 into P1, VW2 into P2, XW into PX and TW into PT (first pair)
       USE ML5_0_POLYNOMIAL_CONSTANTS
+      USE ML5_0_PW_DUAL, ONLY: P1 => PW2P1, P2 => PW2P2, PX => PW2PX,
+     $  PT => PW2PT
       IMPLICIT NONE
       INTEGER NBORNAMPS, NCOMB, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NBORNAMPS=16, NCOMB=64)
@@ -1680,11 +1736,7 @@ C     VW1 into P1, VW2 into P2, XW into PX and TW into PT (first pair)
      $  COLOR_ID, HELCONFIG
       COMPLEX*16 LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
       COMMON/ML5_0_LCOEFS/LOOPCOEFS
-      COMPLEX*16 P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMPLEX*16 P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMPLEX*16 PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-      COMPLEX*16 PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
-      COMMON/ML5_0_PW2_PCOEFS/P1,P2,PX,PT
+C     (allocated in module ML5_0_PW_DUAL, polynomial.f)
       COMPLEX*16 WEFF(NBORNAMPS,NCOMB)
       REAL*8 BORN2
       COMMON/ML5_0_ONIA_EFFECTIVE/WEFF,BORN2
@@ -1763,6 +1815,8 @@ C      loop
 C     (TIR_interface.f), the derivatives of PL those of the last LOOP_n
 C     (PW_DPL along PW_EPS1, PW_DPL2 along PW_EPS2).
       USE ML5_0_POLYNOMIAL_CONSTANTS
+      USE ML5_0_PW_DUAL, ONLY: P1 => PW2P1, P2 => PW2P2, PX => PW2PX,
+     $  PT => PW2PT
       IMPLICIT NONE
       INTEGER NEXTERNAL, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NEXTERNAL=6)
@@ -1772,11 +1826,7 @@ C     (PW_DPL along PW_EPS1, PW_DPL2 along PW_EPS2).
       COMPLEX*16 M2L(NLOOPLINE)
       COMPLEX*16 RES(3)
       LOGICAL STABLE
-      COMPLEX*16 P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMPLEX*16 P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMPLEX*16 PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-      COMPLEX*16 PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
-      COMMON/ML5_0_PW2_PCOEFS/P1,P2,PX,PT
+C     (allocated in module ML5_0_PW_DUAL, polynomial.f)
       COMPLEX*16 PW_DPL(0:3,NEXTERNAL)
       COMMON/ML5_0_PW_DPL/PW_DPL
       COMPLEX*16 PW_DPL2(0:3,NEXTERNAL)
@@ -2092,6 +2142,7 @@ C     The spin projector of a bound state for dual constituent momenta
       PROJ = 0.5E0_16/SQRT(2.0E0_16*M1*M2)*TMP
       END
 
+
       SUBROUTINE ML5_0_MP_ONIA_BORN_AMPS(P,NHEL,H,IC)
 C     The (dual) Born amplitudes for the dual momenta P, quadruple
 C      precision
@@ -2323,6 +2374,7 @@ C     TARGET in place of AMP and LOOPCOEFS
      & SYMFACT,MULTIPLIER,COLOR_ID,HELCONFIG)
 C     As PW_CREATE_LOOP_COEFS, in quadruple precision
       USE ML5_0_POLYNOMIAL_CONSTANTS
+      USE ML5_0_PW_DUAL, ONLY: PCOEFS => MPPWPCOEFS
       IMPLICIT NONE
       INTEGER NBORNAMPS, NCOMB, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NBORNAMPS=16, NCOMB=64)
@@ -2333,8 +2385,7 @@ C     As PW_CREATE_LOOP_COEFS, in quadruple precision
      $  COLOR_ID, HELCONFIG
       COMPLEX*32 LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
       COMMON/ML5_0_MP_LCOEFS/LOOPCOEFS
-      COMPLEX*32 PCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMMON/ML5_0_MP_PW_PCOEFS/PCOEFS
+C     (allocated in module ML5_0_PW_DUAL, polynomial.f)
       COMPLEX*32 WEFF(NBORNAMPS,NCOMB)
       COMMON/ML5_0_MP_ONIA_EFFECTIVE/WEFF
       COMPLEX*32 W2(NBORNAMPS,NCOMB,3), VW(NBORNAMPS,0:3,NCOMB)
@@ -2764,6 +2815,8 @@ C     As PW_SPLIT_COEFS2, in quadruple precision
      & LOOP_GROUP_NUMBER,SYMFACT,MULTIPLIER,COLOR_ID,HELCONFIG)
 C     As PW_CREATE_LOOP_COEFS2, in quadruple precision
       USE ML5_0_POLYNOMIAL_CONSTANTS
+      USE ML5_0_PW_DUAL, ONLY: P1 => MPPW2P1, P2 => MPPW2P2, PX =>
+     $  MPPW2PX, PT => MPPW2PT
       IMPLICIT NONE
       INTEGER NBORNAMPS, NCOMB, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NBORNAMPS=16, NCOMB=64)
@@ -2776,11 +2829,7 @@ C     As PW_CREATE_LOOP_COEFS2, in quadruple precision
      $  COLOR_ID, HELCONFIG
       COMPLEX*32 LOOPCOEFS(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
       COMMON/ML5_0_MP_LCOEFS/LOOPCOEFS
-      COMPLEX*32 P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMPLEX*32 P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMPLEX*32 PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-      COMPLEX*32 PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
-      COMMON/ML5_0_MP_PW2_PCOEFS/P1,P2,PX,PT
+C     (allocated in module ML5_0_PW_DUAL, polynomial.f)
       COMPLEX*32 WEFF(NBORNAMPS,NCOMB)
       COMMON/ML5_0_MP_ONIA_EFFECTIVE/WEFF
       COMPLEX*32 W1(NBORNAMPS,NCOMB,3), W2(NBORNAMPS,NCOMB,3)
@@ -2842,6 +2891,8 @@ C     As PW_CREATE_LOOP_COEFS2, in quadruple precision
      $ ,NLOOPLINE,RANK,PL,M2L,RES,STABLE)
 C     As ONIA_PW_DOUBLED (two P-wave states), in quadruple precision
       USE ML5_0_POLYNOMIAL_CONSTANTS
+      USE ML5_0_PW_DUAL, ONLY: P1 => MPPW2P1, P2 => MPPW2P2, PX =>
+     $  MPPW2PX, PT => MPPW2PT
       IMPLICIT NONE
       INTEGER NEXTERNAL, NLOOPGROUPS, NSQUAREDSO
       PARAMETER (NEXTERNAL=6)
@@ -2851,11 +2902,7 @@ C     As ONIA_PW_DOUBLED (two P-wave states), in quadruple precision
       COMPLEX*16 M2L(NLOOPLINE)
       COMPLEX*32 RES(3)
       LOGICAL STABLE
-      COMPLEX*32 P1(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMPLEX*32 P2(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3)
-      COMPLEX*32 PX(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS)
-      COMPLEX*32 PT(0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS,0:3,0:3)
-      COMMON/ML5_0_MP_PW2_PCOEFS/P1,P2,PX,PT
+C     (allocated in module ML5_0_PW_DUAL, polynomial.f)
       COMPLEX*32 MP_PW_DPL(0:3,NEXTERNAL)
       COMMON/ML5_0_MP_PW_DPL/MP_PW_DPL
       COMPLEX*32 MP_PW_DPL2(0:3,NEXTERNAL)
@@ -3215,7 +3262,7 @@ C     prepares the effective Born.
       ANSB(1)=BORN2
       END
 
-      SUBROUTINE ML5_0_ONIA_IR_POLES(P_PHYS,POLES)
+      SUBROUTINE ML5_0_ONIA_IR_POLES(P_USER,POLES)
 C     The IR poles of the renormalised virtual predicted by the
 C      universal
 C     structure of the one-loop amplitudes (Catani, Dittmaier,
@@ -3235,6 +3282,7 @@ C      MU_R).
       PARAMETER (NEXTERNAL=6, NEXTERNAL_PHYS=4)
       PARAMETER (NBORNAMPS=16, NINCOMING=2)
       REAL*8 P_PHYS(0:3,NEXTERNAL_PHYS), POLES(2)
+      REAL*8 P_USER(0:3,NEXTERNAL_PHYS)
       INCLUDE 'onia_loop_data.inc'
       INCLUDE 'onia_loop_links.inc'
       INCLUDE 'coupl.inc'
@@ -3254,6 +3302,9 @@ C      MU_R).
       PI=4D0*DATAN(1D0)
       MU2=MU_R**2
       AO2PI=G**2/(8D0*PI**2)
+C     a P-wave bound state almost at rest put exactly at rest, as in
+C     SLOOPMATRIX
+      CALL ML5_0_ONIA_PW_NEAR_REST(P_USER,P_PHYS)
       CALL ML5_0_ONIA_CONSTITUENT_MOMENTA(P_PHYS,P)
       CALL ML5_0_ONIA_PREPARE(P)
       CALL ML5_0_ONIA_MASSES(CMASS)

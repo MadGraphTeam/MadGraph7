@@ -127,8 +127,13 @@ acceptance tests `test_two_pwave_loop_standalone`,
 poles and finite parts of three of these processes. They take the TIRust of
 `$TIRUST_LIB`, or the configured one, and are skipped without raised powers.
 
-Such outputs are built with the medium code model on x86-64, since their loop
-arrays can exceed 2 GB. Their loop numerators reach rank R+2, and the
+Such outputs are built with the medium code model on x86-64. The derivative
+arrays of the P-wave layer (DWL, and with two P-wave states DWL2 and D2WL,
+and the polynomials of the propagator derivatives, in double and quadruple
+precision) are allocated at the first evaluation (module PW_DUAL of
+polynomial.f), not static: g g > chic0 chic0 has 0.8 GB of static data
+(MadLoop's own WL arrays) instead of 3.5 GB, which macOS arm64 could not
+load. Their loop numerators reach rank R+2, and the
 polynomial routines are written for that rank (`loop_onia.loop_rank_increase`).
 
 The FKS modes `[QCD]` and `[real=QCD]` go to the fixed-order NLO of bound
@@ -188,16 +193,26 @@ particle. The momenta are on shell with the bound-state mass m1 + m2: set its
   is that of the production with its momentum -P (all momenta outgoing). In
   the colour strings the octet index of an incoming pair is its antiquark
   (`loop_onia.octet_leg`).
-- **TIRust (pin 6ba4b53).** A P-wave state exactly at rest decaying into three
-  particles gets wrong double-precision integrals (none refused; seen for
-  `chic1 > u u~ g` and `chic0 > e+ e- a`), and the QP pass refuses the
-  threshold Coulomb boxes of incoming constituents, so a decay point is not
-  rescued in QP. MadLoop's stability test reports those points unstable
-  (return code 420); reported to TIRust
-  (`references/tirust_traces/onium_decay`). The width summed over the
-  polarisations is Lorentz invariant: evaluate the points in a boosted frame
-  (`onia_loop_check.DECAY_BOOST`, `decay_points(..., boost=...)`); 1 -> 2
-  decays and S waves are right at rest.
+- **Rest frame and QP.** A decay is right at rest and boosted, in double and
+  quadruple precision. The QP point improvement puts the decaying state
+  exactly on its mass shell m1+m2 (`MP_ONIA_DECAY_ON_SHELL`): it keeps its
+  3-momentum, and the final momenta are rescaled to its mass. The
+  constituents P/2 are then at threshold at the QP rounding, as in production;
+  a sum of the final momenta misses it by the rounding of their DP inputs,
+  and TIRust's QP pass then refuses the Coulomb boxes. Before 66554a1ba5 a
+  P-wave state at rest decaying into three particles was wrong in double
+  precision with the static derivative arrays (chic1 > u u~ g, chic0 > e+ e-
+  a; diagnosed with TIRust, `references/tirust_traces/onium_decay`); the
+  allocatable arrays give the boosted values at rest.
+- **Almost at rest.** A P-wave bound state almost at rest (0 < |p| < 1e-6 E,
+  e.g. the rounding of a boost to its rest frame, as in FKS) is put exactly
+  at rest by the wrapper (`ONIA_PW_NEAR_REST`; also in ONIA_IR_POLES): all
+  momenta are boosted by that tiny velocity. Near rest the helicity spinors
+  of the constituents turn with the relative momentum like 1/|p|, and the
+  P-wave derivative lost eps_mach E/|p| in cancellations (chi_c0 > g g: 15%
+  at |p| = 1e-15 E). The J_z axis of such a state, its direction of flight,
+  is the rounding of its momentum: at rest it is the z axis. This holds for
+  produced P waves too.
 - **Checks** (`test_quarkonium_decay_loop_standalone`):
   - The textbook corrections, at rest and boosted, with vanishing poles:
     eta_c > a a gives 1 - (20-pi^2)/3 alpha_s/pi, J/psi > e+ e- gives

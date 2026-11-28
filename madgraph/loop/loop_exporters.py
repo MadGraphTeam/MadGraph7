@@ -3495,6 +3495,37 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
         writer.writelines(poly_writer.write_polynomial_constant_module()+'\n')
         ep = self.get_context(matrix_element).get('OniaPwaveEP', False)
         if loop_onia.has_pwave(matrix_element):
+            pw2 = loop_onia.npwave(matrix_element) == 2
+            # the derivatives of the loop wavefunctions (DWL, and with two
+            # P-wave states DWL2 and D2WL) and the polynomials of the
+            # propagator derivatives (PCOEFS, PW2_P*), in DP, QP (and EP):
+            # allocated at the first evaluation, not static, so that the
+            # executable image stays small (several GB with two P-wave states,
+            # which macOS arm64 cannot load)
+            wl_dims = ('MAXLWFSIZE,0:LOOPMAXCOEFS-1,MAXLWFSIZE,-1:NLOOPWAVEFUNCS'
+                       .replace('MAXLWFSIZE', '%(max_lwf_size)d')
+                       .replace('LOOPMAXCOEFS', '%(loop_max_coefs)d')
+                       .replace('NLOOPWAVEFUNCS', '%(nloopwavefuncs)d'))
+            pc_dims = ('0:LOOPMAXCOEFS-1,NSQUAREDSO,NLOOPGROUPS'
+                       .replace('LOOPMAXCOEFS', '%(loop_max_coefs)d')
+                       .replace('NSQUAREDSO', '%(nSquaredSO)d')
+                       .replace('NLOOPGROUPS', '%(nloop_groups)d'))
+            big = [('PWDWL', wl_dims), ('PWPCOEFS', pc_dims + ',0:3')]
+            if pw2:
+                big += [('PWDWL2', wl_dims), ('PWD2WL', wl_dims),
+                        ('PW2P1', pc_dims + ',0:3'), ('PW2P2', pc_dims + ',0:3'),
+                        ('PW2PX', pc_dims), ('PW2PT', pc_dims + ',0:3,0:3')]
+            precisions = [('', replace_dict['complex_dp_format']),
+                          ('MP', replace_dict['complex_mp_format'])]
+            if ep:
+                precisions.append(('EP', 'COMPLEX(EPK)'))
+            big_decl, big_alloc = [], []
+            for tag, fmt in precisions:
+                for name, dims in big:
+                    rank = dims.count(',') + 1
+                    big_decl.append('%s, ALLOCATABLE :: %s%s(%s)'
+                                    % (fmt, tag, name, ','.join(':' * rank)))
+                    big_alloc.append('ALLOCATE(%s%s(%s))' % (tag, name, dims))
             # A P-wave bound state: the dual numbers have default
             # initialisation and type-bound procedures, so cannot be in COMMON
             # blocks; the dual objects shared by the routines are in a module
@@ -3521,6 +3552,10 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                   'TYPE(EP_DUAL), ALLOCATABLE :: EPPWAMP(:), EPPWAMPL(:,:)',
                   'TYPE(EP_DUAL), ALLOCATABLE :: EPPWPL(:,:), EPPWPD(:,:)']
                  if ep else []) + [
+                'C     the derivatives of the loop wavefunctions and the polynomials of',
+                'C     the propagator derivatives (DWL, PCOEFS; DWL2, D2WL, PW2_P* with',
+                'C     two P-wave states), by precision; each routine renames them to',
+                'C     its local names on USE'] + big_decl + [
                 'CONTAINS',
                 'SUBROUTINE %(proc_prefix)sPW_DUAL_INIT()',
                 'IF (ALLOCATED(PWW)) RETURN',
@@ -3531,6 +3566,8 @@ class LoopProcessOptimizedExporterFortranSA(LoopProcessExporterFortranSA):
                 (['ALLOCATE(EPPWW(%(nwavefuncs)d), EPPWAMP(%(nbornamps)d), EPPWAMPL(3,%(nctamps)d))',
                   'ALLOCATE(EPPWPL(0:3,-1:%(nloopwavefuncs)d), EPPWPD(0:3,%(nexternal)d))']
                  if ep else []) + [
+                'C     (each evaluation sets the entries it reads: no initialisation)'] +
+                big_alloc + [
                 'END SUBROUTINE %(proc_prefix)sPW_DUAL_INIT',
                 'END MODULE %(proc_prefix)sPW_DUAL']) % replace_dict + '\n')
 

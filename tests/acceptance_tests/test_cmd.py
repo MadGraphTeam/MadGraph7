@@ -5014,8 +5014,11 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
         - the colour octets 1S0[8] > g g and 3S1[8] > u u~: the virtuals of
           the productions g g > 1S0[8] and u u~ > 3S1[8] (time reversal), the
           values of Petrelli et al. of test_quarkonium_loop_standalone;
-        - eta_c > g g and chi_c1 > u u~ g (boosted): the poles are those of
-          ONIA_IR_POLES, with the P -> S term of the decaying P wave."""
+        - eta_c > g g and chi_c1 > u u~ g: the poles are those of
+          ONIA_IR_POLES, with the P -> S term of the decaying P wave;
+        - eta_c > a a in forced quadruple precision;
+        - the P-wave decays almost at rest (a 3-momentum of 1e-15 M): the
+          values at rest."""
 
         import sys
         import math
@@ -5062,14 +5065,35 @@ V_XQ5 = Vertex(name = 'V_XQ5', particles = [ P.xq__tilde__, P.xq, P.g ],
             pdir = onia_loop_check.subprocess_dir(outdir)
             onia_loop_check.build_driver(pdir)
             masses = onia_loop_check.driver_masses(pdir)
-            points = onia_loop_check.decay_points(masses[1:], masses[0], count=1,
+            # at rest and boosted
+            points = onia_loop_check.decay_points(masses[1:], masses[0], count=1) + \
+                     onia_loop_check.decay_points(masses[1:], masses[0], count=1,
                                                   boost=onia_loop_check.DECAY_BOOST)
-            if not predicted:
-                # and at rest (a P wave at rest only for 1 -> 2)
-                points = onia_loop_check.decay_points(masses[1:], masses[0], count=1) + points
             onia_loop_check.set_reduction(outdir, [9])
             results = onia_loop_check.run_points(pdir, points, mu=masses[0])
             self.assertEqual(len(results), len(points))
+            if pwave:
+                # a P wave almost at rest (the decaying momentum with a
+                # rounding-size 3-momentum, as after a boost to its rest
+                # frame): put exactly at rest (ONIA_PW_NEAR_REST), the
+                # result of the point at rest
+                near = [list(v) for v in points[0]]
+                near[0][1:] = [3e-16 * masses[0], -7e-16 * masses[0], 5e-16 * masses[0]]
+                r_near, = onia_loop_check.run_points(pdir, [near], mu=masses[0])
+                for key in ('born', 'finite', 'single', 'double'):
+                    self.assertLess(abs(r_near[key] - results[0][key]),
+                                    1e-12 * abs(results[0]['born']) + 1e-12 * abs(results[0][key]),
+                                    (process, key))
+            if i == 0:
+                # forced quadruple precision: the decaying state on its mass
+                # shell at the QP rounding (MP_ONIA_DECAY_ON_SHELL), so that
+                # TIRust's QP pass takes the threshold Coulomb boxes
+                onia_loop_check.set_reduction(outdir, [9], {'CTModeRun': 4})
+                for r in onia_loop_check.run_points(pdir, points, mu=masses[0]):
+                    self.assertEqual(r['ret_code'] // 10, 12, process)
+                    self.assertLess(abs(r['finite_norm']/finite - 1.), 1e-12, process)
+                    self.assertLess(abs(r['single_norm']), 1e-10, process)
+                onia_loop_check.set_reduction(outdir, [9])
             for r in results:
                 self.assertEqual(r['ret_code'] // 100, 2, process)
                 if predicted:
