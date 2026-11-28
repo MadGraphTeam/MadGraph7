@@ -1482,6 +1482,38 @@ class TestOniaFixedOrder(unittest.TestCase):
                                ['req_acc_FO 0.01', 'ebeam1 10', 'ebeam2 10'])
         self.check(sig, err, ONIA_REF['chic0'][0], ONIA_REF['chic0'][1])
 
+    def test_onia_fo_chic_2to1_madloop(self):
+        """p p > chi_c0 at NLO with MadLoop's P-wave virtual (loop_sm_onia; the
+        dual HELAS library under its own names, fks_onia_loopdual): the cross
+        section of the built-in virtual (test_onia_fo_chic_2to1), as the two
+        virtuals agree; and no symbol of the P-wave libMadLoop.a is left to
+        the plain lib/libdhelas.a (a missed name would link silently to the
+        routine with plain complex arguments). Needs TIRust."""
+        import subprocess
+        import madgraph.fks.fks_onia_loopdual as loopdual
+        tirust = self.tirust_libdir()
+        if not tirust:
+            self.skipTest('TIRust is not installed (install tirust, or set TIRUST_LIB)')
+        sig, err = self.run_fo('p p > chic0(1|3P01) [QCD]', 3.1,
+                               ['req_acc_FO 0.01', 'ebeam1 10', 'ebeam2 10'],
+                               model='loop_sm_onia-c_mass',
+                               pre=['set tirust %s --no_save' % tirust])
+        vdirs = loopdual.marked_vdirs(pjoin(self.path, 'SubProcesses'))
+        self.assertTrue(vdirs)
+
+        def symbols(args, path):
+            out = subprocess.run(['nm'] + args + [path], capture_output=True, text=True).stdout
+            return out
+        plain = set(l.split()[-1] for l in symbols(['-g'], pjoin(self.path, 'lib', 'libdhelas.a')).splitlines()
+                    if len(l.split()) == 3 and l.split()[1] in 'TDSBC')
+        for vdir in vdirs:
+            library = pjoin(os.path.dirname(vdir), 'libMadLoop.a')
+            self.assertTrue(os.path.exists(library), library)
+            undefined = set(l.split()[-1] for l in symbols(['-u'], library).splitlines() if l.strip()
+                            and not l.endswith(':'))
+            self.assertEqual(sorted(undefined & plain), [], vdir)
+        self.check(sig, err, ONIA_REF['chic0'][0], ONIA_REF['chic0'][1])
+
     def test_onia_fo_jpsi_octet_2to2_real(self):
         """p p > J/psi[3S1(8)] j, real emission and integrated counterterms of
         a colour-octet onium (soft partner with a sector of its own, massive

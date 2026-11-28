@@ -71,7 +71,7 @@ def _is_comment(line):
 
 
 _MODULE = re.compile(r'module\s+(\w+)\s*$')
-_END_MODULE = re.compile(r'end\s*module\b')
+_END_MODULE = re.compile(r'end\s*module\b|endmodule\b')
 _PROCEDURE = re.compile(
     r'(?:(?:recursive|pure|elemental|impure)\s+)*'
     r'(?:(?:double\s+precision|double\s+complex|complex\s*\*\s*\d+|real\s*\*\s*\d+|integer\s*\*\s*\d+|'
@@ -93,7 +93,8 @@ def defined_names(directory):
                 if _is_comment(line):
                     continue
                 text = line.split('!')[0].strip().lower()
-                if not text or text.startswith('end ') or text == 'end':
+                if not text or text.startswith('end ') or text == 'end' or \
+                        text.startswith('endmodule'):
                     if _END_MODULE.match(text):
                         in_module = False
                     continue
@@ -112,7 +113,9 @@ def defined_names(directory):
 
 def _pattern(names):
     alternatives = '|'.join(re.escape(n) for n in sorted(names, key=len, reverse=True))
-    return re.compile(r'(?<![\w$%])(' + alternatives + r')(?![\w$])', re.IGNORECASE)
+    # not after a letter, digit, '_' or '%' (a component); a fixed-form
+    # continuation mark '$' may stand right before a name
+    return re.compile(r'(?<![\w%])(' + alternatives + r')(?![\w$])', re.IGNORECASE)
 
 
 def _split_fixed(line, limit=MAX_COLUMNS):
