@@ -172,6 +172,15 @@ C      DIFFERENT EVALUATION METHODS IN ORDER TO ASSESS STABILITY.
       REAL*8 TEMP2
       COMPLEX*16 COEFS(MAXLWFSIZE,0:VERTEXMAXCOEFS-1,MAXLWFSIZE)
       COMPLEX*16 CFTOT
+C     Colour factors of the CT amplitudes with each Born amplitude and
+C      the
+C     squared split-order index of their interference, tabulated once
+C      from
+C     CF_N/CF_D with the very expressions they replace (bit-identical).
+      COMPLEX*16 CF_CT(NCTAMPS,NBORNAMPS)
+      INTEGER SQSO_CT(NCTAMPS,NBORNAMPS)
+      SAVE CF_CT,SQSO_CT
+      REAL*8 ACC_SO(3),ACC_ALL(3)
       LOGICAL FOUNDHELFILTER,FOUNDLOOPFILTER
       DATA FOUNDHELFILTER/.TRUE./
       DATA FOUNDLOOPFILTER/.TRUE./
@@ -379,6 +388,14 @@ C      subroutine of MadLoopCommons.dat
       INTEGER CF_D(NCOLORROWS,NBORNAMPS)
       INTEGER CF_N(NCOLORROWS,NBORNAMPS)
       COMMON/CF/CF_D,CF_N
+C     Split-order index tables read by CREATE_LOOP_COEFS: the Born
+C      amplitude
+C     split-order indices, and the squared split-order index of (Born
+C      split
+C     order, loop amplitude), cached on first use (0 = not yet known).
+      INTEGER BORNAMP_SO(NBORNAMPS)
+      INTEGER LOOPAMP_SQSO(NAMPSO,NCOLORROWS)
+      COMMON/SOTABLES/BORNAMP_SO,LOOPAMP_SQSO
 
       INTEGER HELC(NEXTERNAL,NCOMB)
       COMMON/HELCONFIGS/HELC
@@ -641,6 +658,21 @@ C         We write a dummy filter for structural reasons here
      $   //' ColorDenomFactors.dat. File not found'
  107    CONTINUE
         CLOSE(1)
+        DO J=1,NBORNAMPS
+          DO I=1,NCTAMPS
+            CFTOT=DCMPLX(CF_N(I,J)/DBLE(ABS(CF_D(I,J))),0.0D0)
+            IF(CF_D(I,J).LT.0) CFTOT=CFTOT*IMAG1
+            CF_CT(I,J)=CFTOT
+            SQSO_CT(I,J)=ML5SQSOINDEX(ML5SOINDEX_FOR_LOOP_AMP(I)
+     $       ,ML5SOINDEX_FOR_BORN_AMP(J))
+          ENDDO
+          BORNAMP_SO(J)=ML5SOINDEX_FOR_BORN_AMP(J)
+        ENDDO
+        DO I=1,NCOLORROWS
+          DO J=1,NAMPSO
+            LOOPAMP_SQSO(J,I)=0
+          ENDDO
+        ENDDO
         OPEN(1, FILE=HELCONFIGFN, ERR=108, STATUS='OLD',              
      $       ACTION='READ')
         DO H=1,NCOMB
@@ -1043,22 +1075,48 @@ C         FeynRules, there are none of these type of counterterms.
  3000     CONTINUE
           UVCT_REQ_SO_DONE=.TRUE.
 
-          DO J=1,NBORNAMPS
-            CTEMP = 2.0D0*HEL_MULT*DCONJG(AMP(J))
-            DO I=1,NCTAMPS
-              CFTOT=DCMPLX(CF_N(I,J)/DBLE(ABS(CF_D(I,J))),0.0D0)
-              IF(CF_D(I,J).LT.0) CFTOT=CFTOT*IMAG1
-              ITEMP = ML5SQSOINDEX(ML5SOINDEX_FOR_LOOP_AMP(I)
-     $         ,ML5SOINDEX_FOR_BORN_AMP(J))
-              IF (.NOT.FILTER_SO.OR.SQSO_TARGET.EQ.ITEMP) THEN
-                DO K=1,3
-                  TEMP2 = DBLE(CFTOT*AMPL(K,I)*CTEMP)
-                  ANS(K,ITEMP)=ANS(K,ITEMP)+TEMP2
-                  ANS(K,0)=ANS(K,0)+TEMP2
+C         The tabulated factors give the same operations in the same
+C          order as the
+C         former per-term evaluation. With a single squared split
+C          order, every term
+C         goes to ANS(K,1) and ANS(K,0): they are accumulated in
+C          registers instead.
+          IF (NSQUAREDSO.EQ.1) THEN
+            IF (.NOT.FILTER_SO.OR.SQSO_TARGET.EQ.1) THEN
+              DO K=1,3
+                ACC_SO(K)=ANS(K,1)
+                ACC_ALL(K)=ANS(K,0)
+              ENDDO
+              DO J=1,NBORNAMPS
+                CTEMP = 2.0D0*HEL_MULT*DCONJG(AMP(J))
+                DO I=1,NCTAMPS
+                  DO K=1,3
+                    TEMP2 = DBLE(CF_CT(I,J)*AMPL(K,I)*CTEMP)
+                    ACC_SO(K)=ACC_SO(K)+TEMP2
+                    ACC_ALL(K)=ACC_ALL(K)+TEMP2
+                  ENDDO
                 ENDDO
-              ENDIF
+              ENDDO
+              DO K=1,3
+                ANS(K,1)=ACC_SO(K)
+                ANS(K,0)=ACC_ALL(K)
+              ENDDO
+            ENDIF
+          ELSE
+            DO J=1,NBORNAMPS
+              CTEMP = 2.0D0*HEL_MULT*DCONJG(AMP(J))
+              DO I=1,NCTAMPS
+                ITEMP = SQSO_CT(I,J)
+                IF (.NOT.FILTER_SO.OR.SQSO_TARGET.EQ.ITEMP) THEN
+                  DO K=1,3
+                    TEMP2 = DBLE(CF_CT(I,J)*AMPL(K,I)*CTEMP)
+                    ANS(K,ITEMP)=ANS(K,ITEMP)+TEMP2
+                    ANS(K,0)=ANS(K,0)+TEMP2
+                  ENDDO
+                ENDIF
+              ENDDO
             ENDDO
-          ENDDO
+          ENDIF
 
           CALL COEF_CONSTRUCTION_1(P,NHEL,H,IC)
  4000     CONTINUE
